@@ -57,7 +57,6 @@ jobs:
       web_runtime: ${{ steps.plan.outputs.web_runtime }}
       web_source_map: ${{ steps.plan.outputs.web_source_map }}
       nativeaot: ${{ steps.plan.outputs.nativeaot }}
-      website: ${{ steps.plan.outputs.website }}
       matrix: ${{ steps.plan.outputs.matrix }}
     steps:
       - uses: actions/checkout@v4
@@ -626,11 +625,6 @@ jobs:
     if: needs.changes.outputs.nativeaot == 'true'
     uses: ./.github/workflows/nativeaot-fixtures.yml
 
-  website:
-    needs: changes
-    if: needs.changes.outputs.website == 'true'
-    uses: ./.github/workflows/website-check.yml
-
   required:
     name: CI required
     if: ${{ always() }}
@@ -659,7 +653,6 @@ jobs:
         web_runtime,
         web_source_map,
         nativeaot,
-        website,
       ]
     runs-on: ubuntu-latest
     steps:

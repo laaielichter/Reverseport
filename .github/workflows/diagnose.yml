@@ -1,0 +1,68 @@
+name: Diagnose
+
+# Runs the lanes that are red and prints the end of their output as annotations, so the cause is readable
+# without downloading logs. Safe to delete once CI is green.
+on:
+  workflow_dispatch:
+  push:
+    branches: [ci-fix]
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    name: ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: verify-package
+            cmd: npm run verify:package
+          - name: test-shard-1
+            cmd: npm run build:cached && npm run test:ci:shard:run -- --shard=1/4
+          - name: test-shard-2
+            cmd: npm run build:cached && npm run test:ci:shard:run -- --shard=2/4
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - name: Run and report
+        shell: bash
+        run: |
+          set +e
+          bash -c "${{ matrix.cmd }}" > out.log 2>&1
+          code=$?
+          echo "exit code $code"
+          tail -n 120 out.log | grep -v '^\s*$' | tail -n 80 > tail.log
+          msg=$(sed -e 's/%/%25/g' -e 's/\r//g' tail.log | awk '{printf "%s%%0A", $0}')
+          echo "::error title=${{ matrix.name }} exit $code::${msg:0:60000}"
+          grep -nE "FAIL|AssertionError|Error:|✗|×" out.log | head -40 | while read -r l; do echo "::warning::$(echo "$l" | cut -c1-300)"; done
+          exit 0
+  nativeaot:
+    name: nativeaot-windows
+    runs-on: windows-2022
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.416"
+      - name: Run and report
+        shell: bash
+        run: |
+          set +e
+          node scripts/generate-nativeaot-fixtures.mjs > out.log 2>&1
+          code=$?
+          tail -n 60 out.log | sed -e 's/%/%25/g' -e 's/\r//g' > tail.log
+          msg=$(awk '{printf "%s%%0A", $0}' tail.log)
+          echo "::error title=nativeaot exit $code::${msg:0:60000}"
+          exit 0
