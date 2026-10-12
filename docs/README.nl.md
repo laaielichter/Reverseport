@@ -50,3 +50,9 @@ functie die de instellingen opslaat en leg uit wat ze doet.", "Port mijn Godot-g
 
 Werkmap: `~/.reverseport` (verplaatsen met `REVERSEPORT_HOME`). Alleen voor eigen software of software die je mag
 analyseren; ReversePort kraakt, ontsleutelt of omzeilt niets. Licentie: MIT.
+
+## Steunen
+
+ReversePort is gratis en open source. Bespaart het je tijd, dan is een gift welkom, maar nooit verplicht.
+
+- **Solana:** `BDRA7dHGBYtPsZPNzVQccDYZ8BqstJGCsWx3kopPSCDK`

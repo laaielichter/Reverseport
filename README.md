@@ -216,6 +216,12 @@ anti-cheat or licensing. Read [RESPONSIBLE-USE.md](RESPONSIBLE-USE.md) and the [
 The deep-analysis engine is based on [REA: Reverse Engineer Anything](https://github.com/morluto/rea) (MIT).
 Third-party components are listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
+## Support
+
+ReversePort is free and open source. If it saves you time, a gift is welcome but never expected.
+
+- **Solana:** `BDRA7dHGBYtPsZPNzVQccDYZ8BqstJGCsWx3kopPSCDK`
+
 ## License
 
 [MIT](LICENSE)
