@@ -1,0 +1,30 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.laaielichter/reverseport",
+  "title": "ReversePort",
+  "description": "Reverse engineer anything. Port it anywhere. One MCP server for coding agents.",
+  "websiteUrl": "https://github.com/laaielichter/reverseport",
+  "repository": {
+    "url": "https://github.com/laaielichter/reverseport",
+    "source": "github"
+  },
+  "version": "1.0.0",
+  "packages": [
+    {
+      "registryType": "npm",
+      "registryBaseUrl": "https://registry.npmjs.org",
+      "identifier": "reverseport",
+      "version": "1.0.0",
+      "runtimeHint": "npx",
+      "transport": {
+        "type": "stdio"
+      },
+      "packageArguments": [
+        {
+          "type": "positional",
+          "value": "mcp"
+        }
+      ]
+    }
+  ]
+}

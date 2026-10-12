@@ -1,0 +1,14 @@
+{
+  "name": "reverseport",
+  "owner": { "name": "ReversePort contributors" },
+  "metadata": {
+    "description": "ReversePort: reverse engineer anything, port it anywhere — one MCP server, skills and a porting agent."
+  },
+  "plugins": [
+    {
+      "name": "reverseport",
+      "source": "./",
+      "description": "Reverse engineer anything. Port it anywhere. Recon, decompile and trace apps, games, binaries and websites; rebuild and port them between Godot, Unity, Unreal, three.js and languages."
+    }
+  ]
+}

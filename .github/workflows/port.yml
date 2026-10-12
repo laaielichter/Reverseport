@@ -1,0 +1,41 @@
+# ReversePort's own engine (port/) and the `reverseport` front door: no install needed, so test them everywhere.
+name: ReversePort engine
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  engine:
+    name: ${{ matrix.os }} · node ${{ matrix.node }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        node: [22, 24]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - name: Front door works without an install
+        shell: bash
+        run: |
+          node bin/reverseport.mjs --version
+          node bin/reverseport.mjs scan port/test/fixtures/godot-mini > scan.json
+          node -e 'const r=require("./scan.json"); if (r.primary.id !== "godot") process.exit(1)'
+          node bin/reverseport.mjs port doctor
+      - name: Tests
+        shell: bash
+        run: |
+          node --test --test-reporter=spec --test-reporter-destination=stdout --test-reporter=tap --test-reporter-destination=tap.txt "port/test/*.test.mjs" && exit 0
+          msg=$(grep -E -A30 '^ *not ok' tap.txt | head -80 | sed ':a;N;$!ba;s/%/%25/g;s/\r//g;s/\n/%0A/g')
+          echo "::error title=Tests failed::$msg"
+          exit 1

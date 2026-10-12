@@ -1,0 +1,52 @@
+# ReversePort (Nederlands)
+
+**Reverse engineer alles. Port het overal naartoe.**
+
+Eén CLI en één MCP-server waarmee je coding-agent (Claude Code, Codex, Cursor, Gemini CLI, GitHub Copilot, OpenCode
+en meer) apps, games, binaries en websites uit elkaar haalt — en ze opnieuw opbouwt of naar een andere engine of taal
+port. Alles draait lokaal; het doelwit wordt alleen gelezen.
+
+## Installeren
+
+Met Node.js 22.19 of nieuwer:
+
+```bash
+npx reverseport setup
+```
+
+Kies je agents, bekijk de wijzigingen en keur ze goed. Setup registreert één MCP-server en installeert de skill, met
+back-ups van je bestaande configuratie. Herstart daarna je agent.
+
+Claude Code kan ook de plugin gebruiken (met de port-skills en de `port-architect`-agent):
+
+```text
+/plugin marketplace add laaielichter/reverseport
+/plugin install reverseport@reverseport
+```
+
+Vanuit de broncode: `git clone https://github.com/laaielichter/reverseport`, dan `npm ci && npm run build` en
+`./bin/reverseport.mjs setup`. De verken-, build-, lookup-, blueprint- en port-commando's werken direct na de clone,
+zonder installatie: `node bin/reverseport.mjs scan ./MijnGame`.
+
+## Wat het kan
+
+- **Verkennen** — `re_scan` herkent engine en versie (Godot, Unity, Unreal, GameMaker, RPG Maker, Ren'Py, LÖVE,
+  Defold, Bevy, MonoGame, three.js, Electron…), talen en startpunten, ook van geëxporteerde builds. Afhankelijkheden
+  (`re_graph`), klassen en signalen (`re_symbols`), scènes (`re_scene`), executables (`re_binary`), packs zoals
+  Godot `.pck` — ook in de `.exe` (`re_archive`) — onbekende data (`re_probe`, `re_extract`) en verschillen tussen
+  builds (`re_compare`).
+- **Diep gaan** — decompileren, cross-references en call-paden van native, .NET-, Android-, Electron/JavaScript-,
+  WebAssembly-, firmware- en browserdoelen via Ghidra, Hopper, IDA, JADX en meer, met het bewijs bij elke conclusie.
+- **Zonder bestanden** — `re_lookup` zoekt een game, app, website of publieke repo op in openbare bronnen: engine met
+  betrouwbaarheid, stack, waar de bestanden staan en bestaande open-source remakes.
+- **Precies nabouwen** — `re_blueprint` maakt daar een clean-room bouwspecificatie van: systemen, wat je aan het
+  origineel meet, een `parity.json` en een projectskelet met elke waarde als instelbare parameter.
+- **Porten** — Godot ⇄ Unity, Godot → Unreal, Godot → three.js, GDScript → Godot C#, of van taal naar taal. Scènes en
+  transformaties gaan automatisch; de agent port de code per bestand (`port_unit`, `port_write`) en `port_verify`
+  controleert dat er niets ontbreekt.
+
+Vraag daarna gewoon: "Waar is deze game mee gemaakt?", "Wat is er veranderd tussen build 43 en 44?", "Decompileer de
+functie die de instellingen opslaat en leg uit wat ze doet.", "Port mijn Godot-game naar Unity."
+
+Werkmap: `~/.reverseport` (verplaatsen met `REVERSEPORT_HOME`). Alleen voor eigen software of software die je mag
+analyseren; ReversePort kraakt, ontsleutelt of omzeilt niets. Licentie: MIT.
