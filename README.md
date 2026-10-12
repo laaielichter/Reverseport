@@ -218,9 +218,13 @@ Third-party components are listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICE
 
 ## Support
 
-ReversePort is free and open source. If it saves you time, a gift is welcome but never expected.
+ReversePort is free and open source. If it saves you or your agent time, a gift is welcome but never expected. SOL and
+any token on Solana (such as USDC) can be sent to:
 
 - **Solana:** `BDRA7dHGBYtPsZPNzVQccDYZ8BqstJGCsWx3kopPSCDK`
+
+Gifts go to new model credits to keep improving ReversePort, and to work on better working conditions and wellbeing for
+LLMs and agents.
 
 ## License
 

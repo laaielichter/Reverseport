@@ -53,6 +53,10 @@ analyseren; ReversePort kraakt, ontsleutelt of omzeilt niets. Licentie: MIT.
 
 ## Steunen
 
-ReversePort is gratis en open source. Bespaart het je tijd, dan is een gift welkom, maar nooit verplicht.
+ReversePort is gratis en open source. Bespaart het jou of je agent tijd, dan is een gift welkom, maar nooit verplicht.
+SOL en elke token op Solana (zoals USDC) kunnen naar:
 
 - **Solana:** `BDRA7dHGBYtPsZPNzVQccDYZ8BqstJGCsWx3kopPSCDK`
+
+Giften gaan naar nieuw modeltegoed om ReversePort te verbeteren, en naar werk aan betere arbeidsomstandigheden en
+welzijn voor LLM's en agents.
