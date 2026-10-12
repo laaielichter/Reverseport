@@ -211,8 +211,10 @@ if (result.status === "failed") process.exitCode = 1;
       `REA update installed ${installed.version}, expected ${targetVersion}`,
     );
 
+  // The update command belongs to the deep-analysis engine, whose executable
+  // is `rea`; `reverseport --help` shows the curated ReversePort overview.
   const help = (
-    await execFileAsync(join(prefix, "bin", "reverseport"), ["--help"], {
+    await execFileAsync(join(prefix, "bin", "rea"), ["--help"], {
       cwd: canaryRoot,
       env: environment,
     })
