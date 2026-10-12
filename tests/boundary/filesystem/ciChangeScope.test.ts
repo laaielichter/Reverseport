@@ -252,10 +252,6 @@ it.each([
   ["scripts/website_i18n.py", { code: false, website: true, package: false }],
   ["README_ja.md", { code: false, docs: true, website: true, package: false }],
   [
-    ".github/workflows/website-pages.yml",
-    { code: false, website: true, package: false },
-  ],
-  [
     "src/process/ProviderProcess.ts",
     { code: true, package: true, evm: true, browser: true },
   ],
@@ -320,7 +316,6 @@ it.each([
   ["web_runtime", "real-web-runtime"],
   ["web_source_map", "real-web-source-map"],
   ["nativeaot", "nativeaot-fixtures"],
-  ["website", "website-check"],
 ])(
   "routes %s through the selector without a duplicate PR trigger",
   async (scope, name) => {

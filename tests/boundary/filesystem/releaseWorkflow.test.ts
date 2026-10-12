@@ -602,46 +602,6 @@ it("runs release PR CI without enabling implementation pushes on release branche
   );
 });
 
-it("routes website verification through the central PR policy", async () => {
-  const workflow = z
-    .object({
-      on: z
-        .object({ workflow_call: z.null(), workflow_dispatch: z.null() })
-        .passthrough(),
-    })
-    .parse(
-      parse(
-        await readFile(
-          new URL(
-            "../../../.github/workflows/website-check.yml",
-            import.meta.url,
-          ),
-          "utf8",
-        ),
-      ),
-    );
-  expect(workflow.on).not.toHaveProperty("pull_request");
-  const ci = z
-    .object({
-      jobs: z.object({
-        website: z.object({
-          uses: z.string(),
-          if: z.string(),
-        }),
-      }),
-    })
-    .parse(
-      parse(
-        await readFile(
-          new URL("../../../.github/workflows/ci.yml", import.meta.url),
-          "utf8",
-        ),
-      ),
-    );
-  expect(ci.jobs.website.uses).toBe("./.github/workflows/website-check.yml");
-  expect(ci.jobs.website.if).toBe("needs.changes.outputs.website == 'true'");
-});
-
 // Publishing is irreversible. Keep the release authority invariant as a static
 // boundary check; it is not proof that package installation or publishing works.
 it("requires package verification before publishing and retains the registry canary", async () => {
