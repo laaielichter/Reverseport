@@ -76,7 +76,7 @@ async function init(a) {
     await writeCase(dir, { schema: SCHEMA, created: t, question, target, intent, authorized: a.authorized === true, phase: 'investigate', phaseHistory: [{ phase: 'scope', at: t }, { phase: 'investigate', at: t }], evidence: [], claims: [], decisions: [], tests: [], approvals: [], limitations: [], unknowns: [] });
   } catch (e) { await fs.rm(dir, { recursive: true, force: true }); throw e; }
   const memory = await recall(`${question} ${target}`);
-  return { caseId: id, folder: dir, phase: 'investigate', ...(memory?.memories?.length ? { recalled: memory } : {}), next: `Save what you inspect: re_case {action:"evidence", caseId:"${id}", file|content, locator, note}. Then claims that cite it.` };
+  return { caseId: id, folder: dir, phase: 'investigate', ...(memory?.memories?.length || memory?.openHandoffs?.length ? { recalled: memory } : {}), next: `Save what you inspect: re_case {action:"evidence", caseId:"${id}", file|content, locator, note}. Then claims that cite it.` };
 }
 
 async function addEvidence(dir, state, a, kindOverride) {

@@ -53,7 +53,8 @@ export async function recall(query, { limit = 5, env = process.env } = {}) {
   const r = await run(found.command, ['search', ...words, '--limit', String(limit), '--json']);
   const list = r.code === 0 ? json(r.stdout) : null;
   if (!Array.isArray(list)) return { error: r.stderr || 'Stashpad search failed.' };
-  return { label: LABEL, memories: list.map(m => ({ id: m.id, kind: m.kind, trust: m.trust, validFrom: m.valid_from, summary: m.summary })) };
+  const handoffs = await openHandoffs(found.command);
+  return { label: LABEL, memories: list.map(m => ({ id: m.id, kind: m.kind, trust: m.trust, validFrom: m.valid_from, summary: m.summary })), ...(handoffs.length ? { openHandoffs: handoffs, claim: 'stashpad handoff claim (read once) when this session takes over that work' } : {}) };
 }
 
 const memId = (caseId, recordId) => `rp-${caseId}-${recordId}`.toLowerCase().replace(/[^a-z0-9-]+/g, '-').slice(0, 80).replace(/-+$/, '');
@@ -80,5 +81,34 @@ export async function propose(caseId, state, { env = process.env } = {}) {
     else if (/already (exists|waiting)/i.test(r.stderr)) skipped.push({ id: p.id, reason: 'already proposed or stored' });
     else refused.push({ id: p.id, reason: r.stderr || 'Stashpad refused it.' });
   }
-  return { available: true, queued, skipped, refused, note: 'Proposals wait in Stashpad review; a person accepts them with `stashpad review` / `stashpad accept <id>`. Never accept your own proposals.' };
+  const handoff = await leaveHandoff(found.command, caseId, state);
+  return { available: true, queued, skipped, refused, handoff, note: 'Proposals wait in Stashpad review; a person accepts them with `stashpad review` / `stashpad accept <id>`. Never accept your own proposals. The handoff is read once by the next session (`stashpad handoff claim`).' };
+}
+
+/** Where the case stands, for the next session: phase, open unknowns, last decision and the next step. */
+export function handoffText(caseId, state) {
+  const open = (state.unknowns ?? []).filter(u => u.status === 'open');
+  const last = (state.decisions ?? []).at(-1);
+  const next = { investigate: 'save evidence and make claims, then phase → decide', decide: 'record a decision, then phase → build', build: 'record a real test, then phase → verify', verify: 'resolve unknowns, record limitations, write the report, then phase → deliver', deliver: 'tell the user what was found and what is still unknown' }[state.phase] ?? 're_case check';
+  return [
+    `ReversePort proof case ${caseId} (${state.target}) is in phase ${state.phase}: ${state.question}`,
+    `Records: ${state.evidence.length} evidence, ${state.claims.length} claims, ${state.decisions.length} decisions, ${state.tests.length} tests.`,
+    ...(last ? [`Last decision: ${last.choose}.`] : []),
+    ...(open.length ? [`Open unknowns: ${open.map(u => `${u.id} ${u.question}`).join('; ')}.`] : []),
+    `Next: ${next}. Continue with re_case {action:"show", caseId:"${caseId}"}.`,
+  ].join('\n');
+}
+
+async function leaveHandoff(command, caseId, state) {
+  const r = await run(command, ['handoff', 'leave', '--auto', '--from', 'reverseport', '--text', '-', '--json'], handoffText(caseId, state));
+  const out = r.code === 0 ? json(r.stdout) : null;
+  if (out?.id) return { id: out.id, expires: out.expires_at, ...(out.replaced?.length ? { replaced: out.replaced } : {}) };
+  return { skipped: true, reason: r.code === 2 ? 'This Stashpad has no handoffs yet; update Stashpad to leave one.' : r.stderr || 'Stashpad did not take the handoff.' };
+}
+
+/** Open handoffs, listed without taking them. */
+async function openHandoffs(command) {
+  const r = await run(command, ['handoff', 'list', '--json']);
+  const out = r.code === 0 ? json(r.stdout) : null;
+  return Array.isArray(out?.handoffs) ? out.handoffs.map(h => ({ id: h.id, origin: h.origin, from: h.from, preview: h.preview })) : [];
 }

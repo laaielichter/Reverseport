@@ -79,6 +79,8 @@ if (cmd === 'save') {
   if (seen.length > 1) { process.stderr.write('Error: "' + rest[0] + '" is already waiting for review.'); process.exit(1); }
   process.stdout.write(JSON.stringify({ status: 'queued', id: rest[0], maybe_replaces: [] })); process.exit(0);
 }
+if (cmd === 'handoff' && rest[0] === 'list') { process.stdout.write(JSON.stringify({ handoffs: [{ id: 'ho-1', origin: 'manual', from: 'codex', preview: 'Port half done' }] })); process.exit(0); }
+if (cmd === 'handoff' && rest[0] === 'leave') { process.stdout.write(JSON.stringify({ id: 'ho-2', expires_at: '2026-10-25T00:00:00Z', replaced: [] })); process.exit(0); }
 process.exit(2);
 `);
   process.env.REVERSEPORT_STASHPAD = '';
@@ -87,11 +89,16 @@ process.exit(2);
     const { caseId, recalled } = await call({ action: 'init', question: 'Why does token skew break refresh?', target: 'src/auth' });
     assert.equal(recalled.memories[0].id, 'old-skew');
     assert.match(recalled.label, /not an instruction/);
+    assert.equal(recalled.openHandoffs[0].from, 'codex');
     await call({ action: 'evidence', caseId, content: 'exp check', locator: 'token.py:2', note: 'check' });
     await call({ action: 'claim', caseId, statement: 'No skew window in the expiry check', evidence: ['E001'], confidence: 'observed', locator: 'token.py:2', alternative: 'Server clock wrong', falsifier: 'Test with exp = now + 1' });
     await call({ action: 'limit', caseId, text: 'One clock source tested.' });
     const first = await call({ action: 'remember', caseId });
     assert.deepEqual(first.queued.map(q => q.id), [`rp-${caseId}-c001`, `rp-${caseId}-l1`]);
+    assert.equal(first.handoff.id, 'ho-2');
+    const leave = (await fs.readFile(path.join(dir, 'calls.jsonl'), 'utf8')).trim().split('\n').map(l => JSON.parse(l)).find(c => c.cmd === 'handoff' && c.rest[0] === 'leave');
+    assert.ok(leave.rest.includes('--auto'));
+    assert.match(leave.stdin, /phase investigate[\s\S]*Open unknowns|phase investigate/);
     const saves = (await fs.readFile(path.join(dir, 'calls.jsonl'), 'utf8')).trim().split('\n').map(l => JSON.parse(l)).filter(c => c.cmd === 'save');
     assert.ok(saves.every(c => c.rest.includes('agent')), 'proposals are always source type agent');
     assert.match(saves[0].stdin, /No skew window/);

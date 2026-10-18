@@ -62,6 +62,10 @@ and a trust level; agent writes wait in a review queue until a person accepts th
 - `re_case remember` proposes the case's decisions, observed claims and limitations to Stashpad's review queue
   (source type `agent`). Ids already proposed are skipped. A person accepts them with `stashpad review` and
   `stashpad accept <id>`.
+- `remember` also leaves a Stashpad handoff (read once by the next session) that says where the case stands: phase,
+  open unknowns, the last decision and the next step. `re_case init` lists open handoffs without taking them; the
+  session that takes over the work claims one with `stashpad handoff claim`. Handoffs need a Stashpad version with
+  `stashpad handoff`; older versions skip this step and say so.
 
 ReversePort finds Stashpad through `STASHPAD_BIN` (path to `bin/stashpad.mjs` or an executable), else `stashpad` on
 `PATH`. Stashpad keeps its store where it always does (`STASHPAD_DIR`, else `./.stashpad/memories`).
