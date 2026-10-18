@@ -296,7 +296,8 @@
     "test:prepare": "node scripts/check-dependency-install.mjs && node scripts/run-exclusive.mjs artifacts turbo run artifacts:mcp-catalog artifacts:product-catalog artifacts:managed-evidence",
     "evidence:check:built": "node scripts/generate-completion-ledger.mjs --check",
     "docs:prepare": "node scripts/generate-package-metadata.mjs && turbo run artifacts:product-catalog artifacts:managed-evidence artifacts:error-schema",
-    "test:port": "node --test \"port/test/*.test.mjs\""
+    "test:port": "node --test \"port/test/*.test.mjs\"",
+    "bench:challenges": "node bench/selfcheck.mjs"
   },
   "lint-staged": {
     "*.{cjs,cts,js,jsx,mjs,mts,ts,tsx}": [
