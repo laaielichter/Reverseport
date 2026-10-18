@@ -9,7 +9,7 @@ port. Alles draait lokaal; het doelwit wordt alleen gelezen.
 <img src="assets/demo.gif" alt="Terminal: ReversePort scant de 2D-platformerdemo van Godot, plant een port naar Unity met 68 onderdelen, kopieert 38 assets, zet een scène om en controleert de voortgang" width="640">
 
 Een echte run op de [2D-platformerdemo van Godot](https://github.com/godotengine/godot-demo-projects/tree/master/2d/platformer),
-de JSON ingekort tot de belangrijkste velden. Website: <https://laaielichter.github.io/reverseport/>
+de JSON ingekort tot de belangrijkste velden. Website: <https://laaielichter.github.io/Reverseport/>
 
 ## Installeren
 

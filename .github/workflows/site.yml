@@ -1,6 +1,6 @@
 name: Publish ReversePort site
 
-# Publishes site/ to GitHub Pages: https://laaielichter.github.io/reverseport/
+# Publishes site/ to GitHub Pages: https://laaielichter.github.io/Reverseport/
 # One-time setup: Settings > Pages > Build and deployment > Source: GitHub Actions.
 
 on:

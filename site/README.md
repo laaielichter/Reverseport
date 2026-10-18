@@ -1,6 +1,6 @@
 # ReversePort site
 
-The one-page site at <https://laaielichter.github.io/reverseport/>. Plain HTML, no build step.
+The one-page site at <https://laaielichter.github.io/Reverseport/>. Plain HTML, no build step.
 `.github/workflows/site.yml` publishes this folder to GitHub Pages on every push to `main` that touches `site/`.
 
 ## The terminal replay
