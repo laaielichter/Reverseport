@@ -30,7 +30,7 @@ when their gate passes. Adapted from Digfox (MIT, Digfox contributors).
      that would prove it wrong).
    - `inferred`: it follows from what you saw.
    - `unresolved`: you cannot tell yet.
-   Open questions go in `re_case {action:"unknown", text}`. Do not guess them away.
+   - Open questions go in `re_case {action:"unknown", text}`. Do not guess them away.
 4. **Decide.** `phase → decide`, then `re_case {action:"decision", choose, insteadOf, why, claims, revisitWhen}`.
    Pick the simplest route that meets the goal and name at least one real alternative.
 5. **Build and verify.** `phase → build`. Record real runs only: `re_case {action:"test", label, log | content,
