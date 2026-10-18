@@ -1,6 +1,6 @@
 blank_issues_enabled: false
 contact_links:
-  - name: REA Documentation
+  - name: ReversePort documentation
     url: https://github.com/laaielichter/reverseport#readme
     about: Read the README and AGENTS.md for usage guides and configuration details.
   - name: Question or Discussion
