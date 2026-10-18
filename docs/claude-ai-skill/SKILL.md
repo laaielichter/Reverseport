@@ -5,7 +5,7 @@ description: Reverse engineer and port software, games and code with ReversePort
 
 # ReversePort on claude.ai
 
-ReversePort (github.com/laaielichter/reverseport) runs in the code-execution workspace. Its own 22 tools (recon,
+ReversePort (github.com/laaielichter/reverseport) runs in the code-execution workspace. Its own 23 tools (recon,
 builds, lookups, blueprints, porting) need nothing but Node; you drive them through the `reverseport` CLI and get
 JSON back. Read the result, then answer or keep going.
 
@@ -57,6 +57,10 @@ node bin/reverseport.mjs port-scene <planId> [unitId]
 node bin/reverseport.mjs copy-assets <planId>
 node bin/reverseport.mjs status [planId]
 node bin/reverseport.mjs verify <planId>
+node bin/reverseport.mjs case init --question "…" --target <what> [--authorized]   # proof case (returns caseId)
+node bin/reverseport.mjs case evidence <caseId> --file f | --content "…" --locator L --note N
+node bin/reverseport.mjs case claim <caseId> --statement S --evidence '["E001"]' [--confidence observed --alternative A --falsifier F]
+node bin/reverseport.mjs case unknown|resolve|decision|test|limit|phase|check|report|show <caseId> …
 ```
 
 Pipe big results through `node -e` or `jq` to keep only what you need; never paste huge JSON into the reply.
@@ -89,6 +93,10 @@ web search/fetch tools (engine, genres, platforms, description, mechanics from w
 `blueprint` as `--name`, `--genres`, `--tags`, `--description`, `--engine`. Show the systems and target in a few lines,
 deliver BLUEPRINT.md and the project folder (zip), and fill measurements from videos or screenshots the user shares.
 Mechanics, numbers, flow and feel are rebuilt; code, art, audio, text, name and logo are the user's own — say so once.
+
+**Findings someone will act on**: keep a proof case. Save each tool result a claim rests on as evidence (`case
+evidence --content`), make claims that cite it, record open questions as unknowns, and run `case check` before you
+answer. Say what you inspected, what you claim and how sure you are, what you tested and what is still unknown.
 
 ## 5. Rules
 

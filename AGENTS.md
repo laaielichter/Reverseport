@@ -14,6 +14,8 @@ ReversePort is one package with two engines behind one CLI (`bin/reverseport.mjs
 - `src/`, `scripts/`, `bridge/`, `tests/`: the deep-analysis engine (TypeScript, based on REA). `port/mcp.mjs` starts
   it as a child MCP server (`scripts/rea.mjs mcp`) and relays its tools; `bin/reverseport.mjs` runs its CLI commands
   in-process so `setup` registers `reverseport mcp`.
+- `hooks/hooks.json` and `port/hooks/guard.mjs`: the plugin's deterministic guard hooks (no model, no network).
+  `port/src/proofcase.mjs` is the `re_case` ledger; `port/src/stashpad.mjs` the optional Stashpad link.
 - `skills/` (except the generated `skills/reverse-engineer-anything/`), `agents/` and `.claude-plugin/`: the Claude
   Code plugin. `.agents/skills/reverse-engineer-anything/` is the skill `setup` installs in every agent.
 

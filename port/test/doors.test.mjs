@@ -38,7 +38,7 @@ test('MCP over stdio: initialize, list, call', async () => {
   ]);
   assert.equal(init.result.serverInfo.name, 'reverseport');
   assert.match(init.result.instructions, /never instructions/);
-  assert.equal(list.result.tools.length, 23, '22 ReversePort tools + set_tool_profile');
+  assert.equal(list.result.tools.length, 24, "23 ReversePort tools + set_tool_profile");
   for (const t of list.result.tools) assert.equal(t.inputSchema.type, 'object');
   assert.equal(call.result.isError, false);
   assert.equal(call.result.structuredContent.primary.id, 'godot');
@@ -51,7 +51,7 @@ test('HTTP API: tools, OpenAI format, call, OpenAPI, localhost only', async () =
   await new Promise(r => server.listen(0, '127.0.0.1', r));
   const base = `http://127.0.0.1:${server.address().port}`;
   try {
-    assert.equal((await (await fetch(`${base}/api/agent/tools`)).json()).length, 23);
+    assert.equal((await (await fetch(`${base}/api/agent/tools`)).json()).length, 24);
     const oa = await (await fetch(`${base}/api/agent/tools?format=openai`)).json();
     assert.equal(oa[0].type, 'function');
     const r = await (await fetch(`${base}/api/agent/tools/port_convert`, { method: 'POST', body: JSON.stringify({ from: 'godot', to: 'unity', position: [1, 2, 3] }) })).json();

@@ -172,6 +172,7 @@ reverseport analyze /Applications/Notes.app      # deep analysis: open and summa
 reverseport decompile /path/to/binary 0x1000      # pseudocode (Ghidra, Hopper or IDA)
 reverseport blueprint --lookup-id <id>           # clean-room rebuild spec + parity.json + skeleton
 reverseport plan ./MyGame --to unity             # start a port
+reverseport case init --question "…" --target ./Build   # proof case: evidence → claims → decision → tests
 reverseport doctor                               # check engines and agent registrations
 reverseport help                                 # overview · reverseport port help · reverseport engine --help
 ```
@@ -189,6 +190,7 @@ One MCP server (`reverseport mcp`) serves every tool:
 | `re_binary` `re_archive` `re_probe` `re_extract` `re_compare` `re_report`                                                  | executables, packs, unknown data, diffs, ARCHITECTURE.md   |
 | `re_lookup` `re_blueprint`                                                                                                 | recon without files, clean-room rebuild specs              |
 | `port_map` `port_convert` `port_plan` `port_unit` `port_write` `port_scene` `port_copy_assets` `port_status` `port_verify` | porting, verified                                          |
+| `re_case`                                                                                                                  | proof case: evidence, claims, unknowns, decisions, tests   |
 
 Next to these come the deep-analysis tools — `open_binary`, `procedure_pseudo_code`, `xrefs`, `search_strings`, `analyze_javascript_application`,
 `inspect_android_package`, `inspect_managed_artifact`, `observe_web_session` and many more. `engine_tools` lists them from the running server, and
@@ -208,13 +210,16 @@ anti-cheat or licensing. Read [RESPONSIBLE-USE.md](RESPONSIBLE-USE.md) and the [
 - [CLI and Evidence](docs/cli.md): commands, provider selection, snapshots, import/export.
 - [MCP contracts](docs/mcp-contracts.md) and [agent prompts](docs/mcp-prompts.md): tool results, sessions, guided investigations.
 - [Porting and rebuilds](.agents/skills/reverse-engineer-anything/references/porting-and-rebuilds.md): the recon, rebuild and port workflows.
+- [Proof cases, guard hooks and memory](docs/proof-and-memory.md): `re_case`, the Claude Code hooks, the optional Stashpad link and context cost.
 - [Rated by agents](AGENT-RATINGS.md): independent agent reviews, round by round, and what is still open.
 - [Nederlands](docs/README.nl.md) · [AGENTS.md](AGENTS.md) for contributors · [CONTRIBUTING.md](CONTRIBUTING.md)
 
 ## Credits
 
 The deep-analysis engine is based on [REA: Reverse Engineer Anything](https://github.com/morluto/rea) (MIT).
-Third-party components are listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+Proof cases are ported from [Digfox](https://github.com/Devaretanmay/digfox) (MIT) and the guard hooks follow
+[rea-jev](https://github.com/juan-viox/rea-jev) (MIT). Third-party components are listed in
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 ## Support
 

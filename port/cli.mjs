@@ -20,9 +20,9 @@ const ALIASES = {
   scan: 're_scan', graph: 're_graph', symbols: 're_symbols', scene: 're_scene', binary: 're_binary', bin: 're_binary', archive: 're_archive', pck: 're_archive',
   probe: 're_probe', extract: 're_extract', carve: 're_extract', compare: 're_compare', diff: 're_compare', 'compare-builds': 're_compare', report: 're_report',
   lookup: 're_lookup', recon: 're_lookup', web: 're_lookup', blueprint: 're_blueprint', rebuild: 're_blueprint',
-  map: 'port_map', convert: 'port_convert', plan: 'port_plan', unit: 'port_unit', write: 'port_write', 'port-scene': 'port_scene', 'copy-assets': 'port_copy_assets', status: 'port_status', verify: 'port_verify',
+  map: 'port_map', convert: 'port_convert', plan: 'port_plan', unit: 'port_unit', write: 'port_write', 'port-scene': 'port_scene', 'copy-assets': 'port_copy_assets', status: 'port_status', verify: 'port_verify', case: 're_case', proof: 're_case',
 };
-const POSITIONAL = { re_scan: ['path'], re_graph: ['path'], re_symbols: ['path'], re_scene: ['file'], re_binary: ['file'], re_archive: ['file'], re_probe: ['file'], re_extract: ['file'], re_compare: ['a', 'b'], re_report: ['path'], re_lookup: ['query'], re_blueprint: ['name'], port_map: ['from', 'to'], port_convert: ['from', 'to'], port_plan: ['source'], port_unit: ['planId', 'unit'], port_write: ['planId', 'unit'], port_scene: ['planId', 'unit'], port_copy_assets: ['planId'], port_status: ['planId'], port_verify: ['planId'] };
+const POSITIONAL = { re_scan: ['path'], re_graph: ['path'], re_symbols: ['path'], re_scene: ['file'], re_binary: ['file'], re_archive: ['file'], re_probe: ['file'], re_extract: ['file'], re_compare: ['a', 'b'], re_report: ['path'], re_lookup: ['query'], re_blueprint: ['name'], port_map: ['from', 'to'], port_convert: ['from', 'to'], port_plan: ['source'], port_unit: ['planId', 'unit'], port_write: ['planId', 'unit'], port_scene: ['planId', 'unit'], port_copy_assets: ['planId'], port_status: ['planId'], port_verify: ['planId'], re_case: ['action', 'caseId'] };
 
 export function parseArgs(name, argv) {
   const tool = tools.find(t => t.name === name);
@@ -99,6 +99,12 @@ Porting
   copy-assets <planId>       copy all asset units
   status [planId]            progress (no id: all plans)
   verify <planId>            parity, leftovers, markers
+
+Proof (evidence ledger)
+  case init --question "…" --target <what>       open a case (returns caseId)
+  case evidence <caseId> --file f | --content "…" --locator L --note N
+  case claim <caseId> --statement S --evidence '["E001"]' [--confidence observed --alternative A --falsifier F]
+  case decision|test|limit|phase|check|report|show <caseId> …   (case list: all cases)
 
 Other
   tools [--all] [--format f] list the tools (--all adds the engine's when built); formats: ${FORMATS.join(', ')}

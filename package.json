@@ -84,6 +84,8 @@
     "port/knowledge",
     "port/templates",
     "port/plugin",
+    "port/hooks",
+    "hooks",
     "RESPONSIBLE-USE.md",
     "scripts/rea.mjs",
     "scripts/electron-active-hook.cjs",
