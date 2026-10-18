@@ -1,0 +1,440 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ReversePort: reverse engineer anything, port it anywhere</title>
+<meta name="description" content="Open-source MCP server and CLI that lets your coding agent take apart apps, games, binaries and websites, and port them between Godot, Unity, Unreal, three.js and languages. Runs locally.">
+<link rel="canonical" href="https://laaielichter.github.io/Reverseport/">
+<meta property="og:type" content="website">
+<meta property="og:title" content="ReversePort">
+<meta property="og:description" content="Reverse engineer anything. Port it anywhere. An MCP server and CLI for coding agents. Local, MIT.">
+<meta property="og:url" content="https://laaielichter.github.io/Reverseport/">
+<meta property="og:image" content="https://laaielichter.github.io/Reverseport/og.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Familjen+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --paper: #eef1ec;
+  --ink: #17201c;
+  --muted: #56615b;
+  --line: #c3cbc4;
+  --cyan: #1e4f91;
+  --amber: #b86f08;
+  --term: #10243e;
+  --term-ink: #dce6f0;
+  --term-dim: #8193a8;
+  --term-key: #93bcf2;
+  --term-num: #f0b544;
+  --term-str: #c3dca6;
+  --sans: "Familjen Grotesk", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, monospace;
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #0f1a24;
+    --ink: #e3e9e5;
+    --muted: #9aa8a1;
+    --line: #2a3a47;
+    --cyan: #8db4ee;
+    --amber: #e9a93a;
+    --term: #0a1520;
+  }
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font: 400 18px/1.55 var(--sans);
+}
+a { color: var(--cyan); text-underline-offset: 3px; }
+a:hover { text-decoration-thickness: 2px; }
+:focus-visible { outline: 3px solid var(--amber); outline-offset: 3px; border-radius: 2px; }
+code, kbd, pre { font-family: var(--mono); font-size: 0.82em; }
+.wrap { max-width: 1120px; margin: 0 auto; padding: 0 24px; }
+
+/* Header */
+.top { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 22px 0; }
+.brand { display: flex; align-items: center; gap: 10px; color: var(--ink); text-decoration: none; font-weight: 700; font-size: 1.15rem; letter-spacing: -0.01em; }
+.brand svg { width: 28px; height: 28px; }
+.top nav { display: flex; gap: 22px; font-size: 0.95rem; }
+.top nav a { color: var(--ink); text-decoration: none; }
+.top nav a:hover { text-decoration: underline; }
+
+/* Hero */
+.hero { display: grid; grid-template-columns: minmax(0, 0.92fr) minmax(0, 1.08fr); gap: 56px; align-items: start; padding-top: 56px; padding-bottom: 88px; }
+h1 {
+  font-size: clamp(2.6rem, 5.6vw, 4.6rem);
+  line-height: 0.98;
+  letter-spacing: -0.035em;
+  font-weight: 700;
+  margin: 0 0 26px;
+}
+h1 span { display: block; }
+h1 .second { color: var(--cyan); }
+.lede { font-size: 1.2rem; line-height: 1.5; color: var(--muted); max-width: 34em; margin: 0 0 32px; }
+.install {
+  display: flex; align-items: stretch; max-width: 26rem;
+  border: 1.5px solid var(--ink); border-radius: 6px; overflow: hidden; background: var(--paper);
+}
+.install code { flex: 1; padding: 14px 16px; font-size: 0.95rem; white-space: nowrap; overflow-x: auto; }
+.install code::before { content: "$ "; color: var(--muted); }
+.install button {
+  font: 600 0.9rem var(--sans); border: 0; border-left: 1.5px solid var(--ink);
+  background: var(--ink); color: var(--paper); padding: 0 18px; cursor: pointer; min-width: 5.5rem;
+}
+.install button:hover { background: var(--cyan); }
+.after-install { font-size: 0.95rem; color: var(--muted); margin: 14px 0 0; max-width: 30em; }
+.links { display: flex; gap: 22px; margin-top: 28px; font-weight: 600; }
+
+/* Terminal (the one loud element) */
+.term {
+  background: var(--term); color: var(--term-ink); border-radius: 10px;
+  box-shadow: 0 1px 0 rgba(255,255,255,0.06) inset, 0 24px 60px -28px rgba(16,36,62,0.65);
+  font: 400 14px/1.6 var(--mono); overflow: hidden;
+}
+.term-bar { display: flex; align-items: center; gap: 7px; padding: 12px 16px; border-bottom: 1px solid rgba(255,255,255,0.08); }
+.term-bar i { width: 11px; height: 11px; border-radius: 50%; background: #2c4462; }
+.term-bar span { margin-left: 10px; color: var(--term-dim); font-size: 12px; }
+.term-body { padding: 18px 20px 22px; min-height: 32em; white-space: pre; overflow-x: auto; }
+.term .p { color: var(--term-num); }
+.term .c { color: var(--term-ink); }
+.term .k { color: var(--term-key); }
+.term .n { color: var(--term-num); }
+.term .s { color: var(--term-str); }
+.term .d { color: var(--term-dim); }
+.cursor { display: inline-block; width: 0.6em; height: 1.1em; background: var(--term-ink); vertical-align: -0.2em; animation: blink 1s steps(1) infinite; }
+@keyframes blink { 50% { opacity: 0; } }
+.term-note { font-size: 0.88rem; color: var(--muted); margin: 12px 2px 0; }
+.replay { font: 600 0.88rem var(--sans); color: var(--cyan); background: none; border: 0; padding: 0; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
+
+/* Sections */
+section { padding: 72px 0; border-top: 1px solid var(--line); }
+h2 { font-size: clamp(1.8rem, 3.2vw, 2.5rem); line-height: 1.08; letter-spacing: -0.025em; margin: 0 0 14px; font-weight: 700; }
+.intro { color: var(--muted); max-width: 40em; margin: 0 0 40px; }
+.split { display: grid; grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr); gap: 56px; }
+
+/* Ask list */
+.asks { list-style: none; margin: 0; padding: 0; }
+.asks li { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 28px; padding: 18px 0; border-bottom: 1px solid var(--line); }
+.asks li:first-child { border-top: 1px solid var(--line); }
+.asks q { font-weight: 600; quotes: "“" "”"; }
+.asks div { color: var(--muted); font-size: 0.97rem; }
+.asks code { color: var(--ink); }
+
+/* Routes */
+.routes { width: 100%; border-collapse: collapse; font-size: 0.97rem; }
+.routes th, .routes td { text-align: left; padding: 14px 16px 14px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+.routes thead th { font-weight: 600; color: var(--muted); font-size: 0.9rem; }
+.routes tbody th { font-weight: 700; white-space: nowrap; }
+.routes .arrow { color: var(--amber); padding: 0 0.3em; }
+.table-scroll { overflow-x: auto; }
+
+/* Agents */
+.agents { display: flex; flex-wrap: wrap; gap: 10px 12px; list-style: none; padding: 0; margin: 0 0 36px; }
+.agents li { border: 1.5px solid var(--ink); border-radius: 999px; padding: 6px 15px; font-weight: 600; font-size: 0.97rem; }
+.doors { display: grid; grid-template-columns: 10rem minmax(0, 1fr); margin: 0; border-top: 1px solid var(--line); }
+.doors dt, .doors dd { margin: 0; padding: 12px 0; border-bottom: 1px solid var(--line); }
+.doors dt { font-weight: 700; }
+.doors dd { color: var(--muted); font-size: 0.97rem; }
+.doors code { color: var(--ink); }
+
+/* Honest */
+.honest { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 48px; }
+.honest h3 { font-size: 1.15rem; margin: 0 0 12px; }
+.honest ul { margin: 0; padding-left: 1.1em; }
+.honest li { margin: 0 0 10px; color: var(--muted); }
+.honest li strong { color: var(--ink); font-weight: 600; }
+
+/* Start */
+.start ol { margin: 0; padding: 0; list-style: none; counter-reset: s; max-width: 44rem; }
+.start li { counter-increment: s; display: grid; grid-template-columns: 2.2rem minmax(0, 1fr); gap: 10px; padding: 0 0 26px; }
+.start li::before { content: counter(s); font-weight: 700; font-size: 1.3rem; color: var(--cyan); line-height: 1.3; }
+.start pre { background: var(--term); color: var(--term-ink); padding: 14px 16px; border-radius: 6px; overflow-x: auto; margin: 10px 0 0; line-height: 1.6; }
+.start p { margin: 0; }
+
+footer { border-top: 1px solid var(--line); padding: 36px 0 56px; color: var(--muted); font-size: 0.93rem; }
+footer .wrap { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 16px; }
+footer p { margin: 0; max-width: 40em; }
+
+/* Demo-only mode, used to record the README animation */
+body.demo-only { background: transparent; }
+body.demo-only > *:not(.demo-stage) { display: none; }
+.demo-stage { display: none; }
+body.demo-only .demo-stage { display: block; padding: 0; width: 820px; }
+body.demo-only .demo-stage .term { border-radius: 0; box-shadow: none; font-size: 15px; }
+body.demo-only .demo-stage .term-body { min-height: 0; height: 676px; }
+
+@media (max-width: 900px) {
+  .hero, .split, .honest { grid-template-columns: minmax(0, 1fr); gap: 36px; }
+  .hero { padding-top: 28px; padding-bottom: 64px; }
+  .doors { grid-template-columns: minmax(0, 1fr); }
+  .doors dt { border-bottom: 0; padding-bottom: 0; }
+  .asks li { grid-template-columns: minmax(0, 1fr); gap: 6px; }
+  .term-body { min-height: 0; font-size: 12px; }
+}
+@media (max-width: 520px) {
+  .wrap { padding: 0 16px; }
+  body { font-size: 17px; }
+  .top nav { gap: 14px; font-size: 0.9rem; }
+  .top nav .hide-sm { display: none; }
+  .install code { font-size: 0.85rem; padding: 12px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cursor { animation: none; }
+}
+</style>
+</head>
+<body>
+<header class="wrap top">
+  <a class="brand" href="./" aria-label="ReversePort home">
+    <svg viewBox="0 0 32 32" aria-hidden="true"><rect x="2" y="2" width="28" height="28" rx="6" fill="currentColor"/><path d="M9 11h9l-3-3M23 21h-9l3 3" stroke="var(--paper)" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    ReversePort
+  </a>
+  <nav aria-label="Main">
+    <a class="hide-sm" href="#ask">What it does</a>
+    <a class="hide-sm" href="#routes">Ports</a>
+    <a href="#start">Get started</a>
+    <a href="https://github.com/laaielichter/reverseport">GitHub</a>
+  </nav>
+</header>
+
+<main>
+  <div class="wrap hero">
+    <div>
+      <h1><span>Reverse engineer anything.</span> <span class="second">Port it anywhere.</span></h1>
+      <p class="lede">An MCP server and CLI that lets your coding agent take apart apps, games, binaries and websites, then rebuild them or port them to Godot, Unity, Unreal, three.js or another language. It runs on your machine and only reads the target.</p>
+      <div class="install">
+        <code id="cmd">npx reverseport setup</code>
+        <button type="button" id="copy" aria-live="polite">Copy</button>
+      </div>
+      <p class="after-install">Needs Node.js 22.19 or newer. Setup connects Claude Code, Codex, Cursor, Gemini CLI, Copilot, OpenCode and more, and backs up your config first.</p>
+      <div class="links">
+        <a href="https://github.com/laaielichter/reverseport">Source on GitHub</a>
+        <a href="https://www.npmjs.com/package/reverseport">npm package</a>
+      </div>
+    </div>
+    <figure style="margin:0">
+      <div class="term" role="img" aria-label="Terminal replay: ReversePort scans a Godot platformer, plans a port to Unity, copies 38 assets, converts a scene and verifies progress.">
+        <div class="term-bar"><i></i><i></i><i></i><span>godot-demo-projects/2d/platformer</span></div>
+        <div class="term-body" id="term" aria-hidden="true"></div>
+      </div>
+      <figcaption class="term-note">A real run of ReversePort 1.0.0 on <a href="https://github.com/godotengine/godot-demo-projects/tree/master/2d/platformer">Godot's 2D platformer demo</a>. JSON trimmed to the key fields. <button class="replay" type="button" id="replay">Play again</button></figcaption>
+    </figure>
+  </div>
+
+  <section id="ask">
+    <div class="wrap split">
+      <div>
+        <h2>Ask your agent. It picks the tools.</h2>
+        <p class="intro">You keep talking in plain sentences. ReversePort gives the agent one consistent set of tools, and every answer comes with the evidence behind it.</p>
+      </div>
+      <ul class="asks">
+        <li><q>What is this game made with, and how is it built?</q><div><code>re_scan</code> finds the engine and version, languages, entry points and how it starts, also for exported builds.</div></li>
+        <li><q>What changed between build 43 and 44?</q><div><code>re_compare</code> diffs folders, packs and binaries, biggest changes first.</div></li>
+        <li><q>Decompile the function that saves settings and explain it.</q><div>Opens the binary through Ghidra, Hopper or IDA, finds the function and shows pseudocode with references.</div></li>
+        <li><q>What is this game made with? I don't have the files.</q><div><code>re_lookup</code> checks public sources: engine with a confidence level, stack, file layout and open-source remakes.</div></li>
+        <li><q>Rebuild the movement of this game in Godot.</q><div><code>re_blueprint</code> writes a clean-room spec: systems, values to measure on the original, a parity table and a project skeleton.</div></li>
+        <li><q>Port my Godot game to Unity.</q><div><code>port_plan</code>, then the agent ports unit by unit, and <code>port_verify</code> checks that nothing was left behind.</div></li>
+      </ul>
+    </div>
+  </section>
+
+  <section id="routes">
+    <div class="wrap">
+      <h2>Port routes</h2>
+      <p class="intro">Scenes, transforms and assets convert automatically. Code is ported by your agent with an API map for each pair, one unit at a time.</p>
+      <div class="table-scroll">
+        <table class="routes">
+          <thead><tr><th scope="col">Route</th><th scope="col">Code</th><th scope="col">Scenes and prefabs</th><th scope="col">Transforms</th><th scope="col">Project skeleton</th></tr></thead>
+          <tbody>
+            <tr><th scope="row">Godot<span class="arrow" aria-label="to">→</span>Unity</th><td>Agent, with API map</td><td>Specs plus a one-click editor builder</td><td>Z mirrored</td><td>Scene builder script</td></tr>
+            <tr><th scope="row">Godot<span class="arrow" aria-label="to">→</span>Unreal</th><td>Agent, .h and .cpp</td><td>Specs in cm, Z up</td><td>Axes and ×100</td><td>.uproject, module, targets</td></tr>
+            <tr><th scope="row">Godot<span class="arrow" aria-label="to">→</span>three.js</th><td>Agent, TypeScript</td><td>TypeScript builder modules</td><td>Unchanged</td><td>Vite, TS, fixed-step loop</td></tr>
+            <tr><th scope="row">GDScript<span class="arrow" aria-label="to">→</span>Godot C#</th><td>Agent, with API map</td><td>Script paths swapped</td><td>Unchanged</td><td>.csproj, project.godot</td></tr>
+            <tr><th scope="row">Unity<span class="arrow" aria-label="to">→</span>Godot</th><td>Agent, GDScript</td><td>Written as .tscn</td><td>Z mirrored</td><td>project.godot</td></tr>
+            <tr><th scope="row">Unity<span class="arrow" aria-label="to">→</span>Unreal</th><td>Agent, with API map</td><td>Not yet</td><td>Axes and ×100</td><td>.uproject, module</td></tr>
+            <tr><th scope="row">Any<span class="arrow" aria-label="to">→</span>language</th><td>Agent</td><td>Not applicable</td><td>Not applicable</td><td>Not applicable</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section id="agents">
+    <div class="wrap split">
+      <div>
+        <h2>Works with the agent you already use</h2>
+        <p class="intro">Any vendor and any model size. About 45 tools are listed by default instead of almost 200, so small models stay focused. The rest are one call away.</p>
+      </div>
+      <div>
+        <ul class="agents" aria-label="Agents it works with">
+          <li>Claude Code</li><li>Codex</li><li>Cursor</li><li>Gemini CLI</li><li>GitHub Copilot</li><li>OpenCode</li><li>Windsurf</li><li>Cline</li><li>Zed</li><li>VS Code</li>
+        </ul>
+        <dl class="doors">
+          <dt>MCP</dt><dd><code>npx reverseport setup</code>, or <code>reverseport connect &lt;client&gt;</code> for a config snippet.</dd>
+          <dt>MCP over HTTP</dt><dd><code>reverseport serve</code> on <code>127.0.0.1:32147/mcp</code>.</dd>
+          <dt>Function calling</dt><dd>Tool lists in OpenAI, Anthropic and Gemini formats, plus OpenAPI 3.1.</dd>
+          <dt>Shell only</dt><dd>JSON on stdout, errors as JSON with the exact next step.</dd>
+        </dl>
+      </div>
+    </div>
+  </section>
+
+  <section id="honest">
+    <div class="wrap">
+      <h2>What it does and does not do</h2>
+      <p class="intro">So you know what to expect before you install.</p>
+      <div class="honest">
+        <div>
+          <h3>It does</h3>
+          <ul>
+            <li><strong>Run locally.</strong> Nothing is uploaded to an analysis service and there is no extra API bill.</li>
+            <li><strong>Only read the target.</strong> Output always goes to a new folder.</li>
+            <li><strong>Work right after cloning</strong> for scanning, packs, lookup, blueprints and porting. No build step.</li>
+            <li><strong>Drive Ghidra, Hopper, IDA and JADX</strong> when you have them installed, and show the evidence behind each conclusion.</li>
+          </ul>
+        </div>
+        <div>
+          <h3>It does not</h3>
+          <ul>
+            <li><strong>Crack, decrypt or bypass</strong> DRM, anti-cheat or licensing. Use it on software you own or may analyse.</li>
+            <li><strong>Port code by itself.</strong> Your agent writes the code; ReversePort plans, gives API maps and checks the result.</li>
+            <li><strong>Decompile without a backend.</strong> Native decompiling needs Ghidra, Hopper or IDA.</li>
+            <li><strong>Convert Unity scenes to Unreal</strong> yet. That route ports code and transforms only.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="start" class="start">
+    <div class="wrap">
+      <h2>Get started</h2>
+      <p class="intro">Three steps, about two minutes.</p>
+      <ol>
+        <li><div><p>Connect your agents. Pick them, review the changes and approve.</p><pre><code>npx reverseport setup</code></pre></div></li>
+        <li><div><p>Restart your agent so it loads the new MCP server and skill.</p></div></li>
+        <li><div><p>Ask something real, for example:</p><pre><code>What is ./MyGame made with? Then plan a port to Unity.</code></pre></div></li>
+      </ol>
+      <p>Using Claude Code? You can install the plugin instead, which adds the porting skills and the <code>port-architect</code> agent:</p>
+      <pre style="max-width:44rem"><code>/plugin marketplace add laaielichter/reverseport
+/plugin install reverseport@reverseport</code></pre>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <p>ReversePort is free and open source under the MIT license. The deep-analysis engine is based on <a href="https://github.com/morluto/rea">REA: Reverse Engineer Anything</a>.</p>
+    <p><a href="https://github.com/laaielichter/reverseport">GitHub</a>&nbsp;&nbsp; <a href="https://www.npmjs.com/package/reverseport">npm</a>&nbsp;&nbsp; <a href="https://github.com/laaielichter/reverseport/blob/main/docs/README.nl.md">Nederlands</a></p>
+  </div>
+</footer>
+
+<div class="demo-stage">
+  <div class="term">
+    <div class="term-bar"><i></i><i></i><i></i><span>godot-demo-projects/2d/platformer</span></div>
+    <div class="term-body" id="term-demo"></div>
+  </div>
+</div>
+
+<script>
+// Real output of ReversePort 1.0.0 on godotengine/godot-demo-projects 2d/platformer,
+// trimmed to the key fields. How to regenerate it: site/README.md.
+const RUN = [
+  ["reverseport scan ./platformer",
+   '{ "engine": "Godot 4.7",\n  "mainScene": "res://game_singleplayer.tscn",\n  "scripts": 10, "files": 117 }'],
+  ["reverseport plan ./platformer --to unity",
+   '{ "planId": "platformer-to-unity-9191bd", "units": 68,\n  "byAction": { "copy": 38, "translate": 15,\n                "convert-scene": 14, "rebuild": 1 },\n  "risky": ["gui/pause_menu.gd", "player/player.gd"] }'],
+  ["reverseport copy-assets platformer-to-unity-9191bd",
+   '{ "copied": 38, "progress": { "percent": 56 } }'],
+  ["reverseport port-scene platformer-to-unity-9191bd u041",
+   '{ "written": [\n    "Assets/ReversePort/Specs/enemy/enemy.scene.json" ] }'],
+  ["reverseport verify platformer-to-unity-9191bd",
+   '{ "passed": false, "leftovers": 0, "missingSymbols": 0,\n  "progress": { "pending": 29 } }\n# Nothing is wrong so far; 29 units to go. Next: port_unit'],
+];
+
+function esc(s) { return s.replace(/&/g, "&amp;").replace(/</g, "&lt;"); }
+function colour(json) {
+  return json.split("\n").map(line => {
+    if (line.startsWith("#")) return '<span class="d">' + esc(line) + "</span>";
+    return esc(line)
+      .replace(/"([^"]+)":/g, '<span class="k">"$1"</span>:')
+      .replace(/: (-?\d+)/g, ': <span class="n">$1</span>')
+      .replace(/(^\s+|: |\[|, )("[^"]*")(?!<\/span>:)/g, '$1<span class="s">$2</span>')
+      .replace(/: (true|false)/g, ': <span class="n">$1</span>');
+  }).join("\n");
+}
+
+function play(el, onDone) {
+  const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  let token = {};
+  el._token = token;
+  if (reduced) {
+    el.innerHTML = RUN.map(([c, o]) => '<span class="p">$</span> <span class="c">' + esc(c) + "</span>\n" + colour(o)).join("\n\n");
+    onDone && onDone();
+    return;
+  }
+  el.innerHTML = "";
+  let i = 0;
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+  (async () => {
+    for (const [cmd, out] of RUN) {
+      if (el._token !== token) return;
+      const line = document.createElement("span");
+      line.innerHTML = (i ? "\n\n" : "") + '<span class="p">$</span> <span class="c"></span><span class="cursor"></span>';
+      el.appendChild(line);
+      const c = line.querySelector(".c");
+      await sleep(500);
+      for (const ch of cmd) {
+        if (el._token !== token) return;
+        c.textContent += ch;
+        await sleep(28);
+      }
+      await sleep(350);
+      line.querySelector(".cursor").remove();
+      const o = document.createElement("span");
+      o.innerHTML = "\n" + colour(out);
+      el.appendChild(o);
+      i++;
+      await sleep(1300);
+    }
+    const end = document.createElement("span");
+    end.innerHTML = '\n\n<span class="p">$</span> <span class="cursor"></span>';
+    el.appendChild(end);
+    onDone && onDone();
+  })();
+}
+
+const demoOnly = location.hash === "#demo";
+if (demoOnly) {
+  document.body.classList.add("demo-only");
+  play(document.getElementById("term-demo"), () => { window.demoDone = true; });
+} else {
+  const term = document.getElementById("term");
+  const io = new IntersectionObserver(entries => {
+    if (entries.some(e => e.isIntersecting)) { play(term); io.disconnect(); }
+  });
+  io.observe(term);
+  document.getElementById("replay").addEventListener("click", () => play(term));
+}
+
+document.getElementById("copy").addEventListener("click", async e => {
+  const btn = e.currentTarget;
+  try {
+    await navigator.clipboard.writeText(document.getElementById("cmd").textContent);
+    btn.textContent = "Copied";
+  } catch {
+    btn.textContent = "Select it";
+  }
+  setTimeout(() => { btn.textContent = "Copy"; }, 1800);
+});
+</script>
+</body>
+</html>

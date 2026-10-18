@@ -6,17 +6,22 @@
 
 **One CLI and one MCP server that let your coding agent take apart apps, games, binaries and websites — and rebuild them.**
 
+[![npm](https://img.shields.io/npm/v/reverseport?style=flat-square&color=1e4f91)](https://www.npmjs.com/package/reverseport)
+[![npm downloads](https://img.shields.io/npm/dm/reverseport?style=flat-square&color=1e4f91)](https://www.npmjs.com/package/reverseport)
+[![MCP Registry](https://img.shields.io/badge/MCP_Registry-io.github.laaielichter%2Freverseport-5c4ee5?style=flat-square)](https://registry.modelcontextprotocol.io/v0/servers?search=io.github.laaielichter/reverseport)
 [![MCP tool catalog](https://img.shields.io/badge/MCP-tool_catalog-5c4ee5?style=flat-square)](docs/mcp-contracts.md#generated-catalog)
 [![License: MIT](https://img.shields.io/badge/license-MIT-22c55e?style=flat-square)](LICENSE)
 [![Node.js](https://img.shields.io/badge/Node.js-22.19%2B-339933?style=flat-square&logo=nodedotjs&logoColor=white)](docs/installation.md)
-[![Rated by agents](https://img.shields.io/badge/rated_by-agents-f59e0b?style=flat-square)](AGENT-RATINGS.md)
-[![Agents](https://img.shields.io/badge/agents-Claude_Code_·_Codex_·_Cursor_·_Gemini_·_Copilot_·_more-111827?style=flat-square)](docs/installation.md#supported-agents)
 
 ```bash
 npx reverseport setup
 ```
 
-[Quick start](#quick-start) · [Every agent](#works-with-every-agent) · [What it does](#what-it-does) · [Prompts to try](#prompts-to-try) · [CLI](#cli) · [Tools](#tools) · [Docs](#documentation)
+<img src="docs/assets/demo.gif" alt="Terminal: ReversePort scans Godot's 2D platformer demo, plans a port to Unity with 68 units, copies 38 assets, converts a scene and verifies progress" width="640">
+
+<sub>A real run on <a href="https://github.com/godotengine/godot-demo-projects/tree/master/2d/platformer">Godot's 2D platformer demo</a>, JSON trimmed to the key fields.</sub>
+
+[Website](https://laaielichter.github.io/Reverseport/) · [Quick start](#quick-start) · [Every agent](#works-with-every-agent) · [What it does](#what-it-does) · [How it compares](#how-it-compares) · [FAQ](#faq) · [Docs](#documentation)
 
 </div>
 
@@ -31,8 +36,8 @@ ReversePort gives agents one consistent way to do all of that:
 - 🔍 **Understand anything** — engine and version of any project or exported game, dependency graphs, scenes,
   symbols in 30+ languages, executables, packs and unknown data. No build step, no dependencies.
 - 🧠 **Go deep** — decompile, cross-reference and trace native, managed (.NET), Android, Electron/JavaScript,
-  WebAssembly, firmware and browser targets through Ghidra, Hopper, IDA, JADX and more. ReversePort installs and
-  drives the tools for you and shows the evidence behind every conclusion.
+  WebAssembly, firmware and browser targets through Ghidra, Hopper, IDA, JADX and more. ReversePort connects to the
+  tools you have installed, drives them and shows the evidence behind every conclusion.
 - 🌐 **No files? Still recon** — a name, a store page, a website or a public repo is enough to learn the engine,
   stack, file layout and open-source remakes from public sources.
 - 🧩 **Rebuild precisely** — turn what you learned into a clean-room rebuild spec: every system, the parameters to
@@ -197,6 +202,37 @@ Next to these come the deep-analysis tools — `open_binary`, `procedure_pseudo_
 `npm run docs:generate` writes the [generated tool catalog](docs/mcp-contracts.md#generated-catalog) with every
 contract. The HTTP API
 (`reverseport serve`) exposes the same tools in every vendor's format; see [Connect any agent](docs/connect-any-agent.md).
+
+## How it compares
+
+|                            | ReversePort                                                      | A single decompiler MCP server | By hand                     |
+| -------------------------- | ---------------------------------------------------------------- | ------------------------------ | --------------------------- |
+| Setup                      | `npx reverseport setup` for all your agents                      | One server per tool, per agent | Install and learn each tool |
+| Source projects and builds | Engine, version, scenes, packs, diffs, no build needed           | Binaries only                  | Read files yourself         |
+| Native binaries            | Through Ghidra, Hopper or IDA that you have installed            | One backend                    | The tool's own UI           |
+| Porting                    | Plan, API maps, scene and asset conversion, `port_verify`        | Not part of the job            | Rewrite and check by hand   |
+| Runs                       | Locally, target read-only                                        | Usually locally                | Locally                     |
+| Does not                   | Crack DRM or anti-cheat, or write ported code without your agent | Port or compare builds         | Scale                       |
+
+## FAQ
+
+**Is this legal?** Use it on software you own or are allowed to analyse. ReversePort does not decrypt, crack or bypass
+DRM, anti-cheat or licensing. See [RESPONSIBLE-USE.md](RESPONSIBLE-USE.md).
+
+**Does it upload my files?** No. It runs on your machine, only reads the target and writes output to new folders.
+
+**Does it port my code automatically?** Scenes, transforms and assets convert automatically. Code is written by your
+agent, one unit at a time, with an API map for the engine pair; `port_verify` then checks for leftovers and missing
+functions.
+
+**Do I need Ghidra?** Only for decompiling native binaries. Scanning, packs, lookup, blueprints and porting need
+nothing extra.
+
+**How do I update or remove it?** `reverseport update` updates a global install, and `reverseport uninstall` removes
+the agent registrations and skill files it added. See [Diagnose, update, and remove](docs/installation.md#diagnose-update-and-remove).
+
+**Something broke or is missing.** Open an [issue](https://github.com/laaielichter/reverseport/issues) with the
+command and its JSON error. Every error names the next step, so include that line too.
 
 ## Responsible use
 
