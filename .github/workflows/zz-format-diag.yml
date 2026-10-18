@@ -1,0 +1,14 @@
+name: format diagnosis (temporary)
+on: push
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 24 }
+      - run: |
+          npx -y oxfmt@0.72.0 . >/dev/null 2>&1 || true
+          git diff --stat > stat.txt; git diff > diff.txt
+          echo "::warning title=stat::$(sed ':a;N;$!ba;s/%/%25/g;s/\n/%0A/g' stat.txt)"
+          echo "::warning title=diff::$(head -c 60000 diff.txt | sed ':a;N;$!ba;s/%/%25/g;s/\r/%0D/g;s/\n/%0A/g')"
