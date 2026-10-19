@@ -5,6 +5,7 @@ import path from 'node:path';
 import { RPError, requireDir, walk, readAt, countLines, isText, MiB } from './util.mjs';
 import { LANGUAGE_BY_EXT, CODE_LANGUAGES } from './symbols.mjs';
 import { parseGodotProject } from './scene.mjs';
+import { workspaceTooling } from './jsworkspace.mjs';
 
 const CATEGORY_BY_EXT = {};
 const cat = (name, exts) => exts.split(' ').forEach(e => { CATEGORY_BY_EXT[`.${e}`] = name; });
@@ -18,6 +19,36 @@ cat('video', 'mp4 webm ogv mov avi mkv bik bk2 usm');
 cat('config', 'json yaml yml toml ini cfg xml plist properties godot import meta csproj sln vcxproj uproject uplugin gradle cmake lock editorconfig gitignore gitattributes');
 cat('build-binary', 'exe dll so dylib pck pak ucas utoc bundle assets ress resource apk aab ipa jar class dex wasm pdb lib a o obj node');
 cat('docs', 'md txt rst pdf html htm');
+
+// npm dependency → framework name, for "what is this built with" in JS/TS projects.
+const JS_FRAMEWORKS = [['three', 'three.js'], ['phaser', 'Phaser'], ['@babylonjs/core', 'Babylon.js'], ['babylonjs', 'Babylon.js'], ['pixi.js', 'PixiJS'], ['playcanvas', 'PlayCanvas'], ['excalibur', 'Excalibur'], ['kaboom', 'Kaboom'], ['kaplay', 'KAPLAY'],
+  ['electron', 'Electron'], ['@tauri-apps/api', 'Tauri'], ['@capacitor/core', 'Capacitor'], ['react-native', 'React Native'], ['expo', 'Expo'],
+  ['react', 'React'], ['vue', 'Vue'], ['svelte', 'Svelte'], ['solid-js', 'SolidJS'], ['preact', 'Preact'], ['@angular/core', 'Angular'], ['lit', 'Lit'],
+  ['next', 'Next.js'], ['nuxt', 'Nuxt'], ['@sveltejs/kit', 'SvelteKit'], ['@solidjs/start', 'SolidStart'], ['astro', 'Astro'], ['@remix-run/react', 'Remix'], ['react-router', 'React Router'],
+  ['vite', 'Vite'], ['webpack', 'webpack'], ['esbuild', 'esbuild'],
+  ['express', 'Express'], ['fastify', 'Fastify'], ['hono', 'Hono'], ['koa', 'Koa'], ['@nestjs/core', 'NestJS'], ['elysia', 'Elysia'],
+  ['effect', 'Effect'], ['drizzle-orm', 'Drizzle ORM'], ['@prisma/client', 'Prisma'], ['@trpc/server', 'tRPC'],
+  ['@modelcontextprotocol/sdk', 'MCP SDK'], ['ai', 'Vercel AI SDK'], ['@opentui/core', 'OpenTUI'], ['ink', 'Ink (terminal UI)'], ['sst', 'SST']];
+
+/** The file a package script starts (`node x.js`, `tsx src/a.ts`, `bun run --cwd pkg src/index.ts`). A leading \0 marks a path relative to --cwd's target, already joined. */
+function scriptEntry(cmd) {
+  if (typeof cmd !== 'string') return null;
+  for (const part of cmd.split(/&&|\|\||;|\|/)) {
+    const t = part.trim().split(/\s+/);
+    const i = t.findIndex(x => /^(node|tsx|ts-node|bun|deno|esno|vite-node)$/.test(x));
+    if (i < 0) continue;
+    let cwd = null;
+    for (let j = i + 1; j < t.length; j++) {
+      const x = t[j];
+      if (x === 'run' || x === 'x') continue;
+      if (x === '--cwd' && t[j + 1]) { cwd = t[++j]; continue; }
+      if (x.startsWith('--cwd=')) { cwd = x.slice(6); continue; }
+      if (x.startsWith('-')) continue;
+      if (/\.[cm]?[jt]sx?$/.test(x)) return cwd ? `\0${path.posix.normalize(path.posix.join(cwd, x))}` : x;
+    }
+  }
+  return null;
+}
 
 function categoryOf(f) {
   const lang = LANGUAGE_BY_EXT[f.ext];
@@ -104,14 +135,27 @@ export async function detectEngines(root, files) {
     else if (/\bFNA\b/.test(t)) add({ id: 'fna', name: 'FNA', kind: 'project', evidence: [f.rel] });
     else if (/Godot\.NET\.Sdk/i.test(t)) { /* part of a Godot .NET project */ }
   }
-  for (const f of find(/(^|\/)package\.json$/).filter(f => !f.rel.includes('node_modules')).slice(0, 10)) {
+  const pkgFiles = find(/(^|\/)package\.json$/).filter(f => !f.rel.includes('node_modules')).sort((a, b) => a.rel.split('/').length - b.rel.split('/').length);
+  const PKG_MAX = 60;
+  for (const f of pkgFiles.slice(0, PKG_MAX)) {
     let pkg = {};
     try { pkg = JSON.parse(await readText(f.abs)); } catch { continue; }
     const deps = { ...pkg.dependencies, ...pkg.devDependencies };
-    const known = [['three', 'three.js'], ['phaser', 'Phaser'], ['@babylonjs/core', 'Babylon.js'], ['babylonjs', 'Babylon.js'], ['pixi.js', 'PixiJS'], ['playcanvas', 'PlayCanvas'], ['excalibur', 'Excalibur'], ['kaboom', 'Kaboom'], ['electron', 'Electron'], ['react', 'React'], ['vue', 'Vue'], ['svelte', 'Svelte'], ['next', 'Next.js'], ['react-native', 'React Native']];
-    const found = known.filter(([d]) => deps[d]).map(([, n]) => n);
-    const starts = [...(typeof pkg.bin === 'string' ? [pkg.bin] : Object.values(pkg.bin ?? {})), ...['start', 'dev', 'serve'].map(k => String(pkg.scripts?.[k] ?? '').match(/\b(?:node|tsx|ts-node|bun|deno run)\s+(?:--?\S+\s+)*([^\s&|;]+\.[cm]?[jt]s)\b/)?.[1]).filter(Boolean)];
+    const found = JS_FRAMEWORKS.filter(([d]) => deps[d]).map(([, n]) => n);
+    const pkgDir = path.posix.dirname(f.rel) === '.' ? '' : path.posix.dirname(f.rel);
+    const starts = [...(typeof pkg.bin === 'string' ? [pkg.bin] : Object.values(pkg.bin ?? {})), ...['start', 'dev', 'serve'].map(k => scriptEntry(pkg.scripts?.[k])).filter(Boolean)];
+    // `bun run --cwd packages/cli src/index.ts` at the root starts a file in another package.
+    for (let i = 0; i < starts.length; i++) if (typeof starts[i] === 'string' && starts[i].startsWith('\0')) starts[i] = path.posix.relative(pkgDir || '.', starts[i].slice(1)) || starts[i].slice(1);
     add({ id: 'node', name: `Node.js package${found.length ? ` (${[...new Set(found)].join(', ')})` : ''}`, kind: 'project', root: path.posix.dirname(f.rel) === '.' ? '' : path.posix.dirname(f.rel), evidence: [f.rel], details: { name: pkg.name, main: pkg.main, bin: pkg.bin, starts: [...new Set(starts)], scripts: Object.keys(pkg.scripts ?? {}), frameworks: [...new Set(found)] } });
+  }
+  if (pkgFiles.length > 1 || rels.some(r => /^(turbo|nx|lerna|rush)\.json$|^pnpm-workspace\.yaml$/.test(r))) {
+    let rootPkg = {};
+    if (has('package.json')) { try { rootPkg = JSON.parse(await readText(path.join(root, 'package.json'))); } catch { /* damaged */ } }
+    const { manager, tools } = workspaceTooling(rels, rootPkg);
+    const declared = Array.isArray(rootPkg.workspaces) ? rootPkg.workspaces : rootPkg.workspaces?.packages ?? [];
+    if (declared.length || tools.length || pkgFiles.length > 2) {
+      add({ id: 'js-monorepo', name: `JavaScript/TypeScript monorepo (${[manager, ...tools].filter(Boolean).join(', ') || 'workspaces'})`, kind: 'project', evidence: ['package.json', ...rels.filter(r => /^(turbo|nx|lerna|rush)\.json$|^pnpm-workspace\.yaml$|^bun\.lockb?$/.test(r))].filter(r => rels.includes(r)), details: { packageManager: manager, tools, workspaces: declared, packages: pkgFiles.length, packagesListed: Math.min(pkgFiles.length, PKG_MAX) } });
+    }
   }
   if (rels.some(r => /(^|\/)resources\/app\.asar$/i.test(r))) add({ id: 'electron-build', name: 'Electron app build', kind: 'build', evidence: rels.filter(r => /app\.asar$/i.test(r)).slice(0, 3) });
   if (find(/(^|\/)pubspec\.yaml$/).length) add({ id: 'flutter', name: 'Flutter / Dart', kind: 'project', evidence: find(/(^|\/)pubspec\.yaml$/).map(f => f.rel) });
@@ -148,7 +192,7 @@ export async function scanProject({ path: dir, maxFiles = 50000 } = {}) {
   }
   const engines = await detectEngines(abs, files);
   const depthOf = e => (e.root ? e.root.split('/').length : 0);
-  const primary = engines.filter(e => e.kind === 'project').sort((a, b) => depthOf(a) - depthOf(b))[0] ?? engines[0] ?? null;
+  const primary = engines.filter(e => e.kind === 'project').sort((a, b) => depthOf(a) - depthOf(b) || (b.id === 'js-monorepo') - (a.id === 'js-monorepo'))[0] ?? engines[0] ?? null;
   const entryPoints = [];
   for (const e of engines) {
     if (e.id === 'godot') {
