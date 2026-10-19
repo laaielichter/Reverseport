@@ -24,6 +24,9 @@ const ALIASES = {
 };
 const POSITIONAL = { re_scan: ['path'], re_graph: ['path'], re_symbols: ['path'], re_scene: ['file'], re_binary: ['file'], re_archive: ['file'], re_probe: ['file'], re_extract: ['file'], re_compare: ['a', 'b'], re_report: ['path'], re_lookup: ['query'], re_blueprint: ['name'], port_map: ['from', 'to'], port_convert: ['from', 'to'], port_plan: ['source'], port_unit: ['planId', 'unit'], port_write: ['planId', 'unit'], port_scene: ['planId', 'unit'], port_copy_assets: ['planId'], port_status: ['planId'], port_verify: ['planId'], re_case: ['action', 'caseId'] };
 
+/** List arguments whose items can contain commas, so a plain value stays one item. */
+const KEEP_COMMAS = new Set(['insteadOf']);
+
 export function parseArgs(name, argv) {
   const tool = tools.find(t => t.name === name);
   const props = tool.inputSchema.properties ?? {};
@@ -34,6 +37,12 @@ export function parseArgs(name, argv) {
     const schema = key.includes('.') ? props[top]?.properties?.[key.split('.')[1]] : props[top];
     if (raw === undefined) return true;
     if (schema?.type === 'string') return raw;
+    if (schema?.type === 'array') {
+      // JSON keeps working; a plain value becomes a list. Items of some lists may contain commas, so those are not split.
+      try { const parsed = JSON.parse(raw); if (Array.isArray(parsed)) return parsed; } catch { /* plain value */ }
+      if (KEEP_COMMAS.has(top)) return [raw];
+      return raw.split(',').map(s => s.trim()).filter(Boolean);
+    }
     try { return JSON.parse(raw); } catch { return raw; }
   };
   for (let i = 0; i < argv.length; i++) {
@@ -50,7 +59,7 @@ export function parseArgs(name, argv) {
       const camel = key.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
       const v = coerce(camel, val);
       if (camel.includes('.')) { const [k, sub] = camel.split('.'); args[k] = { ...(args[k] ?? {}), [sub]: v }; }
-      else args[camel] = v;
+      else args[camel] = Array.isArray(v) && Array.isArray(args[camel]) ? [...args[camel], ...v] : v; // a repeated list flag adds to the list
     } else pos.push(a);
   }
   (POSITIONAL[name] ?? []).forEach((k, i) => { if (pos[i] !== undefined && args[k] === undefined) args[k] = pos[i]; });
@@ -103,7 +112,7 @@ Porting
 Proof (evidence ledger)
   case init --question "…" --target <what>       open a case (returns caseId)
   case evidence <caseId> --file f | --content "…" --locator L --note N
-  case claim <caseId> --statement S --evidence '["E001"]' [--confidence observed --alternative A --falsifier F]
+  case claim <caseId> --statement S --evidence E001 [--confidence observed --alternative A --falsifier F]
   case decision|test|limit|phase|check|report|show <caseId> …   (case list: all cases)
 
 Other
