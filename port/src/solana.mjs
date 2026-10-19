@@ -31,6 +31,7 @@ export function b58encode(bytes) {
 
 export function b58decode(text) {
   if (typeof text !== 'string' || !text) throw new RPError('INVALID_ARGUMENT', 'Expected a base58 string.');
+  if (text.length > 2000) throw new RPError('INVALID_ARGUMENT', 'Base58 input is too long (a transaction is at most 1232 bytes, about 1700 characters).');
   let n = 0n;
   for (const c of text) {
     const v = ALPHA_MAP.get(c);
@@ -197,6 +198,7 @@ export function parseMessage(buf) {
   if (r.b[0] & 0x80) { version = r.u8() & 0x7f; if (version !== 0) throw new RPError('UNSUPPORTED', `Transaction version ${version} is not supported (legacy and v0 are).`); }
   const header = { requiredSignatures: r.u8('header'), readonlySigned: r.u8('header'), readonlyUnsigned: r.u8('header') };
   const nKeys = r.shortvec('account count');
+  if (nKeys === 0 || header.requiredSignatures === 0) throw new RPError('MALFORMED', 'Message has no accounts or no required signer.');
   const keys = [];
   for (let i = 0; i < nKeys; i++) keys.push(r.key('account key'));
   if (header.requiredSignatures > nKeys || header.readonlySigned > header.requiredSignatures || header.readonlyUnsigned > nKeys - header.requiredSignatures) throw new RPError('MALFORMED', 'Message header does not fit its account list.');
@@ -210,6 +212,7 @@ export function parseMessage(buf) {
     const data = Buffer.from(r.bytes(r.shortvec('instruction data length'), 'instruction data'));
     instructions.push({ programIndex, accounts, data });
   }
+  // (index range is checked after lookup tables are known)
   const lookups = [];
   if (version === 0) {
     const n = r.shortvec('lookup count');
@@ -427,10 +430,12 @@ export function normalizeIdl(idl) {
   return { name: idl.metadata?.name ?? idl.name ?? null, version: idl.metadata?.version ?? idl.version ?? null, address: idl.address ?? idl.metadata?.address ?? null, instructions, accounts, types, errors: (idl.errors ?? []).map(e => ({ code: e.code, name: e.name, msg: e.msg })) };
 }
 
-const MAX_DEPTH = 12, MAX_ITEMS = 256;
+const MAX_DEPTH = 12, MAX_ITEMS = 256, MAX_STEPS = 200_000;
 /** Decode a borsh value of an IDL type. */
 export function borshDecode(r, type, types, depth = 0) {
   if (depth > MAX_DEPTH) throw new RPError('MALFORMED', 'Type nesting too deep.');
+  r.steps = (r.steps ?? 0) + 1;
+  if (r.steps > MAX_STEPS) throw new RPError('MALFORMED', 'IDL type is too large to decode safely.');
   if (typeof type === 'string') {
     switch (type) {
       case 'bool': return r.u8('bool') !== 0;
@@ -449,7 +454,7 @@ export function borshDecode(r, type, types, depth = 0) {
   }
   if (type.vec) { const n = r.u32('vec length'); if (n > 1_000_000) throw new RPError('MALFORMED', 'Vector length is implausible.'); const out = []; for (let i = 0; i < n; i++) { const v = borshDecode(r, type.vec, types, depth + 1); if (i < MAX_ITEMS) out.push(v); } return n > MAX_ITEMS ? { items: out, total: n } : out; }
   if (type.option !== undefined || type.coption !== undefined) { const tag = type.option !== undefined ? r.u8('option') : r.u32('coption'); return tag ? borshDecode(r, type.option ?? type.coption, types, depth + 1) : null; }
-  if (type.array) { const [inner, n] = type.array; const count = typeof n === 'number' ? n : NaN; if (!Number.isFinite(count)) throw new RPError('UNSUPPORTED', 'Generic array lengths are not supported.'); if (inner === 'u8') return r.bytes(count, 'array').toString('hex'); const out = []; for (let i = 0; i < count; i++) out.push(borshDecode(r, inner, types, depth + 1)); return out; }
+  if (type.array) { const [inner, n] = type.array; const count = typeof n === 'number' ? n : NaN; if (!Number.isFinite(count)) throw new RPError('UNSUPPORTED', 'Generic array lengths are not supported.'); if (count > 1_000_000) throw new RPError('MALFORMED', 'Array length is implausible.'); if (inner === 'u8') return r.bytes(count, 'array').toString('hex'); const out = []; for (let i = 0; i < count; i++) out.push(borshDecode(r, inner, types, depth + 1)); return out; }
   if (type.defined) { const n = typeof type.defined === 'string' ? type.defined : type.defined.name; const t = types.get(n); if (!t) throw new RPError('UNSUPPORTED', `IDL type ${n} is not defined.`); return borshDecode(r, t, types, depth + 1); }
   if (type.kind === 'struct') {
     const fields = type.fields ?? [];
@@ -531,7 +536,7 @@ export async function fetchAnchorIdl(url, programId) {
   const authority = r.key();
   const len = r.u32('IDL length');
   let json;
-  try { json = JSON.parse(zlib.inflateSync(r.bytes(len, 'IDL data')).toString('utf8')); }
+  try { json = JSON.parse(zlib.inflateSync(r.bytes(len, 'IDL data'), { maxOutputLength: 16 << 20 }).toString('utf8')); }
   catch (e) { return { address, authority, idl: null, error: `IDL account exists but could not be read: ${e.message}` }; }
   return { address, authority, idl: json };
 }
@@ -739,7 +744,7 @@ function programSummary(r) {
 }
 
 // ---------------------------------------------------------------------------------------------------- accounts
-const TOKEN_EXT = ['Uninitialized', 'TransferFeeConfig', 'TransferFeeAmount', 'MintCloseAuthority', 'ConfidentialTransferMint', 'ConfidentialTransferAccount', 'DefaultAccountState', 'ImmutableOwner', 'MemoTransfer', 'NonTransferable', 'InterestBearingConfig', 'CpiGuard', 'PermanentDelegate', 'NonTransferableAccount', 'TransferHook', 'TransferHookAccount', 'ConfidentialTransferFeeConfig', 'ConfidentialTransferFeeAmount', 'MetadataPointer', 'TokenMetadata', 'GroupPointer', 'TokenGroup', 'GroupMemberPointer', 'TokenGroupMember'];
+const TOKEN_EXT = ['Uninitialized', 'TransferFeeConfig', 'TransferFeeAmount', 'MintCloseAuthority', 'ConfidentialTransferMint', 'ConfidentialTransferAccount', 'DefaultAccountState', 'ImmutableOwner', 'MemoTransfer', 'NonTransferable', 'InterestBearingConfig', 'CpiGuard', 'PermanentDelegate', 'NonTransferableAccount', 'TransferHook', 'TransferHookAccount', 'ConfidentialTransferFeeConfig', 'ConfidentialTransferFeeAmount', 'MetadataPointer', 'TokenMetadata', 'GroupPointer', 'TokenGroup', 'GroupMemberPointer', 'TokenGroupMember', 'ConfidentialMintBurn', 'ScaledUiAmount', 'Pausable', 'PausableAccount'];
 const optKey = b => (b.every(x => x === 0) ? null : b58encode(b));
 
 function tokenExtensions(data, findings) {
@@ -758,7 +763,9 @@ function tokenExtensions(data, findings) {
       else if (nm === 'PermanentDelegate' && v.length >= 32) { ext.delegate = optKey(v.subarray(0, 32)); if (ext.delegate) findings.push({ severity: 'danger', text: `Permanent delegate ${ext.delegate} can move or burn this token out of ANY holder's account at any time.` }); }
       else if (nm === 'TransferHook' && v.length >= 64) { ext.authority = optKey(v.subarray(0, 32)); ext.program = optKey(v.subarray(32, 64)); if (ext.program) findings.push({ severity: 'caution', text: `Every transfer runs program ${ext.program} (transfer hook); that program can block or change transfers${ext.authority ? ', and the hook can be swapped by its authority' : ''}.` }); }
       else if (nm === 'DefaultAccountState' && v.length >= 1) { ext.state = ['uninitialized', 'initialized', 'frozen'][v[0]] ?? v[0]; if (v[0] === 2) findings.push({ severity: 'caution', text: 'New holder accounts start frozen: the issuer decides who may transfer.' }); }
+      else if (nm === 'Pausable') { ext.authority = optKey(v.subarray(0, 32)); if (ext.authority) findings.push({ severity: 'caution', text: `Pause authority ${ext.authority} can halt all transfers, mints and burns of this token.` }); }
       else if (nm === 'NonTransferable') findings.push({ severity: 'info', text: 'Non-transferable (soulbound) token.' });
+      else if (false) findings.push({ severity: 'info', text: 'Non-transferable (soulbound) token.' });
       else if (nm === 'MintCloseAuthority' && v.length >= 32) ext.closeAuthority = optKey(v.subarray(0, 32));
       else if (nm === 'MetadataPointer' && v.length >= 64) { ext.authority = optKey(v.subarray(0, 32)); ext.metadata = optKey(v.subarray(32, 64)); }
       else if (nm === 'TokenMetadata' && v.length >= 64) { const r = new Reader(v, 64); ext.updateAuthority = optKey(v.subarray(0, 32)); ext.name = r.bytes(r.u32(), 'name').toString('utf8'); ext.symbol = r.bytes(r.u32(), 'symbol').toString('utf8'); ext.uri = r.bytes(r.u32(), 'uri').toString('utf8'); }
@@ -779,6 +786,12 @@ function describeAccount(acc, idl) {
   }
   if (isTokenProgram(acc.owner)) {
     const d = acc.data;
+    if (d.length === 355) {
+      out.kind = 'token multisig';
+      out.multisig = { required: d[0], signers: d[1], initialized: d[2] === 1, keys: [...Array(Math.min(d[1], 11)).keys()].map(i => b58encode(d.subarray(3 + 32 * i, 35 + 32 * i))) };
+      findings.push({ severity: 'info', text: `Multisig authority: ${out.multisig.required} of ${out.multisig.signers} signers must approve.` });
+      return { out, findings };
+    }
     const accountType = d.length > 165 ? d[165] : null;
     if (d.length === 82 || accountType === 1) {
       out.kind = 'token mint';
@@ -965,18 +978,23 @@ async function txTool(args) {
         if (idl) { decoded = decodeWithIdl(idl.norm, ix.data, accts); if (decoded) { entry.decodedWith = `Anchor IDL (${idl.source})`; if (idl.norm.name) entry.programName ??= idl.norm.name; } }
       }
     } catch (e) { entry.error = e.message; }
-    if (decoded) Object.assign(entry, decoded);
-    else {
-      const writableMine = accts.filter(a => a.writable && ctx.mine(a.address)).map(a => a.address);
+    const walletSigns = !BUILTIN_DECODERS[program] && accts.some(a => a.signer && a.address === wallet);
+    const writableMineAny = !BUILTIN_DECODERS[program] ? accts.filter(a => a.writable && ctx.mine(a.address)).map(a => a.address) : [];
+    if (decoded) {
+      Object.assign(entry, decoded);
+      // A program's own IDL says what it claims to do, not what it can do with your accounts.
+      if (!BUILTIN_DECODERS[program] && (walletSigns || writableMineAny.length)) entry.effects = [...(entry.effects ?? []), { severity: 'caution', text: `${name(program)} (custom program, instruction ${entry.name}) ${walletSigns ? 'gets your signature' : 'can change your accounts'}${writableMineAny.length ? ` (${writableMineAny.join(', ')})` : ''}. The IDL only shows what the program says it does.` }];
+    } else {
+      const writableMine = writableMineAny;
       entry.name = entry.name ?? 'unknown';
       entry.data = ix.data.length > 64 ? ix.data.subarray(0, 64).toString('hex') + '…' : ix.data.toString('hex');
       entry.accounts = accts.map(a => ({ address: a.address, writable: a.writable, signer: a.signer }));
-      entry.effects = [{ severity: writableMine.length ? 'caution' : 'info', text: `Calls ${name(program)} (${accts.length} accounts${writableMine.length ? `, can change your accounts ${writableMine.join(', ')}` : ''}); its instruction could not be decoded${idls.get(program) ? ' with its IDL' : ' (no IDL found)'}.` }];
+      entry.effects = [{ severity: writableMine.length || walletSigns ? 'caution' : 'info', text: `Calls ${name(program)} (${accts.length} accounts${walletSigns ? ', gets your signature' : ''}${writableMine.length ? `, can change your accounts ${writableMine.join(', ')}` : ''}); its instruction could not be decoded${idls.get(program) ? ' with its IDL' : ' (no IDL found)'}.` }];
     }
     instructions.push(entry);
   }
   const findings = instructions.flatMap(i => (i.effects ?? []).map(e => ({ ...e, instruction: i.index })));
-  if (ctx.durableNonce && message.instructions.length && accounts[message.instructions[0].programIndex]?.address !== '11111111111111111111111111111111') findings.push({ severity: 'caution', text: 'The durable nonce instruction is not the first one, so the network will reject this transaction.' });
+  if (ctx.durableNonce && message.instructions.length && !(accounts[message.instructions[0].programIndex]?.address === '11111111111111111111111111111111' && message.instructions[0].data.readUInt32LE(0) === 4)) findings.push({ severity: 'caution', text: 'The durable nonce instruction is not the first one, so the network will reject this transaction.' });
   const unknownPrograms = [...new Set(instructions.filter(i => i.name === 'unknown' && i.program).map(i => i.program))];
   // Net movement as written in the instructions (simulation or a landed transaction gives the real numbers).
   const net = new Map();
@@ -1027,7 +1045,7 @@ function landedChanges(accounts, meta, wallet) {
 }
 
 async function simulate(url, parsed, accounts, wallet, findings) {
-  const watch = [...new Set(accounts.filter(a => a.writable && a.address && !KNOWN_PROGRAMS.has(a.address)).map(a => a.address))].slice(0, 25);
+  const watch = [...new Set(accounts.filter(a => a.writable && a.address && !KNOWN_PROGRAMS.has(a.address)).sort((x, y) => (y.address === wallet) - (x.address === wallet)).map(a => a.address))].slice(0, 25);
   const before = await getAccounts(url, watch);
   const n = Math.max(1, parsed.message.header.requiredSignatures);
   const wire = Buffer.concat([Buffer.from([n]), Buffer.alloc(64 * n), parsed.messageBytes]);
@@ -1056,6 +1074,8 @@ async function simulate(url, parsed, accounts, wallet, findings) {
       }
     }
   });
+  const custom = findings.some(f => /custom program|could not be decoded/.test(f.text));
+  for (const c of changes.filter(c => c.mine && /^-/.test(c.change))) findings.push({ severity: custom ? 'danger' : 'info', text: `Simulation: ${c.change} ${c.asset} leaves your account ${c.account}${custom ? ', and a program that could not be verified is involved' : ''}.` });
   if (v.err) findings.push({ severity: 'caution', text: `Simulation: the transaction would fail (${JSON.stringify(v.err)}).` });
   const logs = v.logs ?? [];
   return { error: v.err ?? null, unitsConsumed: v.unitsConsumed ?? null, changes, logs: logs.length > 40 ? [...logs.slice(0, 40), `… ${logs.length - 40} more lines`] : logs, watched: watch.length };

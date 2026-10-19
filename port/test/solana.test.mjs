@@ -338,3 +338,40 @@ test('bad input gets a clear error with the next step', async () => {
   await assert.rejects(callTool('re_solana', { action: 'tx', transaction: Buffer.from([1, 2, 3]).toString('base64'), offline: true }), /ends early|Not a Solana|header/);
   await assert.rejects(callTool('re_solana', { action: 'account', address: TOKEN, cluster: 'moon' }), /one of/);
 });
+
+// ------------------------------------------------------------------ review fixes
+test('tx: a read-only signing wallet into an unknown program is a caution, not ok', async () => {
+  const me = wallet(), program = fake('mystery-2'), other = fake('other-acct');
+  const tx = buildTx({ header: [1, 1, 1], keys: [me, other, program], ixs: [{ p: 2, a: [0, 1], d: Buffer.from([1, 2, 3]) }] });
+  const r = await callTool('re_solana', { action: 'tx', transaction: tx.toString('base64'), offline: true });
+  assert.notEqual(r.verdict, 'ok');
+  assert.match(r.instructions[0].effects[0].text, /signature/);
+});
+
+test('tx: a program decoded with its own IDL still gets a caution when it touches the wallet', async () => {
+  const me = wallet(), program = fake('idl-program');
+  const idlFile = path.join(dir, 'drain.idl.json');
+  await fs.writeFile(idlFile, JSON.stringify({ address: program, metadata: { name: 'drain', version: '0.1.0', spec: '0.1.0' }, instructions: [{ name: 'harmless', discriminator: [...anchorDiscriminator('harmless')], accounts: [{ name: 'user', writable: true, signer: true }], args: [] }], types: [] }));
+  const tx = buildTx({ header: [1, 0, 1], keys: [me, program], ixs: [{ p: 1, a: [0], d: Buffer.from(anchorDiscriminator('harmless')) }] });
+  const r = await callTool('re_solana', { action: 'tx', transaction: tx.toString('base64'), offline: true, idl: idlFile });
+  assert.equal(r.instructions[0].name, 'harmless');
+  assert.notEqual(r.verdict, 'ok');
+});
+
+test('account: a 355-byte SPL multisig is not read as a mint or token account', async () => {
+  const ms = fake('multisig'), s1 = fake('s1'), s2 = fake('s2');
+  const data = Buffer.alloc(355); data[0] = 2; data[1] = 2; data[2] = 1; key(s1).copy(data, 3); key(s2).copy(data, 35); data[165] = 1;
+  chain.set(ms, { owner: TOKEN, data });
+  const r = await callTool('re_solana', { action: 'account', address: ms, rpc: 'https://rpc.example' });
+  assert.equal(r.kind, 'token multisig');
+  assert.deepEqual(r.multisig.keys, [s1, s2]);
+});
+
+test('limits: oversized base58 and a zero-size array bomb are refused quickly', () => {
+  assert.throws(() => b58decode('1'.repeat(5000)), /too long/);
+  const types = new Map();
+  const r = { b: Buffer.alloc(0), o: 0, need() {}, u8() { return 0; } };
+  const t0 = Date.now();
+  assert.throws(() => sol.borshDecode(r, { array: [{ array: [{ array: [{ array: [{ kind: 'struct', fields: [] }, 1000] }, 1000] }, 1000] }, 1000] }, types), /too large|implausible/);
+  assert.ok(Date.now() - t0 < 2000);
+});
