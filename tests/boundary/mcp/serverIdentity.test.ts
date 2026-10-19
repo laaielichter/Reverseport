@@ -132,7 +132,7 @@ describe("server and catalog identity", () => {
     const stale = createServerIdentity({
       startedAt: "2026-07-13T00:00:00.000Z",
       expected: {
-        package_version: "1.2.0",
+        package_version: "0.0.0-stale",
         catalog_digest: "0".repeat(64),
       },
     });
@@ -391,7 +391,7 @@ const assertLiveIdentity = async (client: Client): Promise<void> => {
 const assertSessionIdentity = async (client: Client): Promise<void> => {
   const status = await client.callTool({
     name: "binary_session",
-    arguments: { expected_package_version: "1.2.0" },
+    arguments: { expected_package_version: "0.0.0-stale" },
   });
   const parsed = z
     .object({ result: sessionProvider })
