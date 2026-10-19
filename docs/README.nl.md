@@ -60,6 +60,21 @@ zonder installatie: `node bin/reverseport.mjs scan ./MijnGame`.
   claims die dat bewijs noemen, open vragen, beslissingen met de afgewezen opties en echte tests. Pas als alle
   poorten groen zijn, is het klaar. Met [Stashpad](https://github.com/laaielichter/stashpad) erbij onthoudt het wat
   eerdere sessies vonden; nieuwe feiten wachten tot jij ze goedkeurt. Zie [proof-and-memory.nl.md](proof-and-memory.nl.md).
+- **Echte port-problemen** — `re_apicheck` vangt Godot 3-namen en verzonnen API's, `port_upgrade` zet Godot 3 om naar
+  4, `re_save` leest savebestanden, `port_shader` zet shaders om, `port_convert {physics}` houdt springen en vallen
+  gelijk, `port_trace` vindt de eerste tick waarop twee versies verschillen, en `re_il2cpp` en `port_rpgmaker` helpen
+  bij Unity IL2CPP en RPG Maker.
+- **Monorepo's en websites** — `re_scan` en `re_graph` begrijpen JS/TS-monorepo's (pnpm, Turborepo, Nx, tsconfig
+  paths) en Rust-workspaces. `capture_web_screenshot` met een `selector` geeft van één element op een site een
+  bijgesneden afbeelding, de HTML en de CSS.
+
+## Skills
+
+Setup en de Claude Code-plugin installeren skills, zodat de agent zelf weet welke stap volgt: `reverse-engineer`
+(hoe werkt dit), `build-inspector` (geëxporteerde builds), `rebuild` (nabouwen zonder bestanden), `port-project`,
+`godot-port` en `unity-to-godot` (porten), `port-verify` (de eindcontrole), `proof-case` (bewijs bijhouden) en
+`troubleshoot` (fouten oplossen). De plugin voegt ook de agent `port-architect` en de bewakers-hooks toe.
+`reverseport skills get <naam>` toont de skill die bij jouw versie hoort.
 
 Vraag daarna gewoon: "Waar is deze game mee gemaakt?", "Wat is er veranderd tussen build 43 en 44?", "Decompileer de
 functie die de instellingen opslaat en leg uit wat ze doet.", "Port mijn Godot-game naar Unity."
