@@ -1,0 +1,17 @@
+{
+  "description": "ReversePort guard: deterministic checks around ReversePort's tools (no model, no network). REVERSEPORT_HOOKS=off turns them off, =shadow only logs.",
+  "hooks": {
+    "SessionStart": [
+      { "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/port/hooks/guard.mjs\" session", "timeout": 5 }] }
+    ],
+    "PreToolUse": [
+      { "matcher": "mcp__(plugin_reverseport_)?reverseport__.*", "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/port/hooks/guard.mjs\" pre", "timeout": 10 }] }
+    ],
+    "PostToolUse": [
+      { "matcher": "mcp__(plugin_reverseport_)?reverseport__.*", "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/port/hooks/guard.mjs\" post", "timeout": 10 }] }
+    ],
+    "Stop": [
+      { "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/port/hooks/guard.mjs\" stop", "timeout": 25 }] }
+    ]
+  }
+}

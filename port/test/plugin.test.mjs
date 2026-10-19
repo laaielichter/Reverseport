@@ -59,6 +59,9 @@ test('front door: help, version, port commands, and a clear message when the eng
   const conv = run('port_convert', 'godot', 'unreal', '--position', '[1,2,3]');
   assert.deepEqual(JSON.parse(conv.stdout).position, [-300, 100, 200]);
   assert.match(run('port', 'help').stdout, /Porting/);
+  const kase = run('case', 'list', '--compact');
+  assert.equal(kase.status, 0, kase.stderr);
+  assert.ok(Array.isArray(JSON.parse(kase.stdout).cases), 'reverseport case reaches re_case');
   const built = spawnSync(process.execPath, ['-e', 'process.exit(require("fs").existsSync(process.argv[1]) ? 0 : 1)', path.join(REPO, 'dist', 'cli-runtime', 'cli.js')]).status === 0;
   if (!built) {
     const deep = run('analyze', '/nonexistent');

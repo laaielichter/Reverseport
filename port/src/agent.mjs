@@ -34,6 +34,8 @@ const ERRORS = {
   ENGINE_STOPPED: ['unavailable', true, 'Call the engine tool again once: the server restarts the engine. If it stops again, tell the user and continue with ReversePort\'s own tools.'],
   ENGINE_RESTART_LIMIT: ['unavailable', false, 'The engine kept stopping and will not restart in this session. Tell the user, suggest `reverseport doctor` and a client restart, and continue with ReversePort\'s own tools.'],
   UNKNOWN_PLAN: ['invalid_input', false, 'port_status {} lists the port plans in this workspace; use one of their planIds.'],
+  UNKNOWN_CASE: ['invalid_input', false, 're_case {action:"list"} lists the cases; use one of their caseIds, or init a new one.'],
+  GATE_FAILED: ['invalid_input', false, 'Do what the gate names (save evidence, record a decision, a test or limitations), then move the phase again. re_case {action:"check"} shows every finding.'],
   UNKNOWN_UNIT: ['invalid_input', false, 'port_status {planId} lists the units; omit unit to get the next one.'],
   FORBIDDEN_HOST: ['invalid_input', false, 'Call ReversePort on 127.0.0.1 or localhost.'],
   FORBIDDEN_ORIGIN: ['invalid_input', false, 'Only pages served from localhost may call ReversePort from a browser.'],

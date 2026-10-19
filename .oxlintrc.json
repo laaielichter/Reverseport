@@ -110,6 +110,7 @@
     ".factory",
     "third_party",
     "port",
-    "bin"
+    "bin",
+    "bench"
   ]
 }
