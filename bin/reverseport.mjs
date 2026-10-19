@@ -18,7 +18,7 @@ const PORT_COMMANDS = new Set([
   'scan', 'graph', 'symbols', 'scene', 'binary', 'bin', 'archive', 'pck', 'probe', 'extract', 'carve', 'diff',
   'compare-builds', 'report', 'lookup', 'recon', 'web', 'blueprint', 'rebuild', 'map', 'convert', 'plan', 'unit',
   'write', 'port-scene', 'copy-assets', 'status', 'verify', 'case', 'proof', 'tools', 'serve', 'describe', 'feedback',
-  'connect', 'skills', 'refs', 'guids', 'strings', 'i18n', 'l10n', 'apicheck', 'api',
+  'connect', 'skills', 'refs', 'guids', 'strings', 'i18n', 'l10n', 'apicheck', 'api', 'upgrade', 'godot3to4',
 ]);
 const ALWAYS_ENGINE = ['setup', 'doctor', 'update', 'uninstall', 'mcp', 'capabilities', 'providers', 'help'];
 
@@ -65,6 +65,7 @@ Understand anything (no build needed)
   reverseport refs <unity-project>   broken Unity GUID references, duplicate and missing .meta files
   reverseport strings <folder>       extract translatable text (.pot/.csv); --action apply writes a translated copy
   reverseport apicheck <file|folder> Godot 3 names, invented members, too-new classes; --engine godot@4.3
+  reverseport upgrade <godot3-project> Godot 3 → 4 as a copy; --action apply --out <folder>; lists what needs a human
   reverseport report <folder>        ARCHITECTURE.md
   reverseport port help              every ReversePort command and option
 

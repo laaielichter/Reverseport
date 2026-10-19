@@ -17,6 +17,7 @@ import { annotationsFor, closest, formatTools, shareFeedback } from './agent.mjs
 import { refsTool } from './refs.mjs';
 import { stringsTool } from './strings.mjs';
 import { apicheckTool, GODOT_VERSIONS } from './apicheck.mjs';
+import { upgradeTool } from './upgrade.mjs';
 
 /** One version for the whole package: the root package.json. */
 export const VERSION = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')).version;
@@ -70,6 +71,9 @@ export const tools = [
   { name: 're_apicheck', brief: 'Does this GDScript/C# use APIs that exist in the Godot version it targets? Flags Godot 3 names in Godot 4 code (with replacements), invented members and too-new classes.', title: 'Check code against a real engine API',
     description: 'Checks GDScript (and class names in C#, names in shaders) against name-only snapshots of the real Godot API (' + GODOT_VERSIONS.map(v => 'godot@' + v).join(', ') + ') plus the official 3→4 rename table. Reports: renamed-class/function/member/pattern (Godot 3 names in Godot 4 code with the Godot 4 replacement: KinematicBody2D, instance(), yield, deg2rad, string connect, export/onready without @), unknown-class/method/member (not in that version: a model-invented or misspelled API, with the closest real name), too-new (exists only in a newer version, or Godot 4 names in a Godot 3 project). Members are checked only where the receiver type is known (extends, typed vars, Class.new(), singletons, parameters with type hints); untyped receivers are skipped, not guessed. The Godot version comes from engine, else from project.godot, else the newest snapshot. Run it on every file an agent wrote before opening Godot.',
     inputSchema: obj({ path: str('A .gd/.cs/.gdshader file or a project folder.'), content: str('Code to check instead of path.'), engine: str('Target: godot@4.7, godot@4.3, godot@3 (or just 4 / 3). Default: project.godot, else newest.'), limit: int('Max files in the result (default 300).', { minimum: 1, maximum: 5000 }) }, []) },
+  { name: 'port_upgrade', brief: 'Godot 3 → Godot 4: converted copy of a whole project (renames, annotations, await, signals, scenes, project.godot, shaders) plus the list of what still needs a human.', title: 'Upgrade a Godot 3 project to Godot 4',
+    description: 'Converts a Godot 3.x project to Godot 4 as a COPY (the source is never modified): the official rename table for classes, builtin types, functions, properties, signals, enums, colors, theme overrides, project settings and shader names; export/onready/tool → @annotations with typed hints; yield → await; instance → instantiate; string connect/disconnect/emit_signal → signal.connect(callable)/emit; Pool*Array → Packed*Array; OS time functions → Time; .shader → .gdshader (references updated); scenes to format 3 with renamed node types and properties; project.godot to config_version 5 with the input map keys. What cannot be converted mechanically is listed with file and line and how to do it: setget, funcref, move_and_slide with arguments, var velocity in CharacterBody scripts, Tween nodes, binds, RPC keywords, networking, SCREEN_TEXTURE, window functions. action:"check" only reports. Follow with re_apicheck on the copy and open it in Godot 4.',
+    inputSchema: obj({ path: str('Godot 3 project folder (has project.godot with config_version=4).'), action: str('check (default): report what would change. apply: write the converted copy.', { enum: ['check', 'apply'] }), out: str('apply: new or empty folder for the copy (default: workspace/upgrades/<name>-godot4).'), limit: int('Max items per list (default 300).', { minimum: 10, maximum: 5000 }) }, ['path']) },
   { name: 're_report', brief: 'Write ARCHITECTURE.md for a project folder.', title: 'Write an architecture report',
     description: 'Writes ARCHITECTURE.md for a project: stack, languages, entry points, mermaid module graph, cycles, most-used files, scene trees of the entry scenes, class table, possibly unused files and external dependencies.',
     inputSchema: obj({ path: str('Project folder.'), out: str('Output .md path (default: workspace/reports).') }, ['path']) },
@@ -122,7 +126,7 @@ for (const t of tools) t.annotations = annotationsFor(t.name);
 
 const handlers = {
   re_scan: scanProject, re_graph: graphTool, re_symbols: symbolsTool, re_scene: a => readScene(a.file), re_binary: inspectBinary,
-  re_archive: archiveTool, re_probe: probe, re_extract: carve, re_compare: compare, re_refs: refsTool, re_strings: stringsTool, re_apicheck: apicheckTool, re_report: report, re_lookup: lookupTool, re_blueprint: blueprintTool,
+  re_archive: archiveTool, re_probe: probe, re_extract: carve, re_compare: compare, re_refs: refsTool, re_strings: stringsTool, re_apicheck: apicheckTool, port_upgrade: upgradeTool, re_report: report, re_lookup: lookupTool, re_blueprint: blueprintTool,
   port_map: portMapTool, port_convert: convert, port_plan: planPort, port_unit: portUnit, port_write: portWrite, port_scene: portScene,
   port_copy_assets: portCopyAssets, port_status: portStatus, port_verify: portVerify, re_case: caseTool, share_feedback: shareFeedback,
 };

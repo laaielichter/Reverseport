@@ -168,7 +168,7 @@ export function checkGdscript(text, version) {
       if (R.functions.has(member) && !allMethods(api).has(member)) add({ kind: 'renamed-member', name: member, line, replacement: R.functions.get(member), detail: `Godot 3 name; in Godot 4 use ${R.functions.get(member)}` });
     }
     // Bare calls: local func, utility function, inherited method of `self`, or renamed.
-    for (const m of l.matchAll(/(?<![\w.])([a-z_]\w*)\s*\(/g)) {
+    for (const m of l.matchAll(/(?<![\w.@])([a-z_]\w*)\s*\(/g)) {
       const name = m[1];
       if (major === '4' && name === 'yield') { add({ kind: 'renamed-function', name, line, replacement: 'await', detail: 'yield() is gone in Godot 4: use await signal_or_coroutine' }); continue; }
       if (GD_KEYWORDS.has(name) || localFuncs.has(name) || localVars.has(name) || utility.has(name)) continue;

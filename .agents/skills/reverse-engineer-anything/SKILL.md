@@ -56,6 +56,9 @@ These tools run without an analysis engine or provider:
 - Godot code you or a model wrote: `re_apicheck {path, engine:"godot@4.3"}`
   before opening Godot. Fix every renamed-* with its replacement and every
   unknown-* with a real API; never invent members.
+- Godot 3 project → Godot 4: `port_upgrade {path, action:"apply"}` writes a
+  converted copy and lists what needs a human (setget, Tween nodes,
+  move_and_slide arguments…); fix those, then `re_apicheck` on the copy.
 - No files, only a name, store page, website or public repository: `re_lookup`,
   then `re_blueprint` for a clean-room rebuild spec measured against the original.
 - Port between engines or languages: `port_map` → `port_plan` → `port_unit` /
