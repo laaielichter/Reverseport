@@ -129,13 +129,17 @@ const registerScreenshot = (
 ): void => {
   cli.command(CLI_COMMANDS.captureWebScreenshot, {
     description:
-      "Capture one visible page viewport within the supplied origin scope",
+      "Capture one visible page viewport, or one element with --selector",
     args: z.object({
       endpoint: z.string().describe("Configured loopback CDP HTTP endpoint"),
       targetId: z.string().describe("Target ID from list-browser-targets"),
     }),
     options: z.object({
       ...browserScopeOptions,
+      selector: z
+        .string()
+        .optional()
+        .describe("CSS selector: crop to one element, add its HTML and CSS"),
     }),
     run: ({ args, options }) =>
       logCliCommand(logger, "capture-web-screenshot", async () => {
@@ -144,6 +148,7 @@ const registerScreenshot = (
           cdp_endpoint: args.endpoint,
           allowed_origins: options.allowedOrigins,
           target_id: args.targetId,
+          selector: options.selector,
         });
         if (!parsed.success) return inputError("capture_web_screenshot");
         const result = await captureWebScreenshot(

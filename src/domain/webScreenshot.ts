@@ -37,10 +37,47 @@ export const captureWebScreenshotInputSchema = z.strictObject({
   cdp_endpoint: browserEndpointSchema,
   allowed_origins: browserAllowedOriginsSchema,
   target_id: z.string().trim().min(1),
+  selector: z
+    .string()
+    .trim()
+    .min(1)
+    .max(1_024)
+    .optional()
+    .describe(
+      "CSS selector for one element. The image is cropped to its visible box and the result adds its markup and computed style.",
+    ),
 });
 export type CaptureWebScreenshotInput = z.infer<
   typeof captureWebScreenshotInputSchema
 >;
+
+/** Upper bounds that keep one element capture small enough for an agent's context. */
+export const WEB_ELEMENT_HTML_LIMIT = 64 * 1_024;
+export const WEB_ELEMENT_STYLE_LIMIT = 600;
+
+const webBoxSchema = z.object({
+  x: z.number(),
+  y: z.number(),
+  width: z.number().min(0),
+  height: z.number().min(0),
+});
+
+/** One element chosen by selector: where it is, what it is, how it is styled. */
+export const webElementSchema = z.object({
+  selector: z.string(),
+  box: webBoxSchema.describe("Border box, CSS pixels, viewport-relative"),
+  visible_box: webBoxSchema.describe("On-screen part; the image shows it"),
+  clipped: z.boolean().describe("Part of the element is off-screen"),
+  image: z.object({
+    width: z.number().int().min(1),
+    height: z.number().int().min(1),
+  }),
+  outer_html: z.string().max(WEB_ELEMENT_HTML_LIMIT),
+  outer_html_truncated: z.boolean(),
+  computed_style: z.record(z.string(), z.string()),
+  computed_style_truncated: z.boolean(),
+});
+export type WebElement = z.infer<typeof webElementSchema>;
 
 /** Screenshot observation with embedded immutable artifact bytes. */
 export const webScreenshotSchema = z.object({
@@ -56,6 +93,7 @@ export const webScreenshotSchema = z.object({
     height: z.number().int().min(1),
   }),
   artifact: webScreenshotArtifactSchema,
+  element: webElementSchema.optional(),
   completeness: browserCompletenessSchema,
   limitations: z.array(z.string()),
 });

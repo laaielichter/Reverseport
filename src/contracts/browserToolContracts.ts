@@ -251,7 +251,7 @@ export const BROWSER_TOOL_CONTRACTS = [
     name: "capture_web_screenshot",
     ...toolContractMetadata("capture_web_screenshot"),
     description:
-      "Capture the current visible viewport of one configured page as an inline, content-addressed PNG artifact. The operation never scrolls, navigates, or evaluates page JavaScript.",
+      "Capture the current visible viewport of one configured page as an inline, content-addressed PNG artifact. With selector, crop to that one element and add its box, outerHTML and computed style, so a page can be rebuilt part by part. The operation never scrolls, navigates, or evaluates page JavaScript.",
     kind: "browser-provider",
     inputSchema: captureWebScreenshotInputSchema,
     outputSchema: screenshotOutputSchema,
@@ -261,6 +261,14 @@ export const BROWSER_TOOL_CONTRACTS = [
         input: {
           cdp_endpoint: endpoint,
           target_id: "TARGET_ID_FROM_LIST_BROWSER_TARGETS",
+        },
+      },
+      {
+        title: "Capture one element with its HTML and CSS",
+        input: {
+          cdp_endpoint: endpoint,
+          target_id: "TARGET_ID_FROM_LIST_BROWSER_TARGETS",
+          selector: "header nav",
         },
       },
     ],
