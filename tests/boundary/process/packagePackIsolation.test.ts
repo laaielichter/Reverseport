@@ -22,13 +22,19 @@ it("keeps npm pack output in the owned workspace when package validation fails",
   const sentinel = Buffer.from("caller-owned archive\n");
   await Promise.all([mkdir(packageRoot), mkdir(workspace), mkdir(npmCache)]);
   await Promise.all([
+    mkdir(join(packageRoot, "bin")),
+    mkdir(join(packageRoot, "scripts")),
+  ]);
+  await Promise.all([
+    writeFile(join(packageRoot, "bin", "reverseport.mjs"), ""),
+    writeFile(join(packageRoot, "scripts", "rea.mjs"), ""),
     writeFile(
       join(packageRoot, "package.json"),
       JSON.stringify({
         name: "reverseport",
         version: "6.0.0",
         mcpName: "invalid-owner",
-        bin: { rea: "scripts/rea.mjs", reverseport: "scripts/rea.mjs" },
+        bin: { rea: "scripts/rea.mjs", reverseport: "bin/reverseport.mjs" },
         dependencies: { "@lydell/node-pty": "1.1.0" },
       }),
     ),
