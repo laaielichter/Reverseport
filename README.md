@@ -21,7 +21,7 @@ npx reverseport setup
 
 <sub>A real run on <a href="https://github.com/godotengine/godot-demo-projects/tree/master/2d/platformer">Godot's 2D platformer demo</a>, JSON trimmed to the key fields.</sub>
 
-[Website](https://laaielichter.github.io/Reverseport/) · [Quick start](#quick-start) · [Every agent](#works-with-every-agent) · [What it does](#what-it-does) · [How it compares](#how-it-compares) · [FAQ](#faq) · [Docs](#documentation)
+[Website](https://laaielichter.github.io/Reverseport/) · [Quick start](#quick-start) · [Every agent](#works-with-every-agent) · [Skills](#skills) · [What it does](#what-it-does) · [How it compares](#how-it-compares) · [FAQ](#faq) · [Changelog](CHANGELOG.md) · [Docs](#documentation)
 
 </div>
 
@@ -34,7 +34,8 @@ unit, verified. No files at all? Give it a name or a store page.
 ReversePort gives agents one consistent way to do all of that:
 
 - 🔍 **Understand anything** — engine and version of any project or exported game, dependency graphs, scenes,
-  symbols in 30+ languages, executables, packs and unknown data. No build step, no dependencies.
+  symbols in 30+ languages, executables, packs and unknown data. JS/TS monorepos (pnpm, Turborepo, Nx, Lerna, Rush,
+  tsconfig paths) and Rust workspaces resolve too. No build step, no dependencies.
 - 🧠 **Go deep** — decompile, cross-reference and trace native, managed (.NET), Android, Electron/JavaScript,
   WebAssembly, firmware and browser targets through Ghidra, Hopper, IDA, JADX and more. ReversePort connects to the
   tools you have installed, drives them and shows the evidence behind every conclusion.
@@ -112,10 +113,36 @@ Built for the agent's circumstances too:
   can switch itself with `set_tool_profile`.
 - **One error shape everywhere**, with a code, whether retrying helps, and the exact next step.
 - **A `next` field wherever there is an obvious next step** (graphs, truncated results, every porting step), with the exact call.
+- **Big results do not flood the context.** Answers over 256 KB are saved to `~/.reverseport/tool-output/`; the
+  agent gets a short version with the path. Slightly wrong input from smaller models is repaired where it is safe.
 - **Agents are heard.** `share_feedback` leaves a note for the maintainers; it stays on the user's machine until
   they share it.
 
 See [Connect any agent](docs/connect-any-agent.md).
+
+## Skills
+
+Setup and the Claude Code plugin install skills that teach the agent the workflows, so it knows which tool comes
+next without being told:
+
+| Skill              | Use it for                                                                                               |
+| ------------------ | -------------------------------------------------------------------------------------------------------- |
+| `reverse-engineer` | "How does this work?" — engine and stack, architecture, dependency graph, classes, scenes, unknown files |
+| `build-inspector`  | Exported builds: engine and version, what is inside the `.pck` or Unity/Unreal build, what changed       |
+| `rebuild`          | No files: find out how a game, app or site is built, then write a measured clean-room rebuild spec       |
+| `port-project`     | Any port, unit by unit in dependency order, with API maps, converted scenes and a verified result        |
+| `godot-port`       | Godot 4 → Unity, Unreal, three.js or Godot C#: signals, node paths, autoloads, physics, input, axes      |
+| `unity-to-godot`   | Unity → Godot 4: MonoBehaviours, prefabs and scenes to `.tscn`, colliders, rigidbodies                   |
+| `port-verify`      | The finish line: fix leftovers and missing functions, then hand over with an honest list of what is left |
+| `proof-case`       | Keep an investigation honest: evidence, claims that cite it, decisions, tests and open unknowns          |
+| `troubleshoot`     | Errors and odd results: unreadable scenes, packs that will not list, refused paths, MCP problems         |
+
+The Claude Code plugin also adds the `port-architect` agent, which runs a whole port from recon to hand-over, and
+[guard hooks](docs/proof-and-memory.md) that ask before a tool attaches to a program and stop a "done" while a proof
+case fails its check.
+
+A skill copied into an agent's folder can be older than the installed tool. `reverseport skills` lists the skills of
+the version you have and `reverseport skills get <name>` prints the matching guide.
 
 ## Prompts to try
 
@@ -123,6 +150,8 @@ See [Connect any agent](docs/connect-any-agent.md).
 | ---------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
 | _What is this game made with, and how is it built?_                                | `re_scan` → engine + version, languages, entry points, how it starts                                                              |
 | _Map this codebase and write ARCHITECTURE.md._                                     | `re_graph`, `re_symbols`, `re_report`                                                                                             |
+| _How do the packages in this Turborepo/pnpm monorepo depend on each other?_        | `re_scan` finds the workspace and its packages; `re_graph` resolves workspace names and tsconfig paths and shows who uses whom    |
+| _Show me how this button on the website is built._                                 | `capture_web_screenshot` with a `selector`: a cropped image of the element, its HTML and its computed CSS                         |
 | _All I have is data.win / an .rpa / a .pak / a .swf / a sound bank / a web build._ | `re_archive`: names, assets and facts out of GameMaker, Ren'Py, Unreal, Flash, FMOD, Wwise, Unity WebGL and Emscripten containers |
 | _I only have the exported Godot game, not the project._                            | `re_archive` extracts the .pck, `re_decode` turns .gdc/.scn/.res/project.binary back into an editable project                     |
 | _A Unity IL2CPP game without its C# source._                                       | `re_il2cpp`: classes, methods and literals from global-metadata.dat, plus a C# skeleton                                           |
@@ -164,7 +193,7 @@ Agent:  re_scan → Godot 4.3, 6 scripts, 5 scenes, main scene main.tscn, autolo
 | .NET assemblies                    | Metadata, CIL, native boundaries, build comparisons                                                                                                                                 | Nothing                                                                        |
 | Android                            | Manifest, classes, decompiled methods, references, resources, devices                                                                                                               | JADX / Apktool / adb ([guide](docs/android-analysis.md))                       |
 | JavaScript and Electron            | Modules, imports, source maps, Electron boundaries, runtime observation                                                                                                             | Nothing; a browser for runtime                                                 |
-| Websites                           | Page, network and runtime evidence; stack fingerprint without files                                                                                                                 | A browser for runtime                                                          |
+| Websites                           | Page, network and runtime evidence; one element by CSS selector (cropped image, HTML, computed CSS); stack fingerprint without files                                                | A browser for runtime                                                          |
 | Firmware, EVM, crashes, captures   | Regions and extraction, selectors, recorded crashes, HAR/mitmproxy captures                                                                                                         | See the [guides](docs/index.md)                                                |
 
 ### Rebuild and port
@@ -195,6 +224,7 @@ reverseport blueprint --lookup-id <id>           # clean-room rebuild spec + par
 reverseport plan ./MyGame --to unity             # start a port
 reverseport case init --question "…" --target ./Build   # proof case: evidence → claims → decision → tests
 reverseport doctor                               # check engines and agent registrations
+reverseport skills get port-project              # the skill guide that matches this version
 reverseport help                                 # overview · reverseport port help · reverseport engine --help
 ```
 

@@ -13,6 +13,9 @@
 <meta property="og:image" content="https://laaielichter.github.io/Reverseport/og.png">
 <meta name="twitter:card" content="summary_large_image">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"SoftwareApplication","name":"ReversePort","applicationCategory":"DeveloperApplication","operatingSystem":"macOS, Linux, Windows","description":"Open-source MCP server and CLI that lets coding agents reverse engineer apps, games, binaries and websites and port them between Godot, Unity, Unreal, three.js and languages.","url":"https://laaielichter.github.io/Reverseport/","downloadUrl":"https://www.npmjs.com/package/reverseport","codeRepository":"https://github.com/laaielichter/reverseport","license":"https://opensource.org/licenses/MIT","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"}}
+</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Familjen+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -175,6 +178,14 @@ h2 { font-size: clamp(1.8rem, 3.2vw, 2.5rem); line-height: 1.08; letter-spacing:
 .proof li { margin: 0 0 10px; color: var(--muted); }
 .proof li strong { color: var(--ink); font-weight: 600; }
 .proof pre { background: var(--term); color: var(--term-ink); padding: 16px 18px; border-radius: 6px; overflow-x: auto; margin: 0; line-height: 1.6; }
+/* Fixes and skills: a ruled list of named items */
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr)); column-gap: 32px; list-style: none; padding: 0; margin: 0; border-top: 1px solid var(--line); }
+.cards li { padding: 18px 0; border-bottom: 1px solid var(--line); }
+.cards .name { display: block; font: 500 0.9rem var(--mono); color: var(--cyan); margin-bottom: 6px; }
+.cards p { margin: 0; color: var(--muted); font-size: 0.97rem; }
+.cards p q { color: var(--ink); quotes: "“" "”"; }
+.note { color: var(--muted); font-size: 0.97rem; max-width: 44rem; margin: 28px 0 0; }
+.note code { color: var(--ink); }
 /* Start */
 .start ol { margin: 0; padding: 0; list-style: none; counter-reset: s; max-width: 44rem; }
 .start li { counter-increment: s; display: grid; grid-template-columns: 2.2rem minmax(0, 1fr); gap: 10px; padding: 0 0 26px; }
@@ -225,6 +236,7 @@ body.demo-only .demo-stage .term-body { min-height: 0; height: 676px; }
   <nav aria-label="Main">
     <a class="hide-sm" href="#ask">What it does</a>
     <a class="hide-sm" href="#routes">Ports</a>
+    <a class="hide-sm" href="#skills">Skills</a>
     <a href="#start">Get started</a>
     <a href="https://github.com/laaielichter/reverseport">GitHub</a>
   </nav>
@@ -266,6 +278,8 @@ body.demo-only .demo-stage .term-body { min-height: 0; height: 676px; }
         <li><q>Decompile the function that saves settings and explain it.</q><div>Opens the binary through Ghidra, Hopper or IDA, finds the function and shows pseudocode with references.</div></li>
         <li><q>What is this game made with? I don't have the files.</q><div><code>re_lookup</code> checks public sources: engine with a confidence level, stack, file layout and open-source remakes.</div></li>
         <li><q>Rebuild the movement of this game in Godot.</q><div><code>re_blueprint</code> writes a clean-room spec: systems, values to measure on the original, a parity table and a project skeleton.</div></li>
+        <li><q>How do the packages in this monorepo depend on each other?</q><div><code>re_graph</code> resolves pnpm, Turborepo and Nx workspace names and tsconfig paths, and shows which package uses which.</div></li>
+        <li><q>Show me how this button on the website is built.</q><div><code>capture_web_screenshot</code> with a CSS selector returns a cropped image of the element, its HTML and its computed CSS.</div></li>
         <li><q>Port my Godot game to Unity.</q><div><code>port_plan</code>, then the agent ports unit by unit, and <code>port_verify</code> checks that nothing was left behind.</div></li>
       </ul>
     </div>
@@ -332,11 +346,32 @@ reverseport case check &lt;caseId&gt;</code></pre>
     </div>
   </section>
 
+  <section id="fixes">
+    <div class="wrap">
+      <h2>The problems that make ports go wrong</h2>
+      <p class="intro">Each of these came from a real port that broke. ReversePort has a tool for it, so the agent does not have to guess.</p>
+      <ul class="cards">
+        <li><span class="name">re_apicheck</span><p><q>Is this GDScript valid for Godot 4.3?</q> Finds Godot 3 names with their replacements, members that do not exist and classes that are too new.</p></li>
+        <li><span class="name">port_upgrade</span><p>Godot 3 to 4 as a converted copy: renames, annotations, <code>await</code>, signals, scenes and <code>project.godot</code>, plus what still needs a human.</p></li>
+        <li><span class="name">port_convert {physics}</span><p>Gravity, fixed step, damping, friction and layers mapped, and jump velocity recomputed, so the port falls and jumps the same.</p></li>
+        <li><span class="name">port_trace</span><p>Logs both versions tick by tick and points to the first tick where they differ.</p></li>
+        <li><span class="name">port_shader</span><p>Unity shaders and Shadertoys to Godot: uniforms, intrinsics and built-ins mapped, with markers for the rest.</p></li>
+        <li><span class="name">re_save</span><p>Save files: layers, fields with their role, checksums that are verified, and a diff of two saves.</p></li>
+        <li><span class="name">re_il2cpp</span><p>A Unity IL2CPP game without source: classes, methods and strings from <code>global-metadata.dat</code>, plus a C# skeleton.</p></li>
+        <li><span class="name">port_rpgmaker</span><p>RPG Maker MV/MZ to Godot: maps drawn from the tilesets, events running and a list of what is left.</p></li>
+        <li><span class="name">re_archive</span><p>GameMaker, Ren'Py, Unreal, Flash, FMOD, Wwise and Unity WebGL containers: names, assets and facts.</p></li>
+        <li><span class="name">re_refs</span><p>Pink materials and "missing" scripts after a Unity move: dangling and duplicate GUIDs, with remap suggestions.</p></li>
+        <li><span class="name">re_strings</span><p>Every player-facing string as <code>.pot</code> or <code>.csv</code>, and a translated copy written back.</p></li>
+        <li><span class="name">port_verify</span><p>Leftovers, missing functions and stub bodies, so a port that compiles but does nothing is not called done.</p></li>
+      </ul>
+    </div>
+  </section>
+
   <section id="agents">
     <div class="wrap split">
       <div>
         <h2>Works with the agent you already use</h2>
-        <p class="intro">Any vendor and any model size. About 45 tools are listed by default instead of almost 200, so small models stay focused. The rest are one call away.</p>
+        <p class="intro">Any vendor and any model size. About 45 tools are listed by default instead of almost 200, so small models stay focused. The rest are one call away, and results over 256 KB are saved to a file instead of flooding the context.</p>
       </div>
       <div>
         <ul class="agents" aria-label="Agents it works with">
@@ -349,6 +384,25 @@ reverseport case check &lt;caseId&gt;</code></pre>
           <dt>Shell only</dt><dd>JSON on stdout, errors as JSON with the exact next step.</dd>
         </dl>
       </div>
+    </div>
+  </section>
+
+  <section id="skills">
+    <div class="wrap">
+      <h2>Skills that know the next step</h2>
+      <p class="intro">Setup installs skills next to the server, so the agent follows the right workflow without being told.</p>
+      <ul class="cards">
+        <li><span class="name">reverse-engineer</span><p><q>How does this work?</q> Engine, stack, architecture, dependency graph, classes, scenes and unknown files.</p></li>
+        <li><span class="name">build-inspector</span><p>Exported builds: engine and version, what is inside the pack, and what changed between two builds.</p></li>
+        <li><span class="name">rebuild</span><p>No files: learn how a game, app or site is built, then write a measured clean-room rebuild spec.</p></li>
+        <li><span class="name">port-project</span><p>Any port, unit by unit in dependency order, with API maps, converted scenes and a verified result.</p></li>
+        <li><span class="name">godot-port</span><p>Godot 4 to Unity, Unreal, three.js or Godot C#: signals, node paths, autoloads, physics, input and axes.</p></li>
+        <li><span class="name">unity-to-godot</span><p>Unity to Godot 4: MonoBehaviours, prefabs and scenes to <code>.tscn</code>, colliders and rigidbodies.</p></li>
+        <li><span class="name">port-verify</span><p>The finish line: fix what is left, then hand over with an honest list of what still needs a human.</p></li>
+        <li><span class="name">proof-case</span><p>Evidence, claims that cite it, decisions with what was rejected, real tests and open unknowns.</p></li>
+        <li><span class="name">troubleshoot</span><p>Unreadable scenes, packs that will not list, refused paths and MCP connection problems.</p></li>
+      </ul>
+      <p class="note">The Claude Code plugin adds the <code>port-architect</code> agent, which runs a whole port from recon to hand-over, and guard hooks. A copied skill can be older than the tool: <code>reverseport skills get &lt;name&gt;</code> prints the one that matches your version.</p>
     </div>
   </section>
 
@@ -399,7 +453,7 @@ reverseport case check &lt;caseId&gt;</code></pre>
 <footer>
   <div class="wrap">
     <p>ReversePort is free and open source under the MIT license. The deep-analysis engine is based on <a href="https://github.com/morluto/rea">REA: Reverse Engineer Anything</a>. Proof cases come from <a href="https://github.com/Devaretanmay/digfox">Digfox</a>, the hooks follow <a href="https://github.com/juan-viox/rea-jev">rea-jev</a> and the challenge self-check uses <a href="https://github.com/pablodiazjorge/rea-lab">rea-lab</a>, all MIT.</p>
-    <p><a href="https://github.com/laaielichter/reverseport">GitHub</a>&nbsp;&nbsp; <a href="https://www.npmjs.com/package/reverseport">npm</a>&nbsp;&nbsp; <a href="https://github.com/laaielichter/reverseport/blob/main/docs/README.nl.md">Nederlands</a></p>
+    <p><a href="https://github.com/laaielichter/reverseport">GitHub</a>&nbsp;&nbsp; <a href="https://www.npmjs.com/package/reverseport">npm</a>&nbsp;&nbsp; <a href="https://github.com/laaielichter/reverseport/blob/main/CHANGELOG.md">Changelog</a>&nbsp;&nbsp; <a href="https://github.com/laaielichter/reverseport/blob/main/docs/README.nl.md">Nederlands</a></p>
   </div>
 </footer>
 
