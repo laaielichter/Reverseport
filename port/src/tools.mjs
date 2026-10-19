@@ -15,6 +15,7 @@ import { blueprintTool, ARCHETYPE_IDS } from './blueprint.mjs';
 import { caseTool, ACTIONS as CASE_ACTIONS, INTENTS, KINDS, CONFIDENCE, PHASES, APPROVALS } from './proofcase.mjs';
 import { annotationsFor, closest, formatTools, shareFeedback } from './agent.mjs';
 import { refsTool } from './refs.mjs';
+import { stringsTool } from './strings.mjs';
 
 /** One version for the whole package: the root package.json. */
 export const VERSION = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')).version;
@@ -62,6 +63,9 @@ export const tools = [
   { name: 're_refs', brief: 'Unity: find broken GUID references (missing scripts, pink materials), duplicate and missing .meta files.', title: 'Audit Unity GUID references',
     description: 'Audits a Unity project\'s GUID references: references to GUIDs no .meta file declares (dangling: missing scripts, pink materials), the same GUID in two .meta files (copies made outside Unity), assets without a .meta, .meta files whose asset is gone, and declared assets nothing references. For dangling script references it suggests scripts that nothing references. Reports only; nothing is written. Fix by re-linking in Unity or by setting the suggested guid in the right .meta.',
     inputSchema: obj({ path: str('Unity project root, or any folder/file inside it.'), limit: int('Max items per list (default 200).', { minimum: 10, maximum: 5000 }) }, ['path']) },
+  { name: 're_strings', brief: 'Extract user-facing text for translation (Godot, Unity, RPG Maker, Ren\'Py, i18n JSON) and write translations back into a copy.', title: 'Extract and apply translatable text',
+    description: 'Localisation: extracts user-facing text with stable ids from Godot scenes/resources and GDScript (text, tooltips, tr()), Unity YAML (m_Text, TextMeshPro) and C#, RPG Maker MV/MZ data (Show Text, choices, database names, terms), Ren\'Py scripts (say, menu), web code and i18n JSON files. Writes a catalog plus .pot (gettext) and/or CSV with file:line references and placeholder hints. action:"apply" takes a translated .po/.csv/.json and writes a translated COPY of the project into out, checking placeholders and flagging strings that grew a lot. The source is never modified.',
+    inputSchema: obj({ path: str('Project folder.'), action: str('extract (default) or apply.', { enum: ['extract', 'apply'] }), format: str('extract: json (default), po, csv or all.', { enum: ['json', 'po', 'csv', 'all'] }), out: str('extract: folder for the catalog/.pot/.csv (default workspace/strings). apply: new or empty folder for the translated copy.'), translations: str('apply: translated .po, .csv (id|source + translation columns) or .json ({id|source: translation}).'), lang: str('Language code for the output (e.g. nl).'), match: str('Only files whose path contains this.'), limit: int('Entries to return inline (default 500; the files hold all).', { minimum: 1, maximum: 20000 }) }, ['path']) },
   { name: 're_report', brief: 'Write ARCHITECTURE.md for a project folder.', title: 'Write an architecture report',
     description: 'Writes ARCHITECTURE.md for a project: stack, languages, entry points, mermaid module graph, cycles, most-used files, scene trees of the entry scenes, class table, possibly unused files and external dependencies.',
     inputSchema: obj({ path: str('Project folder.'), out: str('Output .md path (default: workspace/reports).') }, ['path']) },
@@ -114,7 +118,7 @@ for (const t of tools) t.annotations = annotationsFor(t.name);
 
 const handlers = {
   re_scan: scanProject, re_graph: graphTool, re_symbols: symbolsTool, re_scene: a => readScene(a.file), re_binary: inspectBinary,
-  re_archive: archiveTool, re_probe: probe, re_extract: carve, re_compare: compare, re_refs: refsTool, re_report: report, re_lookup: lookupTool, re_blueprint: blueprintTool,
+  re_archive: archiveTool, re_probe: probe, re_extract: carve, re_compare: compare, re_refs: refsTool, re_strings: stringsTool, re_report: report, re_lookup: lookupTool, re_blueprint: blueprintTool,
   port_map: portMapTool, port_convert: convert, port_plan: planPort, port_unit: portUnit, port_write: portWrite, port_scene: portScene,
   port_copy_assets: portCopyAssets, port_status: portStatus, port_verify: portVerify, re_case: caseTool, share_feedback: shareFeedback,
 };

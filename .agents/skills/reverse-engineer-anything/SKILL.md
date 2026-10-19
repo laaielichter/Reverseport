@@ -50,6 +50,9 @@ These tools run without an analysis engine or provider:
   `re_extract`. Two builds: `re_compare`. Write-up: `re_report`.
 - Unity project with pink materials, "missing script" components or GUID
   trouble after moving files: `re_refs` (reports only; fix in Unity).
+- Localisation: `re_strings` extracts user-facing text (Godot, Unity, RPG
+  Maker, Ren'Py, i18n JSON) to .pot/.csv with stable ids; `action:"apply"`
+  writes a translated copy and checks placeholders. Never edit strings by hand.
 - No files, only a name, store page, website or public repository: `re_lookup`,
   then `re_blueprint` for a clean-room rebuild spec measured against the original.
 - Port between engines or languages: `port_map` → `port_plan` → `port_unit` /

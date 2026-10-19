@@ -125,6 +125,7 @@ See [Connect any agent](docs/connect-any-agent.md).
 | _Map this codebase and write ARCHITECTURE.md._                           | `re_graph`, `re_symbols`, `re_report`                                           |
 | _What changed between build 43 and 44?_                                  | `re_compare` folder-to-folder and pack-to-pack, biggest changes first           |
 | _Why are my Unity materials pink and scripts "missing" after a move?_   | `re_refs`: dangling, duplicate and missing GUIDs, with remap suggestions       |
+| _Get every player-facing string out of this game so we can translate it._ | `re_strings`: .pot/.csv with ids and placeholders; `apply` writes a translated copy |
 | _Decompile the function that saves settings in this app and explain it._ | opens the binary, finds it, decompiles it, shows the evidence                   |
 | _How does this Electron app talk to its native side?_                    | maps modules, IPC and Electron boundaries                                       |
 | _What is `<some game>` made with? I don't have the files._               | `re_lookup` from public sources: engine with confidence, stack, layout, remakes |
@@ -196,7 +197,7 @@ One MCP server (`reverseport mcp`) serves every tool:
 | ReversePort tools                                                                                                          |                                                            |
 | -------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
 | `re_scan` `re_graph` `re_symbols` `re_scene`                                                                               | projects and builds: engine, dependencies, symbols, scenes |
-| `re_binary` `re_archive` `re_probe` `re_extract` `re_compare` `re_refs` `re_report`                                        | executables, packs, unknown data, diffs, GUID audit, ARCHITECTURE.md |
+| `re_binary` `re_archive` `re_probe` `re_extract` `re_compare` `re_refs` `re_strings` `re_report`                           | executables, packs, unknown data, diffs, GUID audit, localisation, ARCHITECTURE.md |
 | `re_lookup` `re_blueprint`                                                                                                 | recon without files, clean-room rebuild specs              |
 | `port_map` `port_convert` `port_plan` `port_unit` `port_write` `port_scene` `port_copy_assets` `port_status` `port_verify` | porting, verified                                          |
 | `re_case`                                                                                                                  | proof case: evidence, claims, unknowns, decisions, tests   |
