@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.6.0](https://github.com/laaielichter/Reverseport/compare/reverseport-1.5.0...reverseport-1.6.0) (2026-10-19)
+
+
+### Features
+
+* **browser:** capture one element with a selector (HTML, CSS, cropped image) ([#29](https://github.com/laaielichter/Reverseport/issues/29)) ([2209d63](https://github.com/laaielichter/Reverseport/commit/2209d6352ef6aca47922294aab39e16107bd6faf))
+
+
+### Tests
+
+* **javascript:** compare the #/ import key only with a Node that accepts it ([#34](https://github.com/laaielichter/Reverseport/issues/34)) ([4631d9b](https://github.com/laaielichter/Reverseport/commit/4631d9b1687a2db810376ae54e9d9a087e99bd69))
+
 ## [1.5.0](https://github.com/laaielichter/Reverseport/compare/reverseport-1.4.0...reverseport-1.5.0) (2026-10-19)
 
 
