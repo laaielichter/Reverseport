@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.1.0](https://github.com/laaielichter/Reverseport/compare/reverseport-1.0.0...reverseport-1.1.0) (2026-10-19)
+
+
+### Features
+
+* **bench:** add rea-lab's large challenge set to the self-check ([#14](https://github.com/laaielichter/Reverseport/issues/14)) ([edf46cc](https://github.com/laaielichter/Reverseport/commit/edf46cc4ea22c392efef2183368e8d29b3d8a853))
+* **port:** proof cases, guard hooks and an optional Stashpad link ([#1](https://github.com/laaielichter/Reverseport/issues/1)) ([f204e40](https://github.com/laaielichter/Reverseport/commit/f204e407ea742eae478c74c13d6733ac47713101))
+* **site:** read a real Godot pack field by field, and show proof cases ([#2](https://github.com/laaielichter/Reverseport/issues/2)) ([ba80c6f](https://github.com/laaielichter/Reverseport/commit/ba80c6f598140741cf93fad3bdb4a4961d83eb5a))
+
+
+### Bug Fixes
+
+* **ci:** let the repository skill check accept tracked plugin skills ([#9](https://github.com/laaielichter/Reverseport/issues/9)) ([bfd3d2c](https://github.com/laaielichter/Reverseport/commit/bfd3d2c54fdabaeea93c465fa93aa5dcbfac8c42))
+* include proof commands in help ([#10](https://github.com/laaielichter/Reverseport/issues/10)) ([1f60f3e](https://github.com/laaielichter/Reverseport/commit/1f60f3e803ad70c87c682e5fccec6fcf2addecdf))
+* include proof commands in help ([#8](https://github.com/laaielichter/Reverseport/issues/8)) ([a5d5498](https://github.com/laaielichter/Reverseport/commit/a5d54985fcdd015b6fbe9cacf37c0fff47158fd2))
+
+
+### Documentation
+
+* **site:** add a website, a real demo and a sharper README ([d411e40](https://github.com/laaielichter/Reverseport/commit/d411e40dfb43c52a0d2d4e1fe19a170477bfda80))
+* **site:** use the live Pages address ([c3e6740](https://github.com/laaielichter/Reverseport/commit/c3e6740549ad0c0580218f319b5156debb23e0bf))
+
 ## [1.0.0](https://github.com/laaielichter/reverseport/releases/tag/1.0.0) (2026-10-12)
 
 ### Highlights

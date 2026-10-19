@@ -1,7 +1,7 @@
 {
   "name": "reverseport",
   "mcpName": "io.github.laaielichter/reverseport",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Reverse engineer anything. Port it anywhere. One CLI and MCP server that lets coding agents take apart apps, games, binaries and websites — decompile, trace, compare builds, recon without files — and rebuild or port them to Godot, Unity, Unreal, three.js or any language.",
   "license": "MIT",
   "repository": {
