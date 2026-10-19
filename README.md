@@ -123,6 +123,7 @@ See [Connect any agent](docs/connect-any-agent.md).
 | ------------------------------------------------------------------------ | ------------------------------------------------------------------------------- |
 | _What is this game made with, and how is it built?_                      | `re_scan` → engine + version, languages, entry points, how it starts            |
 | _Map this codebase and write ARCHITECTURE.md._                           | `re_graph`, `re_symbols`, `re_report`                                           |
+| _All I have is data.win / an .rpa / a .pak / a .swf / a sound bank._      | `re_archive`: names, assets and facts out of GameMaker, Ren'Py, Unreal, Flash, FMOD and Wwise containers |
 | _What changed between build 43 and 44?_                                  | `re_compare` folder-to-folder and pack-to-pack, biggest changes first           |
 | _Why are my Unity materials pink and scripts "missing" after a move?_   | `re_refs`: dangling, duplicate and missing GUIDs, with remap suggestions       |
 | _Get every player-facing string out of this game so we can translate it._ | `re_strings`: .pot/.csv with ids and placeholders; `apply` writes a translated copy |
@@ -204,7 +205,7 @@ One MCP server (`reverseport mcp`) serves every tool:
 | ReversePort tools                                                                                                          |                                                            |
 | -------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
 | `re_scan` `re_graph` `re_symbols` `re_scene`                                                                               | projects and builds: engine, dependencies, symbols, scenes |
-| `re_binary` `re_archive` `re_probe` `re_extract` `re_compare` `re_refs` `re_strings` `re_apicheck` `re_save` `re_report`   | executables, packs, unknown data, diffs, GUID audit, localisation, API check, save files, ARCHITECTURE.md |
+| `re_binary` `re_archive` `re_probe` `re_extract` `re_compare` `re_refs` `re_strings` `re_apicheck` `re_save` `re_report`   | executables, packs (Godot, zip, asar, Ren'Py, GameMaker, FMOD/Wwise, Unreal, SWF), unknown data, diffs, GUID audit, localisation, API check, save files, ARCHITECTURE.md |
 | `re_lookup` `re_blueprint`                                                                                                 | recon without files, clean-room rebuild specs              |
 | `port_map` `port_convert` `port_plan` `port_unit` `port_write` `port_scene` `port_copy_assets` `port_status` `port_verify` | porting, verified                                          |
 | `port_upgrade` `port_shader` `port_trace`                                                                                  | Godot 3 → 4 as a converted copy plus the manual list; shader first drafts; per-tick behaviour traces compared |

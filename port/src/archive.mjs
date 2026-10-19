@@ -13,6 +13,7 @@ import { RPError, readAt, requireFile, compileMatcher, sha256, MiB } from './uti
 import { identify } from './formats.mjs';
 import { parsePE, parseELF } from './binary.mjs';
 import { safeJoin, workspaceDir, extractionName } from './workspace.mjs';
+import { readRpa, readGameMaker, readFmodBank, readWwiseBank, readUnrealPak, readSwf } from './gamearchives.mjs';
 
 const MAX_ENTRIES = 2_000_000;
 
@@ -252,9 +253,15 @@ export async function openArchive(file) {
     await walkTar(abs, gz, e => { if (entries.length < MAX_ENTRIES) entries.push({ path: e.path, size: e.size }); return null; });
     return { abs, size, format: gz ? 'tar.gz' : 'tar', gz, entries };
   }
+  if (kind === 'renpy-rpa') return { abs, size, ...(await readRpa(abs, size)) };
+  if (kind === 'gamemaker-data') return { abs, size, ...(await readGameMaker(abs, size)) };
+  if (kind === 'fmod-bank') return { abs, size, ...(await readFmodBank(abs, size)) };
+  if (kind === 'wwise-bank') return { abs, size, ...(await readWwiseBank(abs, size)) };
+  if (kind === 'swf') return { abs, size, ...(await readSwf(abs, size)) };
+  if (/\.pak$/i.test(abs) && kind !== 'zip') { try { return { abs, size, ...(await readUnrealPak(abs, size)) }; } catch (e) { if (e.code !== 'BAD_FORMAT') throw e; } }
   if (kind === 'unityfs' || /\.pak$/i.test(abs)) { const d = await describeOnly(abs, size, kind); if (d) return { abs, size, ...d }; }
   try { return { abs, size, ...(await readPck(abs, size)) }; } catch (e) { if (e.code !== 'NOT_A_PCK') throw e; }
-  throw new RPError('BAD_FORMAT', `Not a supported archive (${identify(head).name}). Supported: Godot .pck (also embedded in a game .exe/binary), zip/apk/jar/ipa, tar, tar.gz/.unitypackage, Electron .asar.`);
+  throw new RPError('BAD_FORMAT', `Not a supported archive (${identify(head).name}). Supported: Godot .pck (also embedded in a game .exe/binary), zip/apk/jar/ipa, tar, tar.gz/.unitypackage, Electron .asar, Ren'Py .rpa, GameMaker data.win, FMOD .bank, Wwise .bnk, Unreal .pak, Flash .swf.`);
 }
 
 class Md5Pass extends Transform {
@@ -267,7 +274,7 @@ export async function archiveTool({ file, action = 'list', match, limit = 500, o
   const want = compileMatcher(match);
   const selected = arc.entries.filter(e => want(e.path));
   const summary = { format: arc.format, file: arc.abs, size: arc.size };
-  for (const k of ['packVersion', 'godotVersion', 'embedded', 'embeddedVia', 'start', 'encryptedDirectory', 'unityVersion', 'unityRevision', 'compression', 'pakVersion', 'bundleFormat', 'note']) if (arc[k] !== undefined) summary[k] = arc[k];
+  for (const k of ['packVersion', 'godotVersion', 'embedded', 'embeddedVia', 'start', 'encryptedDirectory', 'unityVersion', 'unityRevision', 'compression', 'pakVersion', 'bundleFormat', 'note', 'rpaVersion', 'keyed', 'renpy', 'chunks', 'game', 'counts', 'names', 'fsb', 'events', 'buses', 'vcas', 'bankVersion', 'bankId', 'objects', 'objectCount', 'namedIds', 'mountPoint', 'encryptedIndex', 'encryptionKeyGuid', 'compressionMethods', 'unreal', 'swfVersion', 'stage', 'tags', 'actionScript', 'documentClass', 'symbolClasses', 'frameLabels', 'classes', 'identifierStrings']) if (arc[k] !== undefined) summary[k] = arc[k];
   const byExt = {};
   for (const e of arc.entries) { const ext = path.extname(e.path).toLowerCase() || '(none)'; byExt[ext] = byExt[ext] ?? { files: 0, bytes: 0 }; byExt[ext].files++; byExt[ext].bytes += e.size ?? 0; }
   const topTypes = Object.entries(byExt).sort((a, b) => b[1].bytes - a[1].bytes).slice(0, 25).map(([ext, v]) => ({ ext, ...v }));
@@ -276,7 +283,7 @@ export async function archiveTool({ file, action = 'list', match, limit = 500, o
     return { ...summary, totalEntries: arc.entries.length, matching: selected.length, totalBytes: arc.entries.reduce((s, e) => s + (e.size ?? 0), 0), types: topTypes, entries: selected.slice(0, max).map(({ localHeader, method, ...e }) => e), truncated: selected.length > max };
   }
   if (action !== 'extract') throw new RPError('INVALID_ARGUMENT', 'action must be "list" or "extract".');
-  if (['unityfs', 'unreal-pak'].includes(arc.format)) throw new RPError('UNSUPPORTED_ARCHIVE', summary.note);
+  if (arc.format === 'unityfs' || (arc.format === 'unreal-pak' && !arc.entries.length)) throw new RPError('UNSUPPORTED_ARCHIVE', summary.note ?? 'nothing to extract');
   const budget = Math.min(maxBytes ?? 4096 * MiB, 64 * 1024 * MiB);
   const root = out ? path.resolve(out) : await workspaceDir('extracted', extractionName(arc.abs, sha256(`${arc.abs}:${arc.size}`)));
   await fs.mkdir(root, { recursive: true });
@@ -286,11 +293,23 @@ export async function archiveTool({ file, action = 'list', match, limit = 500, o
   const allow = new Set(plan.map(e => e.path));
   const canWrite = e => {
     if (e.encrypted) { skipped.push({ path: e.path, reason: 'encrypted — not decrypted' }); return false; }
+    if (e.extractable === false) { skipped.push({ path: e.path, reason: e.compressionMethod ? `${e.compressionMethod}-compressed entry: only stored and Zlib entries are extracted` : 'not extractable' }); return false; }
+    if (e.size == null) { skipped.push({ path: e.path, reason: 'size unknown (not in the directory index)' }); return false; }
+    if (e.inflated) { skipped.push({ path: e.path, reason: 'inside a compressed SWF body: extract from the inflated FWS copy (written as swf-inflated.swf)' }); return false; }
     if (e.unpacked) { skipped.push({ path: e.path, reason: 'stored outside the asar (app.asar.unpacked)' }); return false; }
     if (e.link) { skipped.push({ path: e.path, reason: 'symbolic link' }); return false; }
     if (written + (e.size ?? 0) > budget) { skipped.push({ path: e.path, reason: `over the ${Math.round(budget / MiB)} MiB extraction budget (raise maxBytes)` }); return false; }
     return true;
   };
+  if (arc.format === 'swf' && arc.compression === 'zlib') {
+    const whole = await fs.readFile(arc.abs);
+    const body = zlib.inflateSync(whole.subarray(8));
+    const header = Buffer.from(whole.subarray(0, 8)); header.write('FWS', 0, 'latin1');
+    const dest = path.join(root, 'swf-inflated.swf');
+    await fs.writeFile(dest, Buffer.concat([header, body]));
+    files.push({ path: 'swf-inflated.swf', file: dest, size: 8 + body.length });
+    written += 8 + body.length;
+  }
   if (arc.format === 'tar' || arc.format === 'tar.gz') {
     await walkTar(arc.abs, arc.gz, async e => {
       if (!allow.has(e.path) || !canWrite(e)) return null;
@@ -310,8 +329,15 @@ export async function archiveTool({ file, action = 'list', match, limit = 500, o
         const start = await zipDataStart(arc.abs, e);
         const src = e.compressedSize ? createReadStream(arc.abs, { start, end: start + e.compressedSize - 1 }) : Readable.from([]);
         await (e.method === 8 ? pipeline(src, zlib.createInflateRaw(), createWriteStream(dest)) : pipeline(src, createWriteStream(dest)));
+      } else if (e.zlibBlocks) {
+        const ws = createWriteStream(dest);
+        for (const b of e.zlibBlocks) { const chunk = await readAt(arc.abs, b.start, b.end - b.start); await new Promise((res, rej) => ws.write(zlib.inflateSync(chunk), err => (err ? rej(err) : res()))); }
+        await new Promise((res, rej) => { ws.once('error', rej); ws.end(res); });
       } else {
-        const src = e.size ? createReadStream(arc.abs, { start: e.offset, end: e.offset + e.size - 1 }) : Readable.from([]);
+        const parts = [];
+        if (e.prefix?.length) parts.push(Readable.from([Buffer.from(e.prefix)]));
+        const body = e.size ? createReadStream(arc.abs, { start: e.offset, end: e.offset + Math.max(0, e.size - (e.prefix?.length ?? 0)) - 1 }) : Readable.from([]);
+        const src = parts.length ? Readable.from((async function* () { for (const s of parts) yield* s; yield* body; })()) : body;
         const md5 = new Md5Pass();
         await pipeline(src, md5, createWriteStream(dest));
         if (arc.format === 'godot-pck' && e.md5 && !/^0+$/.test(e.md5) && md5.hash.digest('hex') !== e.md5) mismatches.push(e.path);
