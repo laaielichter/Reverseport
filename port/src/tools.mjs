@@ -18,6 +18,7 @@ import { refsTool } from './refs.mjs';
 import { stringsTool } from './strings.mjs';
 import { apicheckTool, GODOT_VERSIONS } from './apicheck.mjs';
 import { upgradeTool } from './upgrade.mjs';
+import { saveTool } from './save.mjs';
 
 /** One version for the whole package: the root package.json. */
 export const VERSION = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')).version;
@@ -74,6 +75,9 @@ export const tools = [
   { name: 'port_upgrade', brief: 'Godot 3 → Godot 4: converted copy of a whole project (renames, annotations, await, signals, scenes, project.godot, shaders) plus the list of what still needs a human.', title: 'Upgrade a Godot 3 project to Godot 4',
     description: 'Converts a Godot 3.x project to Godot 4 as a COPY (the source is never modified): the official rename table for classes, builtin types, functions, properties, signals, enums, colors, theme overrides, project settings and shader names; export/onready/tool → @annotations with typed hints; yield → await; instance → instantiate; string connect/disconnect/emit_signal → signal.connect(callable)/emit; Pool*Array → Packed*Array; OS time functions → Time; .shader → .gdshader (references updated); scenes to format 3 with renamed node types and properties; project.godot to config_version 5 with the input map keys. What cannot be converted mechanically is listed with file and line and how to do it: setget, funcref, move_and_slide with arguments, var velocity in CharacterBody scripts, Tween nodes, binds, RPC keywords, networking, SCREEN_TEXTURE, window functions. action:"check" only reports. Follow with re_apicheck on the copy and open it in Godot 4.',
     inputSchema: obj({ path: str('Godot 3 project folder (has project.godot with config_version=4).'), action: str('check (default): report what would change. apply: write the converted copy.', { enum: ['check', 'apply'] }), out: str('apply: new or empty folder for the copy (default: workspace/upgrades/<name>-godot4).'), limit: int('Max items per list (default 300).', { minimum: 10, maximum: 5000 }) }, ['path']) },
+  { name: 're_save', brief: 'Save files: container layers, fields with roles (health, currency, position…), verified checksums, what changed between two saves, and a schema + SaveData.gd/.cs to port the format.', title: 'Analyse a save file',
+    description: 'Peels the open layers of a save file (gzip/zlib, base64, LZ-String as RPG Maker MV/MZ uses, JSON, XML, INI/ConfigFile, Godot store_var) and lists every field with type, sample and a guessed role (health, currency, score, position, progress, collection, time, version, identity, integrity, rng, settings). Checksum fields are verified by recomputing md5/sha1/sha256/crc32 over the save without that field; binary saves are checked for CRC32 trailers/headers and get record strides and strings. compare:<second save> lists the fields that changed between two saves, the fastest way to learn which field is which. action:"schema" writes a JSON schema plus SaveData.gd and SaveData.cs with the same field names, to port the save format. Encrypted, XOR-obfuscated, .NET BinaryFormatter and pickle content is reported, never decoded.',
+    inputSchema: obj({ file: str('The save file.'), compare: str('A second save of the same game to diff against.'), action: str('inspect (default) or schema (write schema + data classes).', { enum: ['inspect', 'schema'] }), out: str('schema: folder for the files (default workspace/saves).'), limit: int('Max fields/changes (default 400).', { minimum: 10, maximum: 10000 }) }, ['file']) },
   { name: 're_report', brief: 'Write ARCHITECTURE.md for a project folder.', title: 'Write an architecture report',
     description: 'Writes ARCHITECTURE.md for a project: stack, languages, entry points, mermaid module graph, cycles, most-used files, scene trees of the entry scenes, class table, possibly unused files and external dependencies.',
     inputSchema: obj({ path: str('Project folder.'), out: str('Output .md path (default: workspace/reports).') }, ['path']) },
@@ -126,7 +130,7 @@ for (const t of tools) t.annotations = annotationsFor(t.name);
 
 const handlers = {
   re_scan: scanProject, re_graph: graphTool, re_symbols: symbolsTool, re_scene: a => readScene(a.file), re_binary: inspectBinary,
-  re_archive: archiveTool, re_probe: probe, re_extract: carve, re_compare: compare, re_refs: refsTool, re_strings: stringsTool, re_apicheck: apicheckTool, port_upgrade: upgradeTool, re_report: report, re_lookup: lookupTool, re_blueprint: blueprintTool,
+  re_archive: archiveTool, re_probe: probe, re_extract: carve, re_compare: compare, re_refs: refsTool, re_strings: stringsTool, re_apicheck: apicheckTool, port_upgrade: upgradeTool, re_save: saveTool, re_report: report, re_lookup: lookupTool, re_blueprint: blueprintTool,
   port_map: portMapTool, port_convert: convert, port_plan: planPort, port_unit: portUnit, port_write: portWrite, port_scene: portScene,
   port_copy_assets: portCopyAssets, port_status: portStatus, port_verify: portVerify, re_case: caseTool, share_feedback: shareFeedback,
 };

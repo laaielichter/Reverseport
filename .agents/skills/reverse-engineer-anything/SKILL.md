@@ -59,6 +59,10 @@ These tools run without an analysis engine or provider:
 - Godot 3 project → Godot 4: `port_upgrade {path, action:"apply"}` writes a
   converted copy and lists what needs a human (setget, Tween nodes,
   move_and_slide arguments…); fix those, then `re_apicheck` on the copy.
+- Save files: `re_save {file, compare}` peels gzip/base64/LZ-String/JSON/
+  INI/store_var, names the fields by role, verifies checksums and diffs two
+  saves; `action:"schema"` writes SaveData.gd/.cs to port the format.
+  Encrypted or obfuscated saves are reported, never decoded.
 - No files, only a name, store page, website or public repository: `re_lookup`,
   then `re_blueprint` for a clean-room rebuild spec measured against the original.
 - Port between engines or languages: `port_map` → `port_plan` → `port_unit` /

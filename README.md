@@ -127,6 +127,7 @@ See [Connect any agent](docs/connect-any-agent.md).
 | _Why are my Unity materials pink and scripts "missing" after a move?_   | `re_refs`: dangling, duplicate and missing GUIDs, with remap suggestions       |
 | _Get every player-facing string out of this game so we can translate it._ | `re_strings`: .pot/.csv with ids and placeholders; `apply` writes a translated copy |
 | _Is this GDScript valid for Godot 4.3, or did the model mix in Godot 3?_ | `re_apicheck`: renamed names with replacements, invented members, too-new classes |
+| _What is in this save file, is it checksummed, and which field is the gold?_ | `re_save`: layers, fields with roles, verified checksums, diff of two saves, schema + SaveData classes |
 | _Upgrade my Godot 3 game to Godot 4._                                     | `port_upgrade`: converted copy (renames, @annotations, await, signals, scenes, project.godot) + what needs a human |
 | _Decompile the function that saves settings in this app and explain it._ | opens the binary, finds it, decompiles it, shows the evidence                   |
 | _How does this Electron app talk to its native side?_                    | maps modules, IPC and Electron boundaries                                       |
@@ -199,7 +200,7 @@ One MCP server (`reverseport mcp`) serves every tool:
 | ReversePort tools                                                                                                          |                                                            |
 | -------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
 | `re_scan` `re_graph` `re_symbols` `re_scene`                                                                               | projects and builds: engine, dependencies, symbols, scenes |
-| `re_binary` `re_archive` `re_probe` `re_extract` `re_compare` `re_refs` `re_strings` `re_apicheck` `re_report`             | executables, packs, unknown data, diffs, GUID audit, localisation, API check, ARCHITECTURE.md |
+| `re_binary` `re_archive` `re_probe` `re_extract` `re_compare` `re_refs` `re_strings` `re_apicheck` `re_save` `re_report`   | executables, packs, unknown data, diffs, GUID audit, localisation, API check, save files, ARCHITECTURE.md |
 | `re_lookup` `re_blueprint`                                                                                                 | recon without files, clean-room rebuild specs              |
 | `port_map` `port_convert` `port_plan` `port_unit` `port_write` `port_scene` `port_copy_assets` `port_status` `port_verify` | porting, verified                                          |
 | `port_upgrade`                                                                                                             | Godot 3 → 4 as a converted copy plus the manual list       |

@@ -42,6 +42,16 @@ routes in the main skill and cite their Evidence.
   `.meta` without asset. Run it before `port_plan` from Unity: a dangling
   reference is a component the port would silently lose.
 
+## Save files
+
+`re_save {file}` lists the container layers (gzip, base64, LZ-String, JSON,
+XML, INI, Godot store_var), every field with a role guess, and whether a
+checksum field is a plain hash of the rest. `compare` with a second save shows
+which fields the action in between changed. `action: "schema"` writes a JSON
+schema and SaveData.gd/.cs with the same field names so a port keeps loading
+old saves; reproduce the layer order when writing. Encrypted, XOR-obfuscated,
+BinaryFormatter and pickle saves are reported, not decoded.
+
 ## Recon without files
 
 `re_lookup {query}` for a name, `{url}` for a store page, website or repo,
