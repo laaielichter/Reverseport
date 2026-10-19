@@ -3,6 +3,7 @@
 // Godot's frame (right-handed, Y up, -Z forward, meters) plus a unit scale.
 import { RPError } from './util.mjs';
 import { matToQuat } from './scene.mjs';
+import { physicsProfile } from './physics.mjs';
 
 const I = [[1, 0, 0], [0, 1, 0], [0, 0, 1]];
 /** Rows map Godot coordinates into the system: p_sys = M · p_godot × scale. */
@@ -77,9 +78,10 @@ function eulerFor(sys, R) {
  * Convert transforms between engines. Inputs in the source system: position [x,y,z], rotation as a
  * quaternion [x,y,z,w] or euler degrees in the source engine's convention, scale [x,y,z], fov in degrees.
  */
-export function convert({ from, to, position, rotation, euler, scale, fov, aspect = 16 / 9 } = {}) {
+export function convert({ from, to, position, rotation, euler, scale, fov, aspect = 16 / 9, physics } = {}) {
   const { T: M, factor } = transformBetween(from, to);
   const out = { from: system(from).label, to: system(to).label, axisMatrix: M.map(r => r.map(clean)), unitFactor: factor };
+  if (physics) out.physics = physicsProfile({ from, to, values: typeof physics === 'object' ? physics : {} });
   const vec3 = (v, what) => { if (!Array.isArray(v) || v.length !== 3 || v.some(n => typeof n !== 'number' || !Number.isFinite(n))) throw new RPError('INVALID_ARGUMENT', `${what} must be [x, y, z] numbers.`); return v; };
   if (position) out.position = mulVec(M, vec3(position, 'position')).map(v => clean(v * factor));
   let R = null;

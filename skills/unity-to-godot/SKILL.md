@@ -11,7 +11,8 @@ Use the port-project skill for the loop; this skill holds the Unity-specific jud
 
 - Scenes and prefabs must be text: Unity → Project Settings → Editor → Asset Serialization = **Force Text**. Without
   it `re_scene` cannot read them.
-- Keep the `.meta` files: they map GUIDs to scripts and prefabs.
+- Keep the `.meta` files: they map GUIDs to scripts and prefabs. Run `re_refs` on the project first: a dangling
+  GUID (missing script, pink material) is a component the port would silently lose; fix it in Unity before planning.
 - GDScript or C#? Large, idiomatic C# codebases port faster to **godot-csharp** (only engine API calls change);
   smaller or designer-facing projects read better as GDScript (`to:"godot"`).
 
@@ -21,9 +22,21 @@ Use the port-project skill for the loop; this skill holds the Unity-specific jud
 AnimatableBody3D), CharacterController → CharacterBody3D, trigger colliders → Area3D, other colliders →
 StaticBody3D, Box/Sphere/Capsule colliders → CollisionShape3D, built-in primitives → BoxMesh/SphereMesh/…, Camera,
 Light, AudioSource, tags → groups, prefab instances → instanced scenes, scripts → the ported script. Transforms are
-mirrored on Z. Model meshes, materials, animators and UI are flagged as `metadata/reverseport_todo` in the scene.
+mirrored on Z. Prefab variants become inherited scenes (`instance=`) with `m_IsActive` applied and other
+overrides listed. uGUI becomes Control nodes: Canvas → full-rect Control, Image/RawImage → TextureRect, Text and
+TextMeshPro → Label (size, colour, alignment), Button → Button (label text, OnClick listed), Slider/Toggle/
+ScrollRect/InputField/layout groups → HSlider/CheckBox/ScrollContainer/LineEdit/Box- and GridContainer, with
+RectTransform anchors and offsets converted (Y flipped). Animator → an `AnimationPlayer` whose library holds the
+ported clips plus an `Animator` child running the ported controller script. `.anim` files port to Godot
+`Animation` resources (position/rotation/scale/property/sprite-swap/event tracks); `.controller` files port to a
+GDScript state machine with the same states, parameters and transition conditions (blend trees and extra layers
+are listed for an AnimationTree by hand). Model meshes and materials stay flagged as `metadata/reverseport_todo`.
 
 ## Code: the usual translations
+
+After writing each script, `re_apicheck {path, engine: "godot@4.x"}`: models mix Godot 3 (`KinematicBody2D`,
+`instance()`, `yield`, string `connect`) into Godot 4 code and invent members; the tool names the replacement.
+
 
 - One GameObject with several MonoBehaviours → one node per behaviour (child nodes) or merge them into one script.
 - `GetComponent<T>()` → the node itself or a child (`$Child`); components are nodes in Godot.

@@ -51,3 +51,23 @@ test('FOV: vertical ↔ horizontal for Unreal', () => {
   const back = convert({ from: 'unreal', to: 'unity', fov: r.fov.degrees, aspect: 16 / 9 });
   assert.ok(Math.abs(back.fov.degrees - 70) < 1e-6);
 });
+
+test('physics profile: units, jump velocity, layer masks and engine differences', async () => {
+  const { convert } = await import('../src/convert.mjs');
+  const r = convert({ from: 'unity', to: 'godot', physics: { gravity: -9.81, fixedStep: 0.02, linearDamp: 0.5, friction: 0.6, jumpVelocity: 7, layers: [{ name: 'Player', index: 3, collidesWith: ['Ground'] }, { name: 'Ground', index: 0, collidesWith: ['Player'] }] } }).physics;
+  assert.equal(r.converted.gravity, 9.81);
+  assert.equal(r.converted.layers[0].collision_layer, 8);
+  assert.equal(r.converted.layers[0].collision_mask, 1);
+  assert.equal(r.converted.layers[1].collision_mask, 8);
+  assert.ok(Math.abs(r.converted.jumpVelocity - 7) < 0.01);
+  assert.ok(r.settings.some(s => /linear_damp_mode = Replace/.test(s)));
+  assert.ok(r.differences.some(d => /50 Hz to 60 Hz/.test(d)) && r.differences.some(d => /Friction combination differs/.test(d)));
+  const u = convert({ from: 'godot', to: 'unreal', physics: { speed: 5, jumpHeight: 1.2 } }).physics;
+  assert.equal(u.converted.speed, 500);
+  assert.equal(u.converted.jumpHeight, 120);
+  assert.ok(Math.abs(u.converted.jumpVelocity - Math.sqrt(2 * 980 * 120)) < 0.01);
+  const d = convert({ from: 'unity', to: 'godot', physics: { dimension: '2d', speed: 4 } }).physics;
+  assert.equal(d.converted.speed, 400);
+  const { portMapTool } = await import('../src/knowledge.mjs');
+  assert.ok(portMapTool({ from: 'unity', to: 'godot' }).physics.differences.length > 0);
+});

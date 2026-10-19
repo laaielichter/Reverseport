@@ -5,6 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { RPError } from './util.mjs';
 import { closest } from './agent.mjs';
+import { physicsProfile } from './physics.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'knowledge');
 export const ENGINES = JSON.parse(fs.readFileSync(path.join(ROOT, 'engines.json'), 'utf8'));
@@ -45,7 +46,8 @@ export function portMapTool({ from, to, query, topic } = {}) {
   }
   const q = query ? String(query).toLowerCase() : null;
   const entries = map.entries.filter(e => (!topic || e.topic === topic) && (!q || `${e.id} ${e.topic} ${e.from} ${e.to} ${e.notes ?? ''}`.toLowerCase().includes(q))).map(({ re, leftoverRe, pattern, leftover, ...e }) => e);
-  return { title: map.title, from: a, to: b, fromEngine: ENGINES[a] ?? null, toEngine: ENGINES[b] ?? null, conventions: map.conventions, topics: [...new Set(map.entries.map(e => e.topic))], entries, ...(!q && !topic ? { hint: 'This is the whole map; query or topic narrows it (e.g. {query:"signal"}). port_unit already lists the entries a file uses.' } : {}) };
+  let physics = null; try { const p = physicsProfile({ from: a, to: b }); physics = { differences: p.differences, from: p.profiles.from, to: p.profiles.to, hint: 'port_convert {from, to, physics:{gravity, fixedStep, linearDamp, friction, bounce, jumpVelocity, layers}} converts the actual numbers.' }; } catch { /* no profile for this pair */ }
+  return { title: map.title, from: a, to: b, fromEngine: ENGINES[a] ?? null, toEngine: ENGINES[b] ?? null, conventions: map.conventions, topics: [...new Set(map.entries.map(e => e.topic))], entries, ...(physics && !q && !topic ? { physics } : {}), ...(!q && !topic ? { hint: 'This is the whole map; query or topic narrows it (e.g. {query:"signal"}). port_unit already lists the entries a file uses.' } : {}) };
 }
 
 /** Which mapped APIs does this source text use? */

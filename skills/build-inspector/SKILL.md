@@ -21,6 +21,14 @@ Ren'Py (`.rpa`), RPG Maker, Electron (`app.asar`), LÖVE.
 re_archive {file:"Game.pck"}                         → entries, sizes, types, Godot version, pack format
 re_archive {file:"Game.exe"}                         → same, when the pack is embedded in the executable
 re_archive {file, action:"extract", match:"*.gd"}    → extract (MD5-checked) into the workspace or out
+re_il2cpp {file:"…/Metadata/global-metadata.dat"}    → Unity IL2CPP: assemblies, classes, method names, literals, C# skeleton
+re_decode {path:"<extracted pack folder>"}         → .gdc → .gd, .scn/.res → .tscn/.tres, project.binary → project.godot
+re_archive {file:"data.win"}                         → GameMaker: game name/version, sprite/object/room names, textures + audio
+re_archive {file:"archive.rpa"}                      → Ren'Py: scripts/images/audio (.rpyc = compiled AST, no source)
+re_archive {file:"Master.bank"} / {file:"Init.bnk"}  → FMOD events + FSB5 samples / Wwise media (.wem) + object counts
+re_archive {file:"Game.pak"}                         → Unreal: entries, compression, stored/Zlib extract; encrypted = listed only
+re_archive {file:"Build/game.data.br"}              → Unity WebGL: data files, StreamingAssets, IL2CPP metadata; Emscripten .data via its loader .js
+re_archive {file:"game.swf"}                         → Flash: stage, AS2/AS3, classes, symbols, images/sounds/ABC extract
 re_binary  {file:"<Game>_Data/Managed/Assembly-CSharp.dll"}   → Unity Mono build: game classes and methods
 re_binary  {file:"Game.exe"}                         → arch, imports (graphics API, Steam, FMOD/Wwise…), hints
 ```

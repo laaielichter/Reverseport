@@ -67,8 +67,73 @@ function unityRoles(node) {
   const cam = has('Camera'); if (cam) roles.camera = { fov: cam.fieldOfView ?? 60 };
   const light = has('Light'); if (light) roles.light = { Directional: 'directional', Point: 'point', Spot: 'spot' }[light.lightType] ?? 'point';
   const audio = has('AudioSource'); if (audio) roles.audio = { spatial: true, clip: audio.clip };
-  roles.scripts = (node.components ?? []).filter(c => c.type === 'MonoBehaviour' && c.script).map(c => c.script);
+  roles.scripts = (node.components ?? []).filter(c => c.type === 'MonoBehaviour' && c.script && !c.ui).map(c => c.script);
+  const anim = has('Animator'); if (anim) roles.animator = anim.controller ?? null;
+  const widgets = (node.components ?? []).filter(c => c.ui).map(c => c.ui);
+  if (node.ui || widgets.length || has('Canvas')) roles.ui = { canvas: !!has('Canvas'), widgets, group: has('CanvasGroup') ?? null };
   return roles;
+}
+
+// ---------------------------------------------------------------- uGUI → Control
+const UI_ALIGN_H = { 0: 0, 1: 1, 2: 2, 3: 0, 4: 1, 5: 2, 6: 0, 7: 1, 8: 2 }; // Unity TextAnchor → HORIZONTAL_ALIGNMENT
+const UI_ALIGN_V = { 0: 0, 1: 0, 2: 0, 3: 1, 4: 1, 5: 1, 6: 2, 7: 2, 8: 2 };
+const TMP_ALIGN = a => ({ h: [1, 2, 4, 8].findIndex(b => a & b) === -1 ? 0 : { 1: 0, 2: 1, 4: 2, 8: 3 }[[1, 2, 4, 8].find(b => a & b)], v: { 256: 0, 512: 1, 1024: 2 }[[256, 512, 1024].find(b => a & b)] ?? 0 });
+const color4 = c => `Color(${c.map(f).join(', ')})`;
+/** Godot anchors/offsets from a Unity RectTransform (Y flipped), plus widget properties. */
+function uiProps(node, roles, todo, addExt, resolve) {
+  const out = [];
+  const r = node.rect;
+  const canvas = roles.ui.canvas;
+  if (canvas) {
+    out.push('anchors_preset = 15', 'anchor_right = 1.0', 'anchor_bottom = 1.0', 'grow_horizontal = 2', 'grow_vertical = 2', 'mouse_filter = 2');
+    const scaler = roles.ui.widgets.find(w => w.widget === 'CanvasScaler');
+    if (scaler?.referenceResolution?.x) todo.push(`Canvas scaler reference ${scaler.referenceResolution.x}x${scaler.referenceResolution.y}: set display/window/size to it and stretch mode canvas_items in Project Settings`);
+  } else if (r) {
+    const aMin = r.anchorMin, aMax = r.anchorMax, ap = r.anchoredPosition, sd = r.sizeDelta, pv = r.pivot;
+    const offMin = { x: (ap.x ?? 0) - (sd.x ?? 0) * (pv.x ?? 0.5), y: (ap.y ?? 0) - (sd.y ?? 0) * (pv.y ?? 0.5) };
+    const offMax = { x: (ap.x ?? 0) + (sd.x ?? 0) * (1 - (pv.x ?? 0.5)), y: (ap.y ?? 0) + (sd.y ?? 0) * (1 - (pv.y ?? 0.5)) };
+    const vals = { anchor_left: aMin.x ?? 0, anchor_top: 1 - (aMax.y ?? 0), anchor_right: aMax.x ?? 0, anchor_bottom: 1 - (aMin.y ?? 0), offset_left: offMin.x, offset_top: -offMax.y, offset_right: offMax.x, offset_bottom: -offMin.y };
+    for (const [k, v] of Object.entries(vals)) if (Math.abs(v) > 1e-9) out.push(`${k} = ${f(v)}`);
+    if (Math.abs((aMin.x ?? 0) - 0) < 1e-9 && Math.abs((aMax.x ?? 0) - 1) < 1e-9) out.push('grow_horizontal = 2');
+    if (Math.abs((aMin.y ?? 0) - 0) < 1e-9 && Math.abs((aMax.y ?? 0) - 1) < 1e-9) out.push('grow_vertical = 2');
+    if (pv.x !== undefined && (Math.abs(pv.x - 0.5) > 1e-6 || Math.abs((pv.y ?? 0.5) - 0.5) > 1e-6)) out.push(`pivot_offset = Vector2(${f((pv.x ?? 0.5) * (sd.x ?? 0))}, ${f((1 - (pv.y ?? 0.5)) * (sd.y ?? 0))})`);
+    const t = node.transform;
+    if (t?.scale && (Math.abs(t.scale[0] - 1) > 1e-6 || Math.abs(t.scale[1] - 1) > 1e-6)) out.push(`scale = Vector2(${f(t.scale[0])}, ${f(t.scale[1])})`);
+    if (t?.rotation) { const [x, y, z, w] = t.rotation; const ang = Math.atan2(2 * (w * z + x * y), 1 - 2 * (y * y + z * z)); if (Math.abs(ang) > 1e-6) out.push(`rotation = ${f(-ang)}`); }
+  }
+  for (const w of roles.ui.widgets) {
+    if (w.widget === 'Image' || w.widget === 'RawImage') {
+      const src = w.sprite ?? w.texture; const res = src ? resolve(src) : null;
+      if (res) out.push(`texture = ExtResource("${addExt('Texture2D', res)}")`); else if (src) todo.push(`texture ${src} not ported yet`);
+      out.push('expand_mode = 1', `stretch_mode = ${w.preserveAspect ? 5 : w.imageType === 'tiled' ? 1 : 1}`);
+      if (w.color && w.color.some((c, i) => Math.abs(c - 1) > 1e-6)) out.push(`modulate = ${color4(w.color)}`);
+      if (w.imageType === 'filled') todo.push('Unity filled Image: use a TextureProgressBar (fill_mode) or a shader for the fill amount');
+      if (w.imageType === 'sliced') todo.push('Unity sliced Image: use NinePatchRect with the sprite borders');
+    }
+    if (w.widget === 'Text' || w.widget === 'TextMeshPro') {
+      out.push(`text = ${q(w.text ?? '')}`);
+      if (w.fontSize) out.push(`theme_override_font_sizes/font_size = ${Math.round(w.fontSize)}`);
+      if (w.color && w.color.some((c, i) => Math.abs(c - 1) > 1e-6)) out.push(`theme_override_colors/font_color = ${color4(w.color)}`);
+      const al = w.widget === 'Text' ? { h: UI_ALIGN_H[w.alignment] ?? 0, v: UI_ALIGN_V[w.alignment] ?? 0 } : TMP_ALIGN(w.alignment ?? 257);
+      if (al.h) out.push(`horizontal_alignment = ${al.h}`);
+      if (al.v) out.push(`vertical_alignment = ${al.v}`);
+      out.push('autowrap_mode = 3');
+    }
+    if (w.widget === 'Button') {
+      const label = (node.children ?? []).flatMap(c => (c.components ?? []).map(x => x.ui).filter(Boolean)).find(u => u.widget === 'Text' || u.widget === 'TextMeshPro');
+      if (label?.text) out.push(`text = ${q(label.text)}`);
+      if (w.onClick?.length) todo.push(`OnClick → ${w.onClick.map(c => c.method).join(', ')}: connect the pressed signal to the ported method`);
+    }
+    if (w.widget === 'Slider') { out.push(`min_value = ${f(w.min ?? 0)}`, `max_value = ${f(w.max ?? 1)}`, `value = ${f(w.value ?? 0)}`, `step = ${w.wholeNumbers ? 1 : 0.001}`); }
+    if (w.widget === 'Toggle' && w.isOn) out.push('button_pressed = true');
+    if (w.widget === 'InputField') out.push(`text = ${q(w.text ?? '')}`);
+    if (w.widget === 'GridLayoutGroup') { out.push(`columns = ${Math.max(1, w.constraintCount ?? 2)}`); if (w.spacing) out.push(`theme_override_constants/h_separation = ${f(w.spacing)}`, `theme_override_constants/v_separation = ${f(w.spacing)}`); }
+    if (w.widget === 'VerticalLayoutGroup' || w.widget === 'LayoutGroup') { if (w.spacing) out.push(`theme_override_constants/separation = ${f(w.spacing)}`); }
+    if (w.widget === 'Mask') out.push('clip_contents = true');
+  }
+  if (roles.ui.group && roles.ui.group.alpha !== undefined && Math.abs(roles.ui.group.alpha - 1) > 1e-6) out.push(`modulate = Color(1, 1, 1, ${f(roles.ui.group.alpha)})`);
+  if (node.active === false) out.push('visible = false');
+  return out;
 }
 
 // ---------------------------------------------------------------- → Godot .tscn
@@ -76,7 +141,7 @@ function unityRoles(node) {
  * Write a Godot 4 text scene from a neutral tree that is already in Godot coordinates.
  * resolve(scriptOrPrefabSourcePath) → res:// path of the ported file (or null).
  */
-export function writeTscn(root, { engine = 'unity', resolve = () => null, name } = {}) {
+export function writeTscn(root, { engine = 'unity', resolve = () => null, animator = () => null, name } = {}) {
   const ext = [], subs = [], nodes = [];
   const extId = new Map();
   const addExt = (type, p) => { const k = `${type}:${p}`; if (!extId.has(k)) { const id = `${ext.length + 1}_rp`; extId.set(k, id); ext.push(`[ext_resource type="${type}" path=${q(p)} id="${id}"]`); } return extId.get(k); };
@@ -100,8 +165,14 @@ export function writeTscn(root, { engine = 'unity', resolve = () => null, name }
     if (c.shape === 'capsule') return addSub('CapsuleShape3D', { radius: f(c.radius ?? 0.5), height: f(c.height ?? 2) });
     return null;
   };
+  const UI_TYPES = { Image: 'TextureRect', RawImage: 'TextureRect', Text: 'Label', TextMeshPro: 'Label', Button: 'Button', Slider: 'HSlider', Toggle: 'CheckBox', ScrollRect: 'ScrollContainer', InputField: 'LineEdit', GridLayoutGroup: 'GridContainer', VerticalLayoutGroup: 'VBoxContainer', LayoutGroup: 'HBoxContainer', Mask: 'Control', CanvasScaler: null };
   const godotType = (node, roles) => {
     if (node.type === 'PrefabInstance') return null;
+    if (roles.ui) {
+      const w = roles.ui.widgets.find(x => UI_TYPES[x.widget]);
+      if (w?.widget === 'Slider' && w.vertical) return 'VSlider';
+      return (w && UI_TYPES[w.widget]) || 'Control';
+    }
     if (roles.body === 'character') return 'CharacterBody3D';
     if (roles.body === 'rigid') return 'RigidBody3D';
     if (roles.body === 'kinematic') return 'AnimatableBody3D';
@@ -127,20 +198,31 @@ export function writeTscn(root, { engine = 'unity', resolve = () => null, name }
     }
     if (node.tag) attrs.push(`groups=[${q(node.tag)}]`);
     const lines = [`[node ${attrs.join(' ')}]`];
-    if (!isIdentity(node.transform)) lines.push(`transform = ${tf(node.transform)}`);
+    const todo = [];
+    if (roles.ui) lines.push(...uiProps(node, roles, todo, addExt, resolve));
+    else if (!isIdentity(node.transform)) lines.push(`transform = ${tf(node.transform)}`);
     const scripts = (roles.scripts ?? []).map(s => ({ src: s, res: resolve(s) }));
     if (scripts[0]?.res) lines.push(`script = ExtResource("${addExt('Script', scripts[0].res)}")`);
-    const todo = [];
     if (node.type === 'PrefabInstance' && node.prefab && !resolve(node.prefab)) todo.push(`instance of ${node.prefab} (not ported yet)`);
+    for (const ov of node.overrides ?? []) {
+      if (ov.property === 'm_IsActive') { if (ov.value === '0') lines.push('visible = false'); continue; }
+      todo.push(`override ${ov.property} = ${ov.reference ?? ov.value} (set it on the ported node)`);
+    }
     if (scripts.length > 1) todo.push(`more scripts on this GameObject: ${scripts.slice(1).map(s => s.src).join(', ')} — add them as child nodes`);
     if (scripts[0] && !scripts[0].res) todo.push(`script ${scripts[0].src} not ported yet`);
     if (roles.camera) lines.push(`fov = ${f(roles.camera.fov)}`);
-    if (node.active === false) lines.push('visible = false');
+    if (node.active === false && !roles.ui) lines.push('visible = false');
     if (roles.mesh?.asset) todo.push(`mesh ${roles.mesh.asset}: import the model and assign it`);
     if (roles.audio?.clip) todo.push(`audio clip ${roles.audio.clip}`);
     if (todo.length) lines.push(`metadata/reverseport_todo = ${q(todo.join('; '))}`);
     nodes.push(lines.join('\n'));
     const myPath = isRoot ? '.' : parentPath === '.' ? nodeName : `${parentPath}/${nodeName}`;
+    if (roles.animator !== undefined) {
+      const info = animator(roles.animator) ?? { clips: [], script: null };
+      const lib = info.clips.length ? addSub('AnimationLibrary', { _data: `{\n${info.clips.map(c => `${q(c.name)}: ExtResource("${addExt('Animation', c.res)}")`).join(',\n')}\n}` }) : null;
+      nodes.push(`[node name="AnimationPlayer" type="AnimationPlayer" parent=${q(myPath)}]${lib ? `\nlibraries = {\n"": SubResource("${lib}")\n}` : ''}${info.missing?.length ? `\nmetadata/reverseport_todo = ${q(`clips not ported yet: ${info.missing.join(', ')}`)}` : ''}`);
+      nodes.push(`[node name="Animator" type="Node" parent=${q(myPath)}]${info.script ? `\nscript = ExtResource("${addExt('Script', info.script)}")\nplayer = NodePath("../AnimationPlayer")` : `\nmetadata/reverseport_todo = ${q(`animator controller ${roles.animator ?? '(none)'} not ported yet: port it with port_scene, then set script here`)}`}`);
+    }
     if (roles.mesh?.primitive && roles.body) {
       const id = meshSub(roles.mesh);
       nodes.push(`[node name="Mesh" type="MeshInstance3D" parent=${q(myPath)}]\nmesh = SubResource("${id}")`);

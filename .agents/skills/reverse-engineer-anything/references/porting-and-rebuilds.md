@@ -32,11 +32,26 @@ routes in the main skill and cite their Evidence.
 
 - Godot packs can sit inside the `.exe`: `re_archive {file}` lists them; add
   `action: "extract", match: "*.gd"` to extract. Encrypted packs are reported,
-  never opened.
+  never opened. Exported packs hold .gdc, binary .scn/.res and project.binary:
+  `re_decode {path: <extracted folder>}` writes an editable project back.
 - `re_binary` reads PE (with .NET types and methods), ELF, Mach-O, wasm, Java
   class and dex files; `Assembly-CSharp.dll` shows a Unity game's scripts.
 - `re_compare {a, b}` diffs folders, packs or binaries. Report changes grouped
   (scripts, scenes, textures, audio, engine binary), biggest first.
+- `re_refs {path}` audits a Unity project's GUID references: dangling (missing
+  scripts, pink materials), duplicate `.meta` GUIDs, assets without `.meta`,
+  `.meta` without asset. Run it before `port_plan` from Unity: a dangling
+  reference is a component the port would silently lose.
+
+## Save files
+
+`re_save {file}` lists the container layers (gzip, base64, LZ-String, JSON,
+XML, INI, Godot store_var), every field with a role guess, and whether a
+checksum field is a plain hash of the rest. `compare` with a second save shows
+which fields the action in between changed. `action: "schema"` writes a JSON
+schema and SaveData.gd/.cs with the same field names so a port keeps loading
+old saves; reproduce the layer order when writing. Encrypted, XOR-obfuscated,
+BinaryFormatter and pickle saves are reported, not decoded.
 
 ## Recon without files
 
@@ -75,15 +90,31 @@ Unity → Unreal, or any language.
    PORT-PLAN.md. `port_copy_assets {planId}` copies the assets.
 3. Loop in dependency order: `port_unit {planId}` returns the source, API hints
    with line numbers, conventions and the ported names of dependencies.
-   Scenes: `port_scene {planId, unit}`. Code: write the port, then
+   Scenes, uGUI, prefab variants, `.anim` and `.controller`: `port_scene {planId, unit}`. Code: write the port, then
    `port_write {planId, unit, files}` and fix every leftover and
    missing function it reports before moving on.
+   Shaders: `port_shader {file, to}` gives a marked first draft (uniforms,
+   intrinsics, built-ins); resolve its leftovers and `PORT:` markers, then
+   `port_write` it as the unit's file.
 4. Translate behaviour, not syntax: events instead of signals, serialized
    references instead of node paths, timers or coroutines instead of awaits.
    Convert every position, direction, rotation, speed and distance with
    `port_convert` (Unreal: centimeters, Z-up; Unity mirrors Z; three.js matches
-   Godot). Leave `PORT:` markers instead of silent gaps.
-5. `port_verify {planId}` until it passes; `port_status` shows progress.
+   Godot). Physics: `port_convert {from, to, physics: {gravity, fixedStep,
+   linearDamp, friction, bounce, jumpVelocity, layers}}` gives the target
+   settings, converted numbers and the rules that differ (fixed step, damping
+   defaults, friction/bounce combination, per-body masks vs a matrix). Leave
+   `PORT:` markers instead of silent gaps.
+5. `port_verify {planId}` until it passes; `port_status` shows progress. Both
+   return `resume`: read it first after a context reset. Verify also flags
+   dormant logic (empty or thin bodies, unwired functions and signals, added
+   suppressions) and behaviour parity (motion moved between frame and physics
+   tick, delta dropped, RNG unseeded, execution order lost). To prove behaviour:
+   `port_trace {action:"harness", engine}` in both projects, then
+   `port_trace {action:"compare", a, b}` shows the first divergence per
+   property and whether the error grows. Godot targets: also
+   `re_apicheck {path: <output>, engine}` so no Godot 3 names or invented
+   members survive.
 6. Tell the user how to open the result. Unity: copy `Assets/` in, then Tools ▸
    ReversePort ▸ Build prefabs and scenes from specs. Godot: open the folder.
    three.js: `npm install && npm run dev`. Unreal: Generate project files, build.
