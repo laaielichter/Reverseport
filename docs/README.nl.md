@@ -52,7 +52,7 @@ zonder installatie: `node bin/reverseport.mjs scan ./MijnGame`.
 - **Bewijs bijhouden** — `re_case` houdt per onderzoek of port een dossier bij: bewijs met een vingerafdruk (SHA-256),
   claims die dat bewijs noemen, open vragen, beslissingen met de afgewezen opties en echte tests. Pas als alle
   poorten groen zijn, is het klaar. Met [Stashpad](https://github.com/laaielichter/stashpad) erbij onthoudt het wat
-  eerdere sessies vonden; nieuwe feiten wachten tot jij ze goedkeurt. Zie [proof-and-memory.md](proof-and-memory.md).
+  eerdere sessies vonden; nieuwe feiten wachten tot jij ze goedkeurt. Zie [proof-and-memory.nl.md](proof-and-memory.nl.md).
 
 Vraag daarna gewoon: "Waar is deze game mee gemaakt?", "Wat is er veranderd tussen build 43 en 44?", "Decompileer de
 functie die de instellingen opslaat en leg uit wat ze doet.", "Port mijn Godot-game naar Unity."

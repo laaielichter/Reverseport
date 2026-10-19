@@ -3,6 +3,8 @@
 Three small additions that keep an agent's findings honest. All three are local, need no extra install, and stay out of
 the way when you do not use them.
 
+_Nederlands: [proof-and-memory.nl.md](proof-and-memory.nl.md)_
+
 ## Proof cases (`re_case`)
 
 A proof case is a ledger for one investigation, build inspection or port. It lives in the workspace
