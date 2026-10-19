@@ -32,7 +32,9 @@ Claude Code kan ook de plugin gebruiken (met de port-skills en de `port-architec
 Dezelfde marketplace heeft ook de zusterplugins [Stashpad](https://github.com/laaielichter/stashpad) (geheugen voor
 agents dat je kunt lezen en nakijken: `/plugin install stashpad@reverseport`) en
 [agentdisk](https://github.com/laaielichter/agentdisk) (wat agents op je schijf achterlaten, en opruimen met undo:
-`/plugin install agentdisk@reverseport`; daarvoor moet de `agentdisk`-binary geïnstalleerd zijn).
+`/plugin install agentdisk@reverseport`; daarvoor moet de `agentdisk`-binary geïnstalleerd zijn). Met agentdisk
+erbij laat `reverseport port doctor` zien wat opruimen van de werkmap echt oplevert; proof cases en port-plannen
+komen nooit in een opruimplan.
 
 Vanuit de broncode: `git clone https://github.com/laaielichter/reverseport`, dan `npm ci && npm run build` en
 `./bin/reverseport.mjs setup`. De verken-, build-, lookup-, blueprint- en port-commando's werken direct na de clone,
