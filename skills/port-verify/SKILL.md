@@ -28,6 +28,7 @@ ported dependencies, and the open findings. Read it before continuing.
 | `lifecycle callbacks without a counterpart` | Fine when the work moved (e.g. connections replaced by OnTriggerEnter) — check it did.                            |
 | `marked partial`                            | Finish it or explain what is missing and who needs to do it.                                                      |
 | `PORT:` markers                             | Each is an open item: resolve it or list it in the hand-over.                                                     |
+| `behaviour parity`                          | `tick-moved`: put motion back in the physics callback. `delta-dropped/added`: match the source's delta use. `seed-missing`: seed the same way. `order-dropped`: map execution order/deferral. `timescale-dropped`: set the equivalent setting. Prove it with `port_trace`. |
 | `dormant logic`                             | `empty-body`/`thin-body`: port the statements. `unwired`: call or connect it where the source did. `suppression`: remove it and port the real fix. |
 
 Run `port_verify` again until it passes (or the remaining items are explained to the user).

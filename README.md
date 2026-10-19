@@ -135,6 +135,8 @@ See [Connect any agent](docs/connect-any-agent.md).
 | _Rebuild the movement of `<game>` as precisely as possible in Godot._    | `re_blueprint`: systems, parameters to measure, parity table, skeleton          |
 | _Port my Unity UI, prefab variants and Animator to Godot._               | `port_scene`: Control nodes with anchors, inherited scenes, AnimationPlayer + state machine from .anim/.controller |
 | _Port this Unity shader (or a Shadertoy) to Godot._                     | `port_shader`: uniforms, intrinsics and built-ins mapped, `PORT:` markers and leftovers for the rest |
+| _Why does my ported game fall, slide and jump differently?_             | `port_convert {physics}`: gravity, fixed step, damping, friction/bounce rules, layers → masks, jump velocity recomputed |
+| _Does the port really behave the same?_                                 | `port_verify` flags tick/delta/seed/order differences; `port_trace` logs both per tick and finds the first divergence |
 | _Port my Godot game to Unity._                                           | `port_plan` → `port_unit`/`port_write` loop → `port_scene` → `port_verify`      |
 
 ```text
@@ -205,7 +207,7 @@ One MCP server (`reverseport mcp`) serves every tool:
 | `re_binary` `re_archive` `re_probe` `re_extract` `re_compare` `re_refs` `re_strings` `re_apicheck` `re_save` `re_report`   | executables, packs, unknown data, diffs, GUID audit, localisation, API check, save files, ARCHITECTURE.md |
 | `re_lookup` `re_blueprint`                                                                                                 | recon without files, clean-room rebuild specs              |
 | `port_map` `port_convert` `port_plan` `port_unit` `port_write` `port_scene` `port_copy_assets` `port_status` `port_verify` | porting, verified                                          |
-| `port_upgrade` `port_shader`                                                                                               | Godot 3 → 4 as a converted copy plus the manual list; shader first drafts between engines |
+| `port_upgrade` `port_shader` `port_trace`                                                                                  | Godot 3 → 4 as a converted copy plus the manual list; shader first drafts; per-tick behaviour traces compared |
 | `re_case`                                                                                                                  | proof case: evidence, claims, unknowns, decisions, tests   |
 
 Next to these come the deep-analysis tools — `open_binary`, `procedure_pseudo_code`, `xrefs`, `search_strings`, `analyze_javascript_application`,

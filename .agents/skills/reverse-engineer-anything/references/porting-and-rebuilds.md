@@ -99,11 +99,19 @@ Unity → Unreal, or any language.
    references instead of node paths, timers or coroutines instead of awaits.
    Convert every position, direction, rotation, speed and distance with
    `port_convert` (Unreal: centimeters, Z-up; Unity mirrors Z; three.js matches
-   Godot). Leave `PORT:` markers instead of silent gaps.
+   Godot). Physics: `port_convert {from, to, physics: {gravity, fixedStep,
+   linearDamp, friction, bounce, jumpVelocity, layers}}` gives the target
+   settings, converted numbers and the rules that differ (fixed step, damping
+   defaults, friction/bounce combination, per-body masks vs a matrix). Leave
+   `PORT:` markers instead of silent gaps.
 5. `port_verify {planId}` until it passes; `port_status` shows progress. Both
    return `resume`: read it first after a context reset. Verify also flags
    dormant logic (empty or thin bodies, unwired functions and signals, added
-   suppressions); an empty body is not a port. Godot targets: also
+   suppressions) and behaviour parity (motion moved between frame and physics
+   tick, delta dropped, RNG unseeded, execution order lost). To prove behaviour:
+   `port_trace {action:"harness", engine}` in both projects, then
+   `port_trace {action:"compare", a, b}` shows the first divergence per
+   property and whether the error grows. Godot targets: also
    `re_apicheck {path: <output>, engine}` so no Godot 3 names or invented
    members survive.
 6. Tell the user how to open the result. Unity: copy `Assets/` in, then Tools ▸
