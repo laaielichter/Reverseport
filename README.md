@@ -133,6 +133,7 @@ See [Connect any agent](docs/connect-any-agent.md).
 | _How does this Electron app talk to its native side?_                    | maps modules, IPC and Electron boundaries                                       |
 | _What is `<some game>` made with? I don't have the files._               | `re_lookup` from public sources: engine with confidence, stack, layout, remakes |
 | _Rebuild the movement of `<game>` as precisely as possible in Godot._    | `re_blueprint`: systems, parameters to measure, parity table, skeleton          |
+| _Port my Unity UI, prefab variants and Animator to Godot._               | `port_scene`: Control nodes with anchors, inherited scenes, AnimationPlayer + state machine from .anim/.controller |
 | _Port my Godot game to Unity._                                           | `port_plan` → `port_unit`/`port_write` loop → `port_scene` → `port_verify`      |
 
 ```text

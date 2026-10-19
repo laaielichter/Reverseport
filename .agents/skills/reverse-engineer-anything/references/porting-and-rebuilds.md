@@ -89,7 +89,7 @@ Unity → Unreal, or any language.
    PORT-PLAN.md. `port_copy_assets {planId}` copies the assets.
 3. Loop in dependency order: `port_unit {planId}` returns the source, API hints
    with line numbers, conventions and the ported names of dependencies.
-   Scenes: `port_scene {planId, unit}`. Code: write the port, then
+   Scenes, uGUI, prefab variants, `.anim` and `.controller`: `port_scene {planId, unit}`. Code: write the port, then
    `port_write {planId, unit, files}` and fix every leftover and
    missing function it reports before moving on.
 4. Translate behaviour, not syntax: events instead of signals, serialized

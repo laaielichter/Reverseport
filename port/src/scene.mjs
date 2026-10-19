@@ -263,8 +263,41 @@ export async function parseUnityYaml(text, file) {
     if (c.type === 'Rigidbody') { out.mass = Number(c.props.m_Mass ?? 1); out.isKinematic = c.props.m_IsKinematic === '1'; out.useGravity = c.props.m_UseGravity !== '0'; }
     if (c.type === 'AudioSource') out.clip = asset(ref(c.props.m_audioClip));
     if (c.type === 'Animator') out.controller = asset(ref(c.props.m_Controller));
+    // uGUI
+    if (c.type === 'Canvas') { out.renderMode = ['overlay', 'camera', 'world'][Number(c.props.m_RenderMode)] ?? 'overlay'; }
+    if (c.type === 'CanvasScaler') { out.referenceResolution = vec(c.props.m_ReferenceResolution); out.scaleMode = Number(c.props.m_UiScaleMode ?? 0); }
+    if (c.type === 'CanvasGroup') out.alpha = Number(c.props.m_Alpha ?? 1);
+    if (c.type === 'MonoBehaviour') {
+      const n = c.body;
+      const ui = n.match(/^  m_(Sprite|Texture|Text|text|OnClick|MinValue|IsOn|Content|Spacing|FontData|fontSize|HorizontalFit|Alpha|Padding|TargetGraphic|ReferenceResolution|RenderMode|CellSize|ShowMaskGraphic|ChildAlignment|Interactable|Navigation|TextComponent|Transition)\b/m);
+      if (ui) {
+        const num = k => { const m = n.match(new RegExp(`^  ${k}: (-?[\\d.e+-]+)`, 'm')); return m ? Number(m[1]) : undefined; };
+        const str = k => n.match(new RegExp(`^  ${k}: ['"]?([^\\n]*?)['"]?$`, 'm'))?.[1];
+        const color = k => { const m = n.match(new RegExp(`^  ${k}: \\{r: ([\\d.e+-]+), g: ([\\d.e+-]+), b: ([\\d.e+-]+), a: ([\\d.e+-]+)\\}`, 'm')); return m ? m.slice(1, 5).map(Number) : undefined; };
+        const sprite = n.match(/^  m_Sprite: ([^\n]*)/m)?.[1], texture = n.match(/^  m_Texture: ([^\n]*)/m)?.[1];
+        const u = {};
+        if (/^  m_text:/m.test(n) && /^  m_fontSize:/m.test(n)) { u.widget = 'TextMeshPro'; u.text = (n.match(/^  m_text: ([\s\S]*?)\n  m_isRightToLeft:/m)?.[1] ?? str('m_text') ?? '').replace(/^['"]|['"]$/g, '').replace(/\\n/g, '\n').replace(/\n\s{4}/g, '\n'); u.fontSize = num('m_fontSize'); u.color = color('m_fontColor'); u.alignment = num('m_textAlignment'); }
+        else if (/^  m_Text:/m.test(n) && /^  m_FontData:/m.test(n)) { u.widget = 'Text'; u.text = (str('m_Text') ?? '').replace(/\\n/g, '\n'); u.fontSize = Number(n.match(/m_FontSize: (\d+)/)?.[1] ?? 14); u.color = color('m_Color'); u.alignment = Number(n.match(/m_Alignment: (\d+)/)?.[1] ?? 0); }
+        else if (/^  m_Text:/m.test(n) && /^  m_TextComponent:/m.test(n)) { u.widget = 'InputField'; u.text = str('m_Text') ?? ''; }
+        else if (/^  m_OnClick:/m.test(n)) { u.widget = 'Button'; u.onClick = [...n.matchAll(/m_Target: \{fileID: (\d+)\}[\s\S]*?m_MethodName: (\w+)/g)].map(m => ({ target: m[1], method: m[2] })); }
+        else if (/^  m_MinValue:/m.test(n) && /^  m_Direction:/m.test(n)) { u.widget = 'Slider'; u.min = num('m_MinValue'); u.max = num('m_MaxValue'); u.value = num('m_Value'); u.wholeNumbers = /m_WholeNumbers: 1/.test(n); u.vertical = (num('m_Direction') ?? 0) >= 2; }
+        else if (/^  m_IsOn:/m.test(n)) { u.widget = 'Toggle'; u.isOn = /m_IsOn: 1/.test(n); }
+        else if (/^  m_Content:/m.test(n) && /^  m_Horizontal:/m.test(n)) { u.widget = 'ScrollRect'; }
+        else if (/^  m_Spacing:/m.test(n) && /^  m_Padding:/m.test(n)) { u.widget = /m_CellSize/.test(n) ? 'GridLayoutGroup' : /m_ChildForceExpandWidth/.test(n) && c.props.m_Script && /vertical/i.test(String(c.props.m_Script)) ? 'VerticalLayoutGroup' : 'LayoutGroup'; u.spacing = num('m_Spacing') ?? (n.match(/m_Spacing: \{x: ([\d.]+), y: ([\d.]+)\}/) ? Number(n.match(/m_Spacing: \{x: ([\d.]+)/)[1]) : 0); u.constraintCount = num('m_ConstraintCount'); }
+        else if (/^  m_ShowMaskGraphic:/m.test(n)) u.widget = 'Mask';
+        else if (/^  m_ReferenceResolution:/m.test(n)) { u.widget = 'CanvasScaler'; u.referenceResolution = vec(n.match(/^  m_ReferenceResolution: ([^\n]*)/m)?.[1]); u.scaleMode = num('m_UiScaleMode'); }
+        else if (texture !== undefined && /^  m_UVRect:/m.test(n)) { u.widget = 'RawImage'; u.texture = asset(ref(texture)); u.color = color('m_Color'); }
+        else if (sprite !== undefined && /^  m_Type:/m.test(n)) { u.widget = 'Image'; u.sprite = asset(ref(sprite)); u.color = color('m_Color'); u.imageType = ['simple', 'sliced', 'tiled', 'filled'][num('m_Type') ?? 0]; u.preserveAspect = /m_PreserveAspect: 1/.test(n); }
+        if (u.widget) { out.ui = u; }
+      }
+    }
     return out;
   };
+  // Prefab instance overrides beyond name and transform.
+  const overridesOf = d => [...d.body.matchAll(/- target: \{fileID: (-?\d+)(?:, guid: ([0-9a-f]{32}))?[^}]*\}\s*\n\s*propertyPath: ([^\n]+)\n\s*value: ([^\n]*)\n\s*objectReference: ([^\n]*)/g)]
+    .filter(m => !/^m_(Name|LocalPosition|LocalRotation|LocalScale|LocalEulerAnglesHint|RootOrder)\b/.test(m[3]))
+    .map(m => ({ property: m[3].trim(), value: m[4].trim(), ...(ref(m[5]) && ref(m[5]).fileID !== '0' ? { reference: asset(ref(m[5])) ?? m[5].trim() } : {}) }))
+    .slice(0, 100);
   const nodeFor = (tId, seen = new Set()) => {
     if (seen.has(tId)) return null;
     seen.add(tId);
@@ -273,7 +306,8 @@ export async function parseUnityYaml(text, file) {
     if (t.stripped) {
       const pi = byId.get(ref(t.props.m_PrefabInstance)?.fileID);
       const pn = pi ? prefabName(pi) : { name: 'Prefab', source: null };
-      return { name: pn.name, type: 'PrefabInstance', prefab: pn.source, ...(pn.transform ? { transform: pn.transform } : {}), children: [] };
+      const ov = pi ? overridesOf(pi) : [];
+      return { name: pn.name, type: 'PrefabInstance', prefab: pn.source, ...(pn.transform ? { transform: pn.transform } : {}), ...(ov.length ? { overrides: ov } : {}), children: [] };
     }
     const go = gos.get(ref(t.props.m_GameObject)?.fileID);
     const p = vec(t.props.m_LocalPosition), q = vec(t.props.m_LocalRotation), s = vec(t.props.m_LocalScale);
@@ -281,7 +315,7 @@ export async function parseUnityYaml(text, file) {
     const node = {
       name: go?.props.m_Name?.trim() || '(unnamed)', type: 'GameObject',
       transform: { position: [p.x ?? 0, p.y ?? 0, p.z ?? 0].map(r4), rotation: [q.x ?? 0, q.y ?? 0, q.z ?? 0, q.w ?? 1].map(r4), scale: [s.x ?? 1, s.y ?? 1, s.z ?? 1].map(r4) },
-      ...(t.type === 'RectTransform' ? { ui: true } : {}),
+      ...(t.type === 'RectTransform' ? { ui: true, rect: { anchorMin: vec(t.props.m_AnchorMin), anchorMax: vec(t.props.m_AnchorMax), anchoredPosition: vec(t.props.m_AnchoredPosition), sizeDelta: vec(t.props.m_SizeDelta), pivot: vec(t.props.m_Pivot) } } : {}),
       ...(go?.props.m_TagString && go.props.m_TagString !== 'Untagged' ? { tag: go.props.m_TagString } : {}),
       ...(go?.props.m_IsActive === '0' ? { active: false } : {}),
       components: comps, children: [],
@@ -294,7 +328,7 @@ export async function parseUnityYaml(text, file) {
   // Prefab instances whose parent is the scene root
   for (const d of docs.filter(x => x.type === 'PrefabInstance')) {
     const parent = d.body.match(/m_TransformParent: ([^\n]*)/)?.[1];
-    if (ref(parent)?.fileID === '0') { const pn = prefabName(d); roots.push({ name: pn.name, type: 'PrefabInstance', prefab: pn.source, transform: pn.transform, children: [] }); }
+    if (ref(parent)?.fileID === '0') { const pn = prefabName(d); const ov = overridesOf(d); roots.push({ name: pn.name, type: 'PrefabInstance', prefab: pn.source, transform: pn.transform, ...(ov.length ? { overrides: ov } : {}), children: [] }); }
   }
   const count = n => 1 + n.children.reduce((s, c) => s + count(c), 0);
   const ext = path.extname(file).toLowerCase();

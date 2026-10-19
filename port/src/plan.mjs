@@ -16,6 +16,7 @@ import { readScene, parseGodotScene, parseUnityYaml } from './scene.mjs';
 import { convertTree } from './convert.mjs';
 import { writeTscn, unitySpec, threeModule, unrealSpec, scaffold, sceneFunctionName } from './porters.mjs';
 import { dormantFindings, resumePack } from './dormant.mjs';
+import { readUnityAnimation, clipToTres, controllerToGd, snake as animSnake } from './unity-anim.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const TARGETS = ['godot', 'godot-csharp', 'unity', 'unreal', 'threejs'];
@@ -25,7 +26,7 @@ const MAX_UNIT_SOURCE = 200 * 1024;
 const plansDir = () => workspaceDir('ports');
 const planFile = async id => path.join(await plansDir(), id, 'plan.json');
 
-async function loadPlan(id) {
+export async function loadPlan(id) {
   if (!id || !/^[a-z0-9-]{3,80}$/.test(id)) throw new RPError('INVALID_ARGUMENT', 'Give a planId (port_status lists them).');
   const plan = await readJson(await planFile(id), null);
   if (!plan) throw new RPError('UNKNOWN_PLAN', `No port plan "${id}". port_status without planId lists the plans.`);
@@ -46,7 +47,7 @@ const callText = c => `${c.tool} ${JSON.stringify(c.arguments)}`;
 function nextCallObj(plan) {
   const u = nextUnit(plan);
   if (!u) return call('port_verify', { planId: plan.id });
-  if (u.kind === 'scene') return call('port_scene', { planId: plan.id, unit: u.id });
+  if (u.kind === 'scene' || (u.kind === 'animation' && u.action === 'convert-scene')) return call('port_scene', { planId: plan.id, unit: u.id });
   if (u.kind === 'asset') return call('port_copy_assets', { planId: plan.id });
   return call('port_unit', { planId: plan.id });
 }
@@ -98,6 +99,11 @@ function targetPath(rel, kind, ctx) {
     const tExt = LANGUAGE_TARGETS[to] ?? ext;
     return j(dir, `${base}${tExt}`);
   }
+  if (kind === 'animation') {
+    const isCtrl = ext === '.controller';
+    if (to === 'godot' || to === 'godot-csharp') return j('animations', dir.replace(/^(Animations?|Anim)(\/|$)/, ''), isCtrl ? `${snakeCase(base)}_animator.gd` : `${snakeCase(base)}.tres`);
+    return j('ReversePort', 'Notes', `${p}.md`);
+  }
   if (kind === 'scene') {
     if (to === 'godot') return j('scenes', dir.replace(/^(Scenes|Prefabs)(\/|$)/, ''), `${snakeCase(base)}.tscn`);
     if (to === 'godot-csharp') return rel;
@@ -122,6 +128,7 @@ function kindOf(f) {
   if (/\.(import|meta|uid)$/i.test(f.rel)) return null;
   if (lang === 'godot-scene' || lang === 'unity-scene' || lang === 'unity-prefab') return 'scene';
   if (lang === 'godot-resource') return 'resource';
+  if (/\.(anim|controller)$/i.test(f.rel) && /(^|\/)Assets\//.test(f.rel)) return 'animation';
   if (lang === 'shader') return 'shader';
   if (cat === 'code') return 'script';
   if (['image', 'audio', 'model', 'font', 'video'].includes(cat)) return 'asset';
@@ -164,7 +171,7 @@ export async function planPort({ source, to, output, name, include, exclude, unr
     const kind = kindOf(f);
     if (!kind) continue;
     const node = graph.nodes.get(f.rel);
-    let action = kind === 'asset' ? 'copy' : kind === 'scene' ? (['godot', 'unity', 'threejs', 'unreal', 'godot-csharp'].includes(target) ? 'convert-scene' : 'rebuild') : kind === 'config' ? 'rebuild' : 'translate';
+    let action = kind === 'asset' ? 'copy' : kind === 'scene' ? (['godot', 'unity', 'threejs', 'unreal', 'godot-csharp'].includes(target) ? 'convert-scene' : 'rebuild') : kind === 'animation' ? (target === 'godot' ? 'convert-scene' : 'rebuild') : kind === 'config' ? 'rebuild' : 'translate';
     if (target === 'godot-csharp' && ctx.from === 'godot' && (kind === 'resource' || (kind === 'config' && /project\.godot$/.test(f.rel)))) action = 'convert-scene';
     const unit = { source: f.rel, kind, language: languageOf(f.rel), size: f.size, lines: node?.lines ?? null, target: targetPath(f.rel, kind, ctx), action, status: 'pending' };
     if (target === 'unreal' && kind === 'script') unit.extraTargets = [unit.target.replace(/\.h$/, '.cpp')];
@@ -281,6 +288,10 @@ export async function portUnit({ planId, unit, full = false } = {}) {
   if (u.status === 'pending') { u.status = 'in_progress'; u.started = new Date().toISOString(); await savePlan(plan); }
   result.checklist = repeat ? 'Same checklist as the earlier units (port_unit {planId, unit, full:true} repeats it).' : CHECKLIST[u.kind] ?? CHECKLIST.script;
   if (u.kind === 'asset') { const c = call('port_write', { planId, unit: u.id, copy: true }); return { ...result, next: callText(c), nextCall: c }; }
+  if (u.kind === 'animation' && u.action === 'convert-scene') {
+    const c = call('port_scene', { planId, unit: u.id });
+    return { ...result, next: callText(c), nextCall: c };
+  }
   if (u.kind === 'scene') {
     const scene = await readScene(abs).catch(e => ({ error: e.message }));
     const c = call('port_scene', { planId, unit: u.id });
@@ -446,7 +457,7 @@ export async function portVerify({ planId } = {}) {
     if (['pending', 'in_progress'].includes(u.status)) { notPorted.push(u.id); continue; }
     const files = u.written ?? [];
     for (const rel of files) if (!(await statOrNull(safeJoin(plan.output, rel)))) errors.push({ unit: u.id, issue: `written file is missing: ${rel}` });
-    if (u.kind === 'asset' || u.kind === 'scene' || u.kind === 'config') continue;
+    if (u.kind === 'asset' || u.kind === 'scene' || u.kind === 'config' || u.kind === 'animation') continue;
     const texts = [];
     for (const rel of files) { const b = await fs.readFile(safeJoin(plan.output, rel)).catch(() => null); if (b && isText(b)) texts.push(b.toString('utf8')); }
     if (!texts.length) continue;
@@ -502,11 +513,71 @@ async function sceneTree(abs) {
   throw new RPError('UNSUPPORTED_SCENE', 'Scene conversion needs a Godot .tscn or a Unity .unity/.prefab saved as text.');
 }
 
+/** For every Animator controller used in a Unity tree: its ported script and the clips already ported (by plan). */
+async function animatorInfos(plan, root, resolveFromPlan) {
+  const out = new Map();
+  const visit = async n => {
+    const a = (n.components ?? []).find(c => c.type === 'Animator');
+    if (a && !out.has(a.controller ?? null)) {
+      const info = { clips: [], missing: [], script: null };
+      if (a.controller && plan && !a.controller.startsWith('guid:')) {
+        const t = resolveFromPlan(a.controller);
+        info.script = t ? `res://${t}` : null;
+        try {
+          const { controller } = await readUnityAnimation(path.join(plan.source, plan.sourceRoot ? `${plan.sourceRoot}/${a.controller}` : a.controller));
+          for (const st of controller.layers[0]?.states ?? []) {
+            if (!st.motion) continue;
+            const res = resolveFromPlan(st.motion);
+            const name = animSnake(path.basename(st.motion).replace(/\.anim$/i, ''));
+            if (res && !info.clips.some(c => c.name === name)) info.clips.push({ name, res: `res://${res}` }); else if (!res) info.missing.push(st.motion);
+          }
+        } catch { /* controller unreadable: the node gets a todo */ }
+      }
+      out.set(a.controller ?? null, info);
+    }
+    for (const c of n.children ?? []) await visit(c);
+  };
+  await visit(root);
+  return out;
+}
+
+async function portUnityAnimation({ plan, u, abs, target, out }) {
+  if (target !== 'godot') throw new RPError('INVALID_ARGUMENT', 'Unity .anim/.controller conversion targets Godot; other targets get a rebuild note from port_unit.');
+  const parsed = await readUnityAnimation(abs);
+  const resolveFromPlan = ref => { if (!plan || !ref) return null; const rel = plan.sourceRoot ? `${plan.sourceRoot}/${ref}` : ref; return plan.units.find(x => x.source === rel || x.source.toLowerCase() === rel.toLowerCase())?.target ?? null; };
+  let content, notes = [], summary;
+  if (parsed.kind === 'unity-animation') {
+    const r = clipToTres(parsed.clip, { coords: 'unity-3d', resolve: ref => { const t = resolveFromPlan(ref); return t ? `res://${t}` : null; } });
+    content = r.text; summary = { tracks: r.tracks, length: parsed.clip.length, loop: parsed.clip.loop, todo: r.todo };
+    notes.push(`${r.tracks} track(s); positions mirrored on Z. Add this Animation to the AnimationPlayer library of the node that had the Animator (port_scene does that for prefabs ported after this clip).`);
+    if (r.todo.length) notes.push(...r.todo);
+  } else {
+    const ctrl = parsed.controller;
+    const r = controllerToGd(ctrl, { className: `${pascalCase(path.basename(abs, '.controller'))}Animator`, resolveClip: ref => (ref && resolveFromPlan(ref) ? animSnake(path.basename(ref).replace(/\.anim$/i, '')) : null) });
+    content = r.text; summary = { states: r.states, transitions: r.transitions, parameters: ctrl.parameters.length, todo: r.todo };
+    notes.push('A GDScript state machine with the same states, parameters and conditions, driving an AnimationPlayer; port_scene puts it on an "Animator" child of every node that used this controller. Blend trees and extra layers need an AnimationTree by hand.');
+    if (r.todo.length) notes.push(...r.todo);
+  }
+  if (plan) {
+    const written = await writeFiles(plan, u, [{ path: u.target, content }]);
+    u.status = 'done'; u.written = written; u.finished = new Date().toISOString(); u.notes = notes.join(' ');
+    plan.log.push({ at: u.finished, event: 'scene', unit: u.id, files: written });
+    await savePlan(plan);
+    return withNext(plan, { planId: plan.id, unit: u.id, written: written.map(r => path.join(plan.output, r)), ...summary, notes, progress: progress(plan) });
+  }
+  const name = path.basename(abs).replace(/\.[^.]+$/, '');
+  const dest = out ? path.resolve(out) : path.join(await workspaceDir('scenes'), parsed.kind === 'unity-animation' ? `${snakeCase(name)}.tres` : `${snakeCase(name)}_animator.gd`);
+  await fs.mkdir(path.dirname(dest), { recursive: true });
+  await fs.writeFile(dest, content);
+  return { file: dest, target, ...summary, notes, preview: content.slice(0, 4000) };
+}
+
 export async function portScene({ planId, unit, file, to, out } = {}) {
   let plan = null, u = null, abs, target;
   if (planId) { plan = await loadPlan(planId); u = unit ? findUnit(plan, unit) : plan.units.find(x => x.action === 'convert-scene' && x.status !== 'done'); if (!u) return { planId, message: 'No scene units left.' }; if (u.action !== 'convert-scene') throw new RPError('INVALID_ARGUMENT', `Unit ${u.id} (${u.kind}) is not a scene conversion; use port_unit/port_write.`); abs = path.join(plan.source, u.source); target = plan.to; }
   else { if (!file || !to) throw new RPError('INVALID_ARGUMENT', 'Give {planId, unit} or {file, to}.'); abs = path.resolve(file); target = normEngine(to); }
   if (target === 'godot-csharp') return swapToCsharp(plan, u, abs, resolveRef => resolveRef);
+  if (/\.(anim|controller)$/i.test(abs)) return portUnityAnimation({ plan, u, abs, target, out });
   const { engine, parsed } = await sceneTree(abs);
   const resolveFromPlan = (srcRef, kindWanted) => {
     if (!plan || !srcRef) return null;
@@ -523,7 +594,8 @@ export async function portScene({ planId, unit, file, to, out } = {}) {
   if (target === 'godot') {
     if (engine !== 'unity') throw new RPError('INVALID_ARGUMENT', 'Scene → Godot conversion reads Unity scenes/prefabs.');
     const tree = convertTree(parsed.root, 'unity', 'godot');
-    content = writeTscn(tree, { engine: 'unity', name, resolve: ref => { const t = resolveFromPlan(ref); return t ? `res://${t}` : null; } });
+    const animators = await animatorInfos(plan, parsed.root, resolveFromPlan);
+    content = writeTscn(tree, { engine: 'unity', name, resolve: ref => { const t = resolveFromPlan(ref); return t ? `res://${t}` : null; }, animator: ref => animators.get(ref ?? null) ?? null });
     notes.push('Meshes from model files are placeholders (metadata/reverseport_todo); import the models in Godot and assign them.');
   } else if (target === 'unity') {
     if (engine !== 'godot') throw new RPError('INVALID_ARGUMENT', 'Scene → Unity conversion reads Godot .tscn scenes.');

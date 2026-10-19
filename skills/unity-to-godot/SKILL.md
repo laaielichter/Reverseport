@@ -22,7 +22,15 @@ Use the port-project skill for the loop; this skill holds the Unity-specific jud
 AnimatableBody3D), CharacterController → CharacterBody3D, trigger colliders → Area3D, other colliders →
 StaticBody3D, Box/Sphere/Capsule colliders → CollisionShape3D, built-in primitives → BoxMesh/SphereMesh/…, Camera,
 Light, AudioSource, tags → groups, prefab instances → instanced scenes, scripts → the ported script. Transforms are
-mirrored on Z. Model meshes, materials, animators and UI are flagged as `metadata/reverseport_todo` in the scene.
+mirrored on Z. Prefab variants become inherited scenes (`instance=`) with `m_IsActive` applied and other
+overrides listed. uGUI becomes Control nodes: Canvas → full-rect Control, Image/RawImage → TextureRect, Text and
+TextMeshPro → Label (size, colour, alignment), Button → Button (label text, OnClick listed), Slider/Toggle/
+ScrollRect/InputField/layout groups → HSlider/CheckBox/ScrollContainer/LineEdit/Box- and GridContainer, with
+RectTransform anchors and offsets converted (Y flipped). Animator → an `AnimationPlayer` whose library holds the
+ported clips plus an `Animator` child running the ported controller script. `.anim` files port to Godot
+`Animation` resources (position/rotation/scale/property/sprite-swap/event tracks); `.controller` files port to a
+GDScript state machine with the same states, parameters and transition conditions (blend trees and extra layers
+are listed for an AnimationTree by hand). Model meshes and materials stay flagged as `metadata/reverseport_todo`.
 
 ## Code: the usual translations
 
