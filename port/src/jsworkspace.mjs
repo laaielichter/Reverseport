@@ -80,7 +80,7 @@ export function packageCandidates({ dir, pkg }, sub) {
       const pre = k.slice(0, star), post = k.slice(star + 1);
       if (key.startsWith(pre) && key.endsWith(post) && key.length >= pre.length + post.length) {
         const t = exportTarget(v);
-        if (t) out.push(t.replace('*', key.slice(pre.length, key.length - post.length)));
+        if (t) out.push(t.replaceAll('*', () => key.slice(pre.length, key.length - post.length))); // Node replaces every * in the target; the function keeps $&, $1… in the match literal
       }
     }
   } else if (!sub && (typeof ex === 'string' || Array.isArray(ex))) { const t = exportTarget(ex); if (t) out.push(t); }
@@ -144,7 +144,7 @@ export async function tsconfigAliases(files, byRel) {
             if (!spec.startsWith(pre) || !spec.endsWith(post) || spec.length < pre.length + post.length) continue;
             wild = spec.slice(pre.length, spec.length - post.length);
           }
-          for (const t of [targets].flat()) if (typeof t === 'string') out.push(path.posix.normalize(path.posix.join(cfg.baseDir || '.', t.replace('*', wild))));
+          for (const t of [targets].flat()) if (typeof t === 'string') out.push(path.posix.normalize(path.posix.join(cfg.baseDir || '.', t.replaceAll('*', () => wild))));
         }
         return out;
       }
