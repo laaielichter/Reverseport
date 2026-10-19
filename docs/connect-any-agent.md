@@ -93,6 +93,14 @@ deep-analysis engine uses (`$ref`, unions, dependent fields). `REVERSEPORT_SCHEM
 form they accept (the `compact` profile always does), and the HTTP formats `openai-strict`, `responses` and `gemini`
 always do. The server still validates the full schema.
 
+## Big results do not flood the context
+
+Over MCP and HTTP, a tool result larger than 256 KB is saved whole to `~/.reverseport/tool-output/` (or under
+`REVERSEPORT_HOME`). The agent gets a shortened result: the longest lists keep their first items, long text keeps its
+first lines, and `outputTruncated` (or a closing line for plain text) says what was shortened and where the full
+result is. Saved results are removed after 7 days. `REVERSEPORT_MAX_OUTPUT_BYTES` sets another limit (at least 4096
+bytes), or `off`. The CLI always prints the full result.
+
 ## Errors look the same everywhere
 
 Tool calls on every door return the same error object, so an agent can act on it without guessing:

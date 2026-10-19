@@ -181,7 +181,23 @@ function coerce(schema, value, adjusted = null, at = '') {
     }
   }
   if ((schema?.type === 'integer' && typeof value === 'string' && /^-?\d+$/.test(value.trim())) || (schema?.type === 'number' && typeof value === 'string' && value.trim() !== '' && Number.isFinite(Number(value)))) return Number(value);
-  if (schema?.type === 'boolean' && (value === 'true' || value === 'false')) return value === 'true';
+  if (schema?.type === 'boolean' && typeof value === 'string') {
+    const b = value.trim().toLowerCase();
+    if (b === 'true' || b === 'false') return b === 'true';
+    if (adjusted && ['yes', 'no', 'on', 'off', '1', '0'].includes(b)) { adjusted[at] = `read "${value}" as ${['yes', 'on', '1'].includes(b)}`; return ['yes', 'on', '1'].includes(b); }
+  }
+  if (schema?.type === 'boolean' && adjusted && (value === 1 || value === 0)) { adjusted[at] = `read ${value} as ${value === 1}`; return value === 1; }
+  // "Godot" for "godot", "Mermaid " for "mermaid": only when exactly one allowed value matches.
+  if (schema?.type === 'string' && Array.isArray(schema.enum) && typeof value === 'string' && !schema.enum.includes(value) && adjusted) {
+    const norm = x => String(x).trim().toLowerCase().replace(/[\s_-]+/g, '');
+    const hits = schema.enum.filter(e => norm(e) === norm(value));
+    if (hits.length === 1) { adjusted[at] = `read "${value}" as "${hits[0]}"`; return hits[0]; }
+  }
+  if (schema?.type === 'array' && typeof value === 'string' && adjusted) {
+    // A JSON list sent as text, or one value where a list is expected.
+    if (/^\s*\[/.test(value)) { try { const parsed = JSON.parse(value); if (Array.isArray(parsed)) { adjusted[at] = 'parsed the list from text'; return parsed.map((v, i) => coerce(schema.items, v, adjusted, `${at}[${i}]`)); } } catch { /* not JSON: validation explains */ } }
+    else if (schema.items?.type === 'string' && value.trim() !== '') { adjusted[at] = 'wrapped the single value in a list'; return [value]; }
+  }
   if (schema?.type === 'array' && Array.isArray(value)) return value.map((v, i) => coerce(schema.items, v, adjusted, `${at}[${i}]`));
   return value;
 }

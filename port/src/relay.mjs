@@ -15,6 +15,7 @@ import { fileURLToPath } from 'node:url';
 import { tools as localToolDefs, callTool, coerceArgs, VERSION } from './tools.mjs';
 import { errorPayload, closest, portableSchema } from './agent.mjs';
 import { RPError } from './util.mjs';
+import { budgetValue, budgetMcpResult } from './budget.mjs';
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 export const SUPPORTED_PROTOCOLS = ['2025-11-25', '2025-06-18', '2025-03-26', '2024-11-05'];
@@ -366,12 +367,12 @@ export function createRelay(hooks = {}, options = {}) {
     const input = coerceArgs(schema, dropDisallowedNulls(schema, args ?? {}));
     const res = await engine.forward('tools/call', { name, arguments: input, ...(meta ? { _meta: meta } : {}) }, clientKey);
     if (!res.error && !res.result?.structuredContent?.error?.code?.startsWith?.('ENGINE_')) state.restarts = 0; // a working call resets the restart budget
-    return res.error ? toolError(Object.assign(new Error(res.error.message), { code: 'TOOL_FAILED', details: { rpc: res.error } })) : res.result;
+    return res.error ? toolError(Object.assign(new Error(res.error.message), { code: 'TOOL_FAILED', details: { rpc: res.error } })) : budgetMcpResult(name, res.result);
   }
 
   async function runLocal(name, args) {
     const def = localToolDefs.find(t => t.name === name);
-    const run = async () => { try { return toolResult(await callTool(name, args ?? {})); } catch (e) { return toolError(e); } };
+    const run = async () => { try { return toolResult(await budgetValue(name, await callTool(name, args ?? {}))); } catch (e) { return toolError(e); } };
     if (def?.annotations?.readOnlyHint) return run();
     const p = writerQueue.then(run);
     writerQueue = p.catch(() => {});
