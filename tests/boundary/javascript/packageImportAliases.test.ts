@@ -120,7 +120,12 @@ const resolveAlias = (
 describe("literal package import keys compared with Node", () => {
   it("matches literal imports keys containing path-like bytes in both Node loaders", async () => {
     const root = await createTestTempDirectory("rea-import-alias-literal-");
-    const specifiers = ["#/x", "#x%2Fy", "#x%2Ey", "#x\\y", "#x\0y"];
+    // Node 22 rejects import keys that start with "#/" (ERR_INVALID_MODULE_SPECIFIER); Node 24 accepts them.
+    // The engine follows Node 24, so that key is only compared with a Node that agrees.
+    const nodeMajor = Number(process.versions.node.split(".")[0]);
+    const specifiers = ["#/x", "#x%2Fy", "#x%2Ey", "#x\\y", "#x\0y"].filter(
+      (specifier) => nodeMajor >= 24 || !specifier.startsWith("#/"),
+    );
     const contents = await writeTree(root, {
       "package.json": JSON.stringify({
         imports: Object.fromEntries(
