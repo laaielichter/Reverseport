@@ -138,3 +138,25 @@ test('open unknowns block delivery until answered or carried as a limitation', a
   assert.equal((await call({ action: 'phase', caseId, to: 'deliver' })).phase, 'deliver');
   assert.equal((await call({ action: 'show', caseId })).counts.openUnknowns, 0);
 });
+
+test('the CLI takes list arguments as JSON, as plain ids, or as repeated flags', async () => {
+  const { parseArgs } = await import('../cli.mjs');
+  const claim = (...argv) => parseArgs('re_case', ['claim', 'c1', '--statement', 'x', ...argv]).evidence;
+  assert.deepEqual(claim('--evidence', '["E001","E002"]'), ['E001', 'E002']);
+  assert.deepEqual(claim('--evidence', 'E001'), ['E001']);
+  assert.deepEqual(claim('--evidence', 'E001,E002'), ['E001', 'E002']);
+  assert.deepEqual(claim('--evidence=E001, E002'), ['E001', 'E002']);
+  assert.deepEqual(claim('--evidence', 'E001', '--evidence', 'E002'), ['E001', 'E002']);
+  const decision = parseArgs('re_case', ['decision', 'c1', '--choose', 'port', '--claims', 'C001,C002', '--instead-of', 'rewrite it, from scratch']);
+  assert.deepEqual(decision.claims, ['C001', 'C002']);
+  assert.deepEqual(decision.insteadOf, ['rewrite it, from scratch']);
+  assert.deepEqual(parseArgs('re_case', ['decision', 'c1', '--insteadOf', '["a, b","c"]']).insteadOf, ['a, b', 'c']);
+
+  // End to end: a plain id now reaches the ledger as a list.
+  const src = path.join(await tempDir(), 'a.txt');
+  await fs.writeFile(src, 'hello\n');
+  const { caseId } = await call({ action: 'init', question: 'Does the CLI accept plain evidence ids?', target: 'a.txt', authorized: true });
+  await call({ action: 'evidence', caseId, file: src, locator: 'a.txt:1', note: 'greeting' });
+  const out = await call(parseArgs('re_case', ['claim', caseId, '--statement', 'It greets', '--evidence', 'E001']));
+  assert.equal(out.claim, 'C001');
+});

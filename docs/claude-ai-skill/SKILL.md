@@ -59,7 +59,7 @@ node bin/reverseport.mjs status [planId]
 node bin/reverseport.mjs verify <planId>
 node bin/reverseport.mjs case init --question "…" --target <what> [--authorized]   # proof case (returns caseId)
 node bin/reverseport.mjs case evidence <caseId> --file f | --content "…" --locator L --note N
-node bin/reverseport.mjs case claim <caseId> --statement S --evidence '["E001"]' [--confidence observed --alternative A --falsifier F]
+node bin/reverseport.mjs case claim <caseId> --statement S --evidence E001 [--confidence observed --alternative A --falsifier F]
 node bin/reverseport.mjs case unknown|resolve|decision|test|limit|phase|check|report|show <caseId> …
 ```
 

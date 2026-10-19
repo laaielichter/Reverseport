@@ -24,7 +24,7 @@ delivering). `check` verifies hashes, references and gates at any time; `report`
 ```bash
 reverseport case init --question "Which engine made this build?" --target ./Build --authorized
 reverseport case evidence <caseId> --file ./Build/Game.pck --locator "Build/Game.pck" --note "pack header"
-reverseport case claim <caseId> --statement "Godot 4.3 pack" --evidence '["E001"]' --confidence observed \
+reverseport case claim <caseId> --statement "Godot 4.3 pack" --evidence E001 --confidence observed \
   --locator "offset 0: GDPC v2, 4.3.0" --alternative "Repacked by a mod tool" --falsifier "Check the .exe version string"
 reverseport case check <caseId>
 reverseport case report <caseId>
