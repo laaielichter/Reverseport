@@ -48,6 +48,21 @@ These tools run without an analysis engine or provider:
 - Quick look at an executable, pack or unknown file: `re_binary`, `re_archive`
   (Godot `.pck` also inside an `.exe`, zip/apk/jar, tar.gz, asar), `re_probe`,
   `re_extract`. Two builds: `re_compare`. Write-up: `re_report`.
+- Unity project with pink materials, "missing script" components or GUID
+  trouble after moving files: `re_refs` (reports only; fix in Unity).
+- Localisation: `re_strings` extracts user-facing text (Godot, Unity, RPG
+  Maker, Ren'Py, i18n JSON) to .pot/.csv with stable ids; `action:"apply"`
+  writes a translated copy and checks placeholders. Never edit strings by hand.
+- Godot code you or a model wrote: `re_apicheck {path, engine:"godot@4.3"}`
+  before opening Godot. Fix every renamed-* with its replacement and every
+  unknown-* with a real API; never invent members.
+- Godot 3 project → Godot 4: `port_upgrade {path, action:"apply"}` writes a
+  converted copy and lists what needs a human (setget, Tween nodes,
+  move_and_slide arguments…); fix those, then `re_apicheck` on the copy.
+- Save files: `re_save {file, compare}` peels gzip/base64/LZ-String/JSON/
+  INI/store_var, names the fields by role, verifies checksums and diffs two
+  saves; `action:"schema"` writes SaveData.gd/.cs to port the format.
+  Encrypted or obfuscated saves are reported, never decoded.
 - No files, only a name, store page, website or public repository: `re_lookup`,
   then `re_blueprint` for a clean-room rebuild spec measured against the original.
 - Port between engines or languages: `port_map` → `port_plan` → `port_unit` /
@@ -66,7 +81,8 @@ explicit path or endpoint and do not need it.
 
 - ASAR or extracted JavaScript/Electron tree:
   `analyze_javascript_application`.
-- Archive or pack members (zip/apk/jar/asar, Godot .pck): `re_archive` to list
+- Archive or pack members (zip/apk/jar/asar, Godot .pck, Ren'Py .rpa, GameMaker
+  data.win, FMOD/Wwise banks, Unreal .pak, Flash .swf): `re_archive` to list
   or extract. IPA/MSIX/AppX/DMG, or when you need Evidence IDs and integrity
   findings: `open_binary` with the local path, then `inspect_artifact`.
 - Android APK code, classes, methods, or incoming references:

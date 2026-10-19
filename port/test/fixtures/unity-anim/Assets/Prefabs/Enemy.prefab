@@ -1,0 +1,26 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!1 &100
+GameObject:
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 101}
+  - component: {fileID: 102}
+  m_Layer: 0
+  m_Name: Enemy
+  m_TagString: Enemy
+  m_IsActive: 1
+--- !u!4 &101
+Transform:
+  m_GameObject: {fileID: 100}
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_Children: []
+  m_Father: {fileID: 0}
+--- !u!95 &102
+Animator:
+  m_GameObject: {fileID: 100}
+  m_Enabled: 1
+  m_Avatar: {fileID: 0}
+  m_Controller: {fileID: 9100000, guid: eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee, type: 2}

@@ -1,0 +1,205 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!1 &100
+GameObject:
+  m_ObjectHideFlags: 0
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 101}
+  - component: {fileID: 102}
+  - component: {fileID: 103}
+  m_Layer: 5
+  m_Name: Canvas
+  m_TagString: Untagged
+  m_IsActive: 1
+--- !u!224 &101
+RectTransform:
+  m_GameObject: {fileID: 100}
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_Children:
+  - {fileID: 201}
+  - {fileID: 301}
+  m_Father: {fileID: 0}
+  m_AnchorMin: {x: 0, y: 0}
+  m_AnchorMax: {x: 0, y: 0}
+  m_AnchoredPosition: {x: 0, y: 0}
+  m_SizeDelta: {x: 0, y: 0}
+  m_Pivot: {x: 0, y: 0}
+--- !u!223 &102
+Canvas:
+  m_GameObject: {fileID: 100}
+  m_Enabled: 1
+  m_RenderMode: 0
+  m_SortingOrder: 0
+--- !u!114 &103
+MonoBehaviour:
+  m_GameObject: {fileID: 100}
+  m_Enabled: 1
+  m_Script: {fileID: 1980459831, guid: f70555f144d8491a825f0804e09c671c, type: 3}
+  m_Name: 
+  m_UiScaleMode: 1
+  m_ReferencePixelsPerUnit: 100
+  m_ScaleFactor: 1
+  m_ReferenceResolution: {x: 1920, y: 1080}
+  m_ScreenMatchMode: 0
+  m_MatchWidthOrHeight: 0.5
+--- !u!1 &200
+GameObject:
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 201}
+  - component: {fileID: 202}
+  m_Layer: 5
+  m_Name: HealthBar
+  m_TagString: Untagged
+  m_IsActive: 1
+--- !u!224 &201
+RectTransform:
+  m_GameObject: {fileID: 200}
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_Children:
+  - {fileID: 401}
+  m_Father: {fileID: 101}
+  m_AnchorMin: {x: 0, y: 1}
+  m_AnchorMax: {x: 0, y: 1}
+  m_AnchoredPosition: {x: 120, y: -40}
+  m_SizeDelta: {x: 200, y: 30}
+  m_Pivot: {x: 0.5, y: 0.5}
+--- !u!114 &202
+MonoBehaviour:
+  m_GameObject: {fileID: 200}
+  m_Enabled: 1
+  m_Script: {fileID: -765806418, guid: f70555f144d8491a825f0804e09c671c, type: 3}
+  m_Name: 
+  m_Material: {fileID: 0}
+  m_Color: {r: 1, g: 0.2, b: 0.2, a: 1}
+  m_RaycastTarget: 1
+  m_Sprite: {fileID: 21300000, guid: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa, type: 3}
+  m_Type: 3
+  m_PreserveAspect: 0
+  m_FillCenter: 1
+  m_FillMethod: 0
+  m_FillAmount: 0.75
+--- !u!1 &300
+GameObject:
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 301}
+  - component: {fileID: 302}
+  m_Layer: 5
+  m_Name: StartButton
+  m_TagString: Untagged
+  m_IsActive: 1
+--- !u!224 &301
+RectTransform:
+  m_GameObject: {fileID: 300}
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_Children:
+  - {fileID: 501}
+  m_Father: {fileID: 101}
+  m_AnchorMin: {x: 0.5, y: 0.5}
+  m_AnchorMax: {x: 0.5, y: 0.5}
+  m_AnchoredPosition: {x: 0, y: -100}
+  m_SizeDelta: {x: 160, y: 40}
+  m_Pivot: {x: 0.5, y: 0.5}
+--- !u!114 &302
+MonoBehaviour:
+  m_GameObject: {fileID: 300}
+  m_Enabled: 1
+  m_Script: {fileID: 1392445389, guid: f70555f144d8491a825f0804e09c671c, type: 3}
+  m_Name: 
+  m_Navigation:
+    m_Mode: 3
+  m_Transition: 1
+  m_Interactable: 1
+  m_TargetGraphic: {fileID: 0}
+  m_OnClick:
+    m_PersistentCalls:
+      m_Calls:
+      - m_Target: {fileID: 600}
+        m_TargetAssemblyTypeName: GameManager, Assembly-CSharp
+        m_MethodName: StartGame
+        m_Mode: 1
+        m_Arguments:
+          m_ObjectArgument: {fileID: 0}
+        m_CallState: 2
+--- !u!1 &400
+GameObject:
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 401}
+  - component: {fileID: 402}
+  m_Layer: 5
+  m_Name: Label
+  m_TagString: Untagged
+  m_IsActive: 1
+--- !u!224 &401
+RectTransform:
+  m_GameObject: {fileID: 400}
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_Children: []
+  m_Father: {fileID: 201}
+  m_AnchorMin: {x: 0, y: 0}
+  m_AnchorMax: {x: 1, y: 1}
+  m_AnchoredPosition: {x: 0, y: 0}
+  m_SizeDelta: {x: 0, y: 0}
+  m_Pivot: {x: 0.5, y: 0.5}
+--- !u!114 &402
+MonoBehaviour:
+  m_GameObject: {fileID: 400}
+  m_Enabled: 1
+  m_Script: {fileID: 708705254, guid: f70555f144d8491a825f0804e09c671c, type: 3}
+  m_Name: 
+  m_Material: {fileID: 0}
+  m_Color: {r: 1, g: 1, b: 1, a: 1}
+  m_FontData:
+    m_Font: {fileID: 10102, guid: 0000000000000000e000000000000000, type: 0}
+    m_FontSize: 18
+    m_FontStyle: 0
+    m_BestFit: 0
+    m_Alignment: 4
+    m_HorizontalOverflow: 0
+  m_Text: 'HP: 100'
+--- !u!1 &500
+GameObject:
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 501}
+  - component: {fileID: 502}
+  m_Layer: 5
+  m_Name: Text (TMP)
+  m_TagString: Untagged
+  m_IsActive: 1
+--- !u!224 &501
+RectTransform:
+  m_GameObject: {fileID: 500}
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_Children: []
+  m_Father: {fileID: 301}
+  m_AnchorMin: {x: 0, y: 0}
+  m_AnchorMax: {x: 1, y: 1}
+  m_AnchoredPosition: {x: 0, y: 0}
+  m_SizeDelta: {x: 0, y: 0}
+  m_Pivot: {x: 0.5, y: 0.5}
+--- !u!114 &502
+MonoBehaviour:
+  m_GameObject: {fileID: 500}
+  m_Enabled: 1
+  m_Script: {fileID: 11500000, guid: f4688fdb7df04437aeb418b961361dc5, type: 3}
+  m_Name: 
+  m_text: Start
+  m_isRightToLeft: 0
+  m_fontAsset: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
+  m_fontSize: 24
+  m_fontColor: {r: 1, g: 1, b: 1, a: 1}
+  m_textAlignment: 514

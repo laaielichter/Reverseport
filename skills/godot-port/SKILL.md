@@ -9,6 +9,8 @@ Use the port-project skill for the loop; this skill holds the Godot-specific jud
 
 ## Before planning
 
+- Godot 3 source (`config_version=4` in project.godot)? Upgrade first: `port_upgrade {path, action:"apply"}`
+  writes a Godot 4 copy and lists what needs a human; fix those, `re_apicheck` the copy, then port from the copy.
 - `re_scene {file:"project.godot"}` → main scene, autoloads (singletons), input actions, physics tick rate.
   Autoloads become singletons (Unity: DontDestroyOnLoad MonoBehaviour; Unreal: GameInstanceSubsystem; web: module
   singleton). Input actions must be recreated by name in the target.
