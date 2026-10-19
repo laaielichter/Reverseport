@@ -7,6 +7,7 @@ import { requireDir, walk, isText } from './util.mjs';
 import { languageOf, fileSymbols, stripComments, identifiers, CODE_LANGUAGES } from './symbols.mjs';
 import { unityGuidMap } from './scene.mjs';
 import { detectEngines } from './scan.mjs';
+import { workspacePackages, packageCandidates, splitSpecifier, tsconfigAliases } from './jsworkspace.mjs';
 
 const JS_EXT = ['.ts', '.tsx', '.mts', '.js', '.mjs', '.cjs', '.jsx', '.vue', '.svelte', '.json'];
 const TYPE_INDEX_LANGS = new Set(['csharp', 'java', 'kotlin', 'gdscript', 'swift', 'haxe', 'dart', 'scala']);
@@ -61,11 +62,25 @@ export async function buildGraph(dir, { maxFiles = 30000 } = {}) {
     if (spec.startsWith('res://')) { const r = godotRootOf(from); return exists(path.posix.normalize((r ? `${r}/` : '') + spec.slice(6))); }
     return exists(path.posix.normalize(path.posix.join(path.posix.dirname(from), spec)));
   };
-  const resolveJs = (from, spec) => {
-    if (!/^\.{1,2}\//.test(spec) && !spec.startsWith('/')) return null;
-    const base = spec.startsWith('/') ? spec.slice(1) : path.posix.normalize(path.posix.join(path.posix.dirname(from), spec));
+  // Monorepos: workspace packages by name and tsconfig "paths" aliases resolve to files in this folder.
+  const hasJs = files.some(f => /\.(m?[jt]sx?|cjs|cts)$/.test(f.rel));
+  const wsPackages = hasJs ? await workspacePackages(files) : new Map();
+  const aliasOf = hasJs ? await tsconfigAliases(files, byRel) : () => [];
+  const jsFile = (base, from) => {
     const stem = base.replace(/\.(m?js|cjs|jsx)$/, '');
+    for (const c of [base, ...JS_EXT.map(e => stem + e), ...JS_EXT.map(e => `${base}/index${e}`)]) { const hit = exists(c); if (hit && hit !== from && nodes.has(hit)) return hit; }
     for (const c of [base, ...JS_EXT.map(e => stem + e), ...JS_EXT.map(e => `${base}/index${e}`)]) { const hit = exists(c); if (hit && hit !== from) return hit; }
+    return null;
+  };
+  let workspaceEdges = 0, aliasEdges = 0;
+  const resolveJs = (from, spec) => {
+    if (/^\.{1,2}\//.test(spec) || spec.startsWith('/')) {
+      return jsFile(spec.startsWith('/') ? spec.slice(1) : path.posix.normalize(path.posix.join(path.posix.dirname(from), spec)), from);
+    }
+    for (const c of aliasOf(from, spec)) { const hit = jsFile(c, from); if (hit) { aliasEdges++; return hit; } }
+    const { name, sub } = splitSpecifier(spec);
+    const ws = wsPackages.get(name);
+    if (ws) for (const c of packageCandidates(ws, sub)) { const hit = jsFile(c, from); if (hit) { workspaceEdges++; return hit; } }
     return null;
   };
   const resolvePy = (from, spec) => {
@@ -115,7 +130,7 @@ export async function buildGraph(dir, { maxFiles = 30000 } = {}) {
       let hit = null;
       switch (n.language) {
         case 'gdscript': case 'shader': hit = resolveRes(n.file, d.spec); break;
-        case 'javascript': case 'typescript': hit = resolveJs(n.file, d.spec); if (!hit && !/^[./]/.test(d.spec)) external(d.spec.startsWith('@') ? d.spec.split('/').slice(0, 2).join('/') : d.spec.split('/')[0]); break;
+        case 'javascript': case 'typescript': hit = resolveJs(n.file, d.spec); if (!hit && !/^[./]/.test(d.spec) && !wsPackages.has(splitSpecifier(d.spec).name)) external(d.spec.startsWith('@') ? d.spec.split('/').slice(0, 2).join('/') : d.spec.split('/')[0]); break;
         case 'python': hit = resolvePy(n.file, d.spec); if (!hit && !d.spec.startsWith('.')) external(d.spec.split('.')[0]); break;
         case 'c': case 'c-header': case 'cpp': case 'objc': if (d.kind === 'system') external(`<${d.spec}>`); else { hit = resolveInclude(n.file, d.spec); if (!hit) external(`"${d.spec}"`); } break;
         case 'lua': hit = resolveLua(n.file, d.spec); if (!hit) external(d.spec); break;
@@ -166,7 +181,25 @@ export async function buildGraph(dir, { maxFiles = 30000 } = {}) {
   const { sccs, order } = tarjanOrder([...nodes.keys()], out);
   const cycles = sccs.filter(c => c.length > 1).sort((a, b) => b.length - a.length);
   const orphans = [...nodes.keys()].filter(k => !inc.get(k) && !entry.has(k) && nodes.get(k).kind !== 'scene' && !(out.get(k).length));
-  return { root, truncated, unreadable, engines, nodes, edges: edges.filter(e => nodes.has(e.to)), externals, cycles, order, entryPoints: [...entry], orphans, inDegree: inc, outEdges: out };
+  let workspace = null;
+  if (wsPackages.size > 1 || aliasEdges) {
+    // Package-level view: which workspace package uses which (counts of file imports across packages).
+    const dirs = [...wsPackages.entries()].map(([name, w]) => ({ name, dir: w.dir })).sort((a, b) => b.dir.length - a.dir.length);
+    const pkgOf = rel => dirs.find(d => !d.dir || rel === d.dir || rel.startsWith(`${d.dir}/`))?.name ?? null;
+    const files = new Map(), links = new Map();
+    for (const k of nodes.keys()) { const p = pkgOf(k); if (p) files.set(p, (files.get(p) ?? 0) + 1); }
+    for (const e of edges) {
+      const a = pkgOf(e.from), b = pkgOf(e.to);
+      if (!a || !b || a === b) continue;
+      const key = `${a}\0${b}`; links.set(key, (links.get(key) ?? 0) + 1);
+    }
+    workspace = {
+      packages: wsPackages.size, workspaceEdges, aliasEdges,
+      packageList: dirs.map(d => ({ name: d.name, dir: d.dir || '.', files: files.get(d.name) ?? 0 })).sort((a, b) => b.files - a.files),
+      packageEdges: [...links.entries()].map(([k, uses]) => { const [from, to] = k.split('\0'); return { from, to, uses }; }).sort((a, b) => b.uses - a.uses),
+    };
+  }
+  return { root, truncated, unreadable, engines, workspace, nodes, edges: edges.filter(e => nodes.has(e.to)), externals, cycles, order, entryPoints: [...entry], orphans, inDegree: inc, outEdges: out };
 }
 
 function commonPrefix(a, b) { let i = 0; while (i < a.length && i < b.length && a[i] === b[i]) i++; return i; }
@@ -232,6 +265,7 @@ export async function graphTool({ path: dir, limit, format = 'json' } = {}) {
   return {
     root: g.root, truncated: g.truncated, ...(g.unreadable?.length ? { unreadable: g.unreadable, warnings: [`${g.unreadable.length} folder(s) could not be read; the graph does not cover them.`] } : {}), fileCount: g.nodes.size, edgeCount: g.edges.length,
     entryPoints: g.entryPoints, cycles: g.cycles.slice(0, 20).map(c => c.slice(0, 30)), orphans: g.orphans.slice(0, 100),
+    ...(g.workspace ? { workspace: { packages: g.workspace.packages, resolvedByPackageName: g.workspace.workspaceEdges, resolvedByTsconfigPaths: g.workspace.aliasEdges, packageList: g.workspace.packageList.slice(0, max), packageEdges: g.workspace.packageEdges.slice(0, edgeMax) } } : {}),
     mostUsed: files.slice(0, 25), externals: ext,
     portOrder: g.order.slice(0, max), portOrderTruncated: g.order.length > max,
     edges: g.edges.slice(0, edgeMax), edgesTruncated: g.edges.length > edgeMax,
