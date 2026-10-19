@@ -71,6 +71,9 @@ Gemini CLI, GitHub Copilot, OpenCode and [more agents](docs/installation.md#supp
 /plugin install reverseport@reverseport
 ```
 
+The same marketplace also offers the [sister plugins](#sister-tools) `stashpad@reverseport` and
+`agentdisk@reverseport`.
+
 **From source:**
 
 ```bash
@@ -233,6 +236,19 @@ the agent registrations and skill files it added. See [Diagnose, update, and rem
 
 **Something broke or is missing.** Open an [issue](https://github.com/laaielichter/reverseport/issues) with the
 command and its JSON error. Every error names the next step, so include that line too.
+
+## Sister tools
+
+Two small tools from the same author that work well next to ReversePort. Both are local, open source and have their
+own MCP server, and both install from the ReversePort marketplace:
+
+| Tool | What it does | Claude Code |
+|---|---|---|
+| [**Stashpad**](https://github.com/laaielichter/stashpad) | Memory for agents that you can read, edit and trust: plain Markdown files with a source and dates, a review queue for agent writes, and a handoff note for the next session. `re_case remember` sends a proof case's findings there ([how](docs/proof-and-memory.md#memory-across-sessions-stashpad-optional)). | `/plugin install stashpad@reverseport` |
+| [**agentdisk**](https://github.com/laaielichter/agentdisk) | The disk report for coding agents: the worktrees, checkpoints, `node_modules`, `.venv` and `.godot/` folders agents leave behind (porting work makes plenty), and a cleanup you can undo. Needs the `agentdisk` binary ([install](https://github.com/laaielichter/agentdisk#install)). | `/plugin install agentdisk@reverseport` |
+
+Add the marketplace first with `/plugin marketplace add laaielichter/reverseport`. Other agents: see each project's
+README.
 
 ## Responsible use
 

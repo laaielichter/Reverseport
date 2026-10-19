@@ -27,7 +27,12 @@ test('Claude Code plugin and marketplace manifests', async () => {
   assert.equal(m.license, 'MIT');
   await fs.access(m.mcpServers.reverseport.args[0].replace('${CLAUDE_PLUGIN_ROOT}', REPO));
   const market = JSON.parse(await read('.claude-plugin/marketplace.json'));
-  assert.deepEqual(market.plugins.map(p => [p.name, p.source]), [['reverseport', './']]);
+  assert.deepEqual(market.plugins.map(p => [p.name, p.source]), [
+    ['reverseport', './'],
+    ['stashpad', { source: 'github', repo: 'laaielichter/stashpad' }],
+    ['agentdisk', { source: 'github', repo: 'laaielichter/agentdisk' }],
+  ]);
+  for (const p of market.plugins) assert.ok(p.description?.length >= 40, `${p.name}: description`);
 });
 
 test('skills and agent: frontmatter, and only real tool names', async () => {

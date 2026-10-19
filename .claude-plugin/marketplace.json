@@ -2,13 +2,29 @@
   "name": "reverseport",
   "owner": { "name": "ReversePort contributors" },
   "metadata": {
-    "description": "ReversePort: reverse engineer anything, port it anywhere — one MCP server, skills and a porting agent."
+    "description": "ReversePort: reverse engineer anything, port it anywhere — one MCP server, skills and a porting agent. Also lists its sister plugins Stashpad (agent memory) and agentdisk (agent disk cleanup)."
   },
   "plugins": [
     {
       "name": "reverseport",
       "source": "./",
       "description": "Reverse engineer anything. Port it anywhere. Recon, decompile and trace apps, games, binaries and websites; rebuild and port them between Godot, Unity, Unreal, three.js and languages."
+    },
+    {
+      "name": "stashpad",
+      "source": { "source": "github", "repo": "laaielichter/stashpad" },
+      "description": "Memory for AI agents that you can read, edit and trust: plain Markdown files with sources and dates, a review queue for agent writes, and a handoff note for the next session. Stores ReversePort's proof-case findings when both are installed.",
+      "homepage": "https://github.com/laaielichter/stashpad",
+      "license": "MIT",
+      "keywords": ["memory", "mcp", "local-first", "handoff"]
+    },
+    {
+      "name": "agentdisk",
+      "source": { "source": "github", "repo": "laaielichter/agentdisk" },
+      "description": "The honest disk report for AI coding agents: worktrees, checkpoints, caches, node_modules and .godot folders agents left behind, and a cleanup you can undo. Needs the agentdisk binary on PATH.",
+      "homepage": "https://github.com/laaielichter/agentdisk",
+      "license": "MIT OR Apache-2.0",
+      "keywords": ["disk", "cleanup", "worktrees", "mcp"]
     }
   ]
 }
