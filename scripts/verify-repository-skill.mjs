@@ -1,9 +1,9 @@
 import { cp, mkdir, readFile, readdir } from "node:fs/promises";
 import { dirname, join, relative } from "node:path";
 
-import { exec, pathExists } from "./lib/verify-package-core.mjs";
+import { exec } from "./lib/verify-package-core.mjs";
 
-/** Exercise Skills' default root discovery without ignored build outputs. */
+/** Exercise Skills' default root discovery on a clean clone (tracked files only). */
 export async function verifyRepositorySkill({ root, workspace }) {
   const snapshot = join(workspace, "repository");
   const consumer = join(workspace, "skill-consumer");
@@ -29,8 +29,8 @@ export async function verifyRepositorySkill({ root, workspace }) {
     await mkdir(dirname(destination), { recursive: true });
     await cp(join(root, path), destination, { verbatimSymlinks: true });
   }
-  if (await pathExists(join(snapshot, "skills")))
-    throw new Error("repository skill check must run without generated skills");
+  // ReversePort tracks its Claude Code plugin skills in skills/ on purpose. Installing the one public skill by
+  // name must still give exactly that skill, which the checks below enforce.
   await mkdir(consumer, { recursive: true });
   await mkdir(home, { recursive: true });
   const skillsVersion = "1.7.2";
