@@ -19,7 +19,7 @@ const PORT_COMMANDS = new Set([
   'compare-builds', 'report', 'lookup', 'recon', 'web', 'blueprint', 'rebuild', 'map', 'convert', 'plan', 'unit',
   'write', 'port-scene', 'copy-assets', 'status', 'verify', 'case', 'proof', 'tools', 'serve', 'describe', 'feedback',
   'connect', 'skills', 'refs', 'guids', 'strings', 'i18n', 'l10n', 'apicheck', 'api', 'upgrade', 'godot3to4', 'save',
-  'savefile', 'shader', 'trace', 'rpgmaker', 'rpgm', 'decode', 'gdc', 'il2cpp',
+  'savefile', 'shader', 'trace', 'rpgmaker', 'rpgm', 'decode', 'gdc', 'il2cpp', 'cleanroom',
 ]);
 const ALWAYS_ENGINE = ['setup', 'doctor', 'update', 'uninstall', 'mcp', 'capabilities', 'providers', 'help'];
 
@@ -67,6 +67,7 @@ Understand anything (no build needed)
   reverseport strings <folder>       extract translatable text (.pot/.csv); --action apply writes a translated copy
   reverseport decode <folder|file>   Godot export → .gd/.tscn/.tres/project.godot (after re_archive extract)
   reverseport il2cpp <global-metadata.dat>  Unity IL2CPP: classes, methods, literals, C# skeleton
+  reverseport cleanroom <original> <rebuild>  copied files, code (also renamed), text and names in a rebuild
   reverseport apicheck <file|folder> Godot 3 names, invented members, too-new classes; --engine godot@4.3
   reverseport upgrade <godot3-project> Godot 3 → 4 as a copy; --action apply --out <folder>; lists what needs a human
   reverseport save <file> [other]    save file: layers, fields with roles, checksums, diff against another save; --action schema

@@ -24,6 +24,7 @@ import { portTraceTool } from './trace.mjs';
 import { decodeTool } from './godotbin.mjs';
 import { il2cppTool } from './il2cpp.mjs';
 import { portRpgMakerTool } from './rpgmaker.mjs';
+import { cleanroomTool } from './cleanroom.mjs';
 
 /** One version for the whole package: the root package.json. */
 export const VERSION = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')).version;
@@ -89,6 +90,9 @@ export const tools = [
   { name: 're_il2cpp', brief: 'Unity IL2CPP game without source: assemblies, namespaces, classes, method names and string literals from global-metadata.dat, plus a C# skeleton.', title: 'Read Unity IL2CPP metadata',
     description: 'Reads a Unity IL2CPP global-metadata.dat (metadata versions 24–31; sections are recognised by validating their records, not by fixed offsets): assemblies with type counts, every type with namespace and method names, MonoBehaviours (types with Unity callbacks) and string literals. Writes one C# skeleton per game assembly (namespaces, classes, method names as comments) to rebuild or port from. Method bodies are native code in GameAssembly.dll / libil2cpp.so / the .wasm (re_binary). Encrypted or obfuscated metadata is reported, never decrypted.',
     inputSchema: obj({ file: str('global-metadata.dat (<Game>_Data/il2cpp_data/Metadata/ or Il2CppData/Metadata in WebGL builds).'), match: str('Only types whose name or methods contain this.'), includeSystem: bool('Also list Unity/System/mscorlib types (default false).'), out: str('Folder for the C# skeletons (default workspace/il2cpp/<game>).'), limit: int('Max types listed (default 400).', { minimum: 1, maximum: 100000 }) }, ['file']) },
+  { name: 're_cleanroom', brief: 'Clean-room check: does a rebuild contain files, code passages or text copied from the original (also renamed copies)?', title: 'Screen a rebuild for copied material',
+    description: 'Compares a rebuild folder with the original (project, extracted pack or decoded output) and reports byte-identical files (copied assets), code passages that match after normalising identifiers, numbers and strings (so renamed copies are found; minTokens sets the length, default 40), copied player-facing strings, distinctive original names reused, and the share of each rebuild file that matches. A screening aid for clean-room rebuilds, not legal advice; record the result in the proof case (re_case evidence).',
+    inputSchema: obj({ original: str('The original project or extracted files.'), rebuild: str('Your rebuild or port.'), minTokens: int('Shortest matching code passage to report, in tokens (default 40).', { minimum: 12, maximum: 2000 }), limit: int('Max items per list (default 200).', { minimum: 10, maximum: 5000 }) }, ['original', 'rebuild']) },
   { name: 're_report', brief: 'Write ARCHITECTURE.md for a project folder.', title: 'Write an architecture report',
     description: 'Writes ARCHITECTURE.md for a project: stack, languages, entry points, mermaid module graph, cycles, most-used files, scene trees of the entry scenes, class table, possibly unused files and external dependencies.',
     inputSchema: obj({ path: str('Project folder.'), out: str('Output .md path (default: workspace/reports).') }, ['path']) },
@@ -150,7 +154,7 @@ for (const t of tools) t.annotations = annotationsFor(t.name);
 
 const handlers = {
   re_scan: scanProject, re_graph: graphTool, re_symbols: symbolsTool, re_scene: a => readScene(a.file), re_binary: inspectBinary,
-  re_archive: archiveTool, re_probe: probe, re_extract: carve, re_compare: compare, re_refs: refsTool, re_strings: stringsTool, re_apicheck: apicheckTool, re_decode: decodeTool, re_il2cpp: il2cppTool, port_upgrade: upgradeTool, re_save: saveTool, port_shader: portShaderTool, port_trace: portTraceTool, port_rpgmaker: portRpgMakerTool, re_report: report, re_lookup: lookupTool, re_blueprint: blueprintTool,
+  re_archive: archiveTool, re_probe: probe, re_extract: carve, re_compare: compare, re_refs: refsTool, re_strings: stringsTool, re_apicheck: apicheckTool, re_decode: decodeTool, re_il2cpp: il2cppTool, re_cleanroom: cleanroomTool, port_upgrade: upgradeTool, re_save: saveTool, port_shader: portShaderTool, port_trace: portTraceTool, port_rpgmaker: portRpgMakerTool, re_report: report, re_lookup: lookupTool, re_blueprint: blueprintTool,
   port_map: portMapTool, port_convert: convert, port_plan: planPort, port_unit: portUnit, port_write: portWrite, port_scene: portScene,
   port_copy_assets: portCopyAssets, port_status: portStatus, port_verify: portVerify, re_case: caseTool, share_feedback: shareFeedback,
 };

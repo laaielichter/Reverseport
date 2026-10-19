@@ -75,6 +75,9 @@ pass them to `re_blueprint` as `name`, `genres`, `tags`, `description` and
    then every other system, then the user's own content, UI and audio.
 4. Measure the rebuild the same way and tune until every parameter in
    `parity.json` is inside its tolerance.
+5. `re_cleanroom {original, rebuild}` before delivery: no identical files,
+   no matching code passages (renamed copies included), no copied text.
+   Save the result as evidence in the proof case.
 
 ## Port between engines or languages
 
