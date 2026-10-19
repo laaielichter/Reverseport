@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.4.0](https://github.com/laaielichter/Reverseport/compare/reverseport-1.3.0...reverseport-1.4.0) (2026-10-19)
+
+
+### Features
+
+* **port:** output budget for big results and more forgiving input ([#25](https://github.com/laaielichter/Reverseport/issues/25)) ([c2456dd](https://github.com/laaielichter/Reverseport/commit/c2456dd7bd66c06c9b4574d813a45a0afef29879))
+* **port:** understand JS/TS monorepos in scan and graph ([#22](https://github.com/laaielichter/Reverseport/issues/22)) ([9c9018f](https://github.com/laaielichter/Reverseport/commit/9c9018f959cb7a8938e1f7c11482964670d8ddeb))
+
+
+### Bug Fixes
+
+* **scan:** give Android modules a root; detect electron-vite ([#24](https://github.com/laaielichter/Reverseport/issues/24)) ([68c5374](https://github.com/laaielichter/Reverseport/commit/68c53742066ddf9bd80cd31d8ee6ea56434b5bc1))
+
 ## [1.3.0](https://github.com/laaielichter/Reverseport/compare/reverseport-1.2.0...reverseport-1.3.0) (2026-10-19)
 
 
