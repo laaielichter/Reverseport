@@ -1,5 +1,28 @@
 # Changelog
 
+## [1.7.0](https://github.com/laaielichter/Reverseport/compare/reverseport-1.6.0...reverseport-1.7.0) (2026-10-19)
+
+
+### Features
+
+* **port:** 20 real-world porting problems — API check, Godot 3→4, saves, shaders, physics, traces, game containers, Godot/IL2CPP/RPG Maker ([#35](https://github.com/laaielichter/Reverseport/issues/35)) ([b43d414](https://github.com/laaielichter/Reverseport/commit/b43d4143a08dee50636f90f8d048215cc29d31b2))
+* **port:** optional agentdisk link: workspace disk use in port doctor ([#37](https://github.com/laaielichter/Reverseport/issues/37)) ([50dacc1](https://github.com/laaielichter/Reverseport/commit/50dacc11378c28c72a76792334a0e83377bc7e66))
+
+
+### Bug Fixes
+
+* close the two CodeQL alerts and give Chrome more time in CI ([#40](https://github.com/laaielichter/Reverseport/issues/40)) ([db78afc](https://github.com/laaielichter/Reverseport/commit/db78afcf3f0a95d14123a6436b1ba92da87fbc34))
+
+
+### Documentation
+
+* show the skills and recent features on the README and the site ([#39](https://github.com/laaielichter/Reverseport/issues/39)) ([351d1fd](https://github.com/laaielichter/Reverseport/commit/351d1fddd8394aadd43245c72b113a48e2fb3c68))
+
+
+### Tests
+
+* **reference:** do not depend on the filesystem's directory order ([#38](https://github.com/laaielichter/Reverseport/issues/38)) ([ffedf61](https://github.com/laaielichter/Reverseport/commit/ffedf617d162c80157b454fb89a769c8c93d8edb))
+
 ## [1.6.0](https://github.com/laaielichter/Reverseport/compare/reverseport-1.5.0...reverseport-1.6.0) (2026-10-19)
 
 
