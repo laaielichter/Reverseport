@@ -19,16 +19,13 @@ jobs:
     steps:
       - name: Check out the repository
         uses: actions/checkout@v4
-      - name: Set up Python for website assets
-        uses: actions/setup-python@v5
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
         with:
-          python-version: "3.12"
-          cache: pip
-          cache-dependency-path: website/requirements.txt
-      - name: Install sharing-image dependencies
+          node-version-file: .nvmrc
+      - name: Regenerate the byte view from a real pack; the committed page must match
         run: |
-          sudo apt-get update
-          sudo apt-get install --no-install-recommends -y libcairo2 fonts-dejavu-core
-          python3 -m pip install -r website/requirements.txt
-      - name: Check shared HTML, links, assets and contributor workflows
-        run: python3 scripts/website.py check
+          node site/demo/record.mjs
+          git diff --exit-code -- site/ || { echo "::error::site/ is out of date: run node site/demo/record.mjs and commit the result."; exit 1; }
+      - name: Check links, anchors, images and the social image
+        run: node site/demo/check.mjs

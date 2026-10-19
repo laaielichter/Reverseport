@@ -1,0 +1,77 @@
+{
+  "recordedWith": "site/demo/record.mjs",
+  "packHeader": [
+    {
+      "from": 0,
+      "to": 4,
+      "label": "Magic",
+      "value": "\"GDPC\": a Godot pack"
+    },
+    {
+      "from": 4,
+      "to": 8,
+      "label": "Pack format",
+      "value": "2"
+    },
+    {
+      "from": 8,
+      "to": 20,
+      "label": "Engine",
+      "value": "Godot 4.3.0"
+    },
+    {
+      "from": 20,
+      "to": 24,
+      "label": "Pack flags",
+      "value": "none (not encrypted)"
+    },
+    {
+      "from": 24,
+      "to": 32,
+      "label": "Files start at",
+      "value": "byte 900"
+    },
+    {
+      "from": 32,
+      "to": 96,
+      "label": "Reserved",
+      "value": "64 zero bytes"
+    },
+    {
+      "from": 96,
+      "to": 100,
+      "label": "Files",
+      "value": "13"
+    },
+    {
+      "from": 100,
+      "to": 104,
+      "label": "Path length",
+      "value": "24"
+    },
+    {
+      "from": 104,
+      "to": 128,
+      "label": "First path",
+      "value": "res://actors/bullet.gd"
+    },
+    {
+      "from": 128,
+      "to": 136,
+      "label": "Its offset",
+      "value": "0, counted from byte 900"
+    },
+    {
+      "from": 136,
+      "to": 144,
+      "label": "Its size",
+      "value": "208 bytes"
+    },
+    {
+      "from": 144,
+      "to": 160,
+      "label": "Its MD5",
+      "value": "26af92524699e4afae68bbe95e718b0b"
+    }
+  ]
+}
