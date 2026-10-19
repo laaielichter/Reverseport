@@ -31,11 +31,15 @@ export async function verifyPackagePack({ root, workspace }) {
     packedManifest.dependencies?.["@lydell/node-pty"] !== "1.1.0"
   )
     throw new Error("package retained a lifecycle-dependent PTY installation");
+  // `rea` is the deep-analysis engine; `reverseport` is the front door, which adds the port
+  // commands and hands everything else to the engine.
   if (
     packedManifest.bin?.rea !== "scripts/rea.mjs" ||
-    packedManifest.bin?.["reverseport"] !== "scripts/rea.mjs"
+    packedManifest.bin?.["reverseport"] !== "bin/reverseport.mjs" ||
+    !packedFiles.includes("package/bin/reverseport.mjs") ||
+    !packedFiles.includes("package/scripts/rea.mjs")
   )
-    throw new Error("package did not expose both rea command entry points");
+    throw new Error("package did not expose both command entry points");
   if (packedManifest.mcpName !== "io.github.laaielichter/reverseport")
     throw new Error("package did not retain its MCP Registry ownership marker");
   if (packedFiles.some((path) => path.startsWith("package/.agents/")))
