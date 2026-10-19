@@ -11,7 +11,8 @@ Use the port-project skill for the loop; this skill holds the Unity-specific jud
 
 - Scenes and prefabs must be text: Unity → Project Settings → Editor → Asset Serialization = **Force Text**. Without
   it `re_scene` cannot read them.
-- Keep the `.meta` files: they map GUIDs to scripts and prefabs.
+- Keep the `.meta` files: they map GUIDs to scripts and prefabs. Run `re_refs` on the project first: a dangling
+  GUID (missing script, pink material) is a component the port would silently lose; fix it in Unity before planning.
 - GDScript or C#? Large, idiomatic C# codebases port faster to **godot-csharp** (only engine API calls change);
   smaller or designer-facing projects read better as GDScript (`to:"godot"`).
 

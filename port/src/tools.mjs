@@ -14,6 +14,7 @@ import { lookupTool, SOURCES } from './lookup.mjs';
 import { blueprintTool, ARCHETYPE_IDS } from './blueprint.mjs';
 import { caseTool, ACTIONS as CASE_ACTIONS, INTENTS, KINDS, CONFIDENCE, PHASES, APPROVALS } from './proofcase.mjs';
 import { annotationsFor, closest, formatTools, shareFeedback } from './agent.mjs';
+import { refsTool } from './refs.mjs';
 
 /** One version for the whole package: the root package.json. */
 export const VERSION = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')).version;
@@ -58,6 +59,9 @@ export const tools = [
   { name: 're_compare', brief: 'What changed between two folders, packs, binaries or files.', title: 'Diff two builds, packs, binaries or folders',
     description: 'Compares two folders (added/removed/changed files), two packs/archives (entries, MD5 for Godot packs), two executables (imports, exports, sections) or any two files (first difference, changed regions). Use it to see what changed between builds or versions.',
     inputSchema: obj({ a: str('First folder/file (old).'), b: str('Second folder/file (new).'), limit: int('Max items per list (default 300).', { minimum: 10, maximum: 5000 }) }, ['a', 'b']) },
+  { name: 're_refs', brief: 'Unity: find broken GUID references (missing scripts, pink materials), duplicate and missing .meta files.', title: 'Audit Unity GUID references',
+    description: 'Audits a Unity project\'s GUID references: references to GUIDs no .meta file declares (dangling: missing scripts, pink materials), the same GUID in two .meta files (copies made outside Unity), assets without a .meta, .meta files whose asset is gone, and declared assets nothing references. For dangling script references it suggests scripts that nothing references. Reports only; nothing is written. Fix by re-linking in Unity or by setting the suggested guid in the right .meta.',
+    inputSchema: obj({ path: str('Unity project root, or any folder/file inside it.'), limit: int('Max items per list (default 200).', { minimum: 10, maximum: 5000 }) }, ['path']) },
   { name: 're_report', brief: 'Write ARCHITECTURE.md for a project folder.', title: 'Write an architecture report',
     description: 'Writes ARCHITECTURE.md for a project: stack, languages, entry points, mermaid module graph, cycles, most-used files, scene trees of the entry scenes, class table, possibly unused files and external dependencies.',
     inputSchema: obj({ path: str('Project folder.'), out: str('Output .md path (default: workspace/reports).') }, ['path']) },
@@ -110,7 +114,7 @@ for (const t of tools) t.annotations = annotationsFor(t.name);
 
 const handlers = {
   re_scan: scanProject, re_graph: graphTool, re_symbols: symbolsTool, re_scene: a => readScene(a.file), re_binary: inspectBinary,
-  re_archive: archiveTool, re_probe: probe, re_extract: carve, re_compare: compare, re_report: report, re_lookup: lookupTool, re_blueprint: blueprintTool,
+  re_archive: archiveTool, re_probe: probe, re_extract: carve, re_compare: compare, re_refs: refsTool, re_report: report, re_lookup: lookupTool, re_blueprint: blueprintTool,
   port_map: portMapTool, port_convert: convert, port_plan: planPort, port_unit: portUnit, port_write: portWrite, port_scene: portScene,
   port_copy_assets: portCopyAssets, port_status: portStatus, port_verify: portVerify, re_case: caseTool, share_feedback: shareFeedback,
 };

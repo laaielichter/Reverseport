@@ -48,6 +48,8 @@ These tools run without an analysis engine or provider:
 - Quick look at an executable, pack or unknown file: `re_binary`, `re_archive`
   (Godot `.pck` also inside an `.exe`, zip/apk/jar, tar.gz, asar), `re_probe`,
   `re_extract`. Two builds: `re_compare`. Write-up: `re_report`.
+- Unity project with pink materials, "missing script" components or GUID
+  trouble after moving files: `re_refs` (reports only; fix in Unity).
 - No files, only a name, store page, website or public repository: `re_lookup`,
   then `re_blueprint` for a clean-room rebuild spec measured against the original.
 - Port between engines or languages: `port_map` → `port_plan` → `port_unit` /

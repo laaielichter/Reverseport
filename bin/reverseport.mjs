@@ -17,7 +17,8 @@ const VERSION = JSON.parse(readFileSync(path.join(REPO, 'package.json'), 'utf8')
 const PORT_COMMANDS = new Set([
   'scan', 'graph', 'symbols', 'scene', 'binary', 'bin', 'archive', 'pck', 'probe', 'extract', 'carve', 'diff',
   'compare-builds', 'report', 'lookup', 'recon', 'web', 'blueprint', 'rebuild', 'map', 'convert', 'plan', 'unit',
-  'write', 'port-scene', 'copy-assets', 'status', 'verify', 'case', 'proof', 'tools', 'serve', 'describe', 'feedback', 'connect', 'skills',
+  'write', 'port-scene', 'copy-assets', 'status', 'verify', 'case', 'proof', 'tools', 'serve', 'describe', 'feedback',
+  'connect', 'skills', 'refs', 'guids',
 ]);
 const ALWAYS_ENGINE = ['setup', 'doctor', 'update', 'uninstall', 'mcp', 'capabilities', 'providers', 'help'];
 
@@ -61,6 +62,7 @@ Understand anything (no build needed)
   reverseport binary <file>          PE/.NET/ELF/Mach-O/wasm/class/dex at a glance
   reverseport archive <file>         Godot .pck (also inside .exe), zip/apk/jar, tar.gz, asar — list or extract
   reverseport diff <a> <b>           what changed between two builds, packs or binaries
+  reverseport refs <unity-project>   broken Unity GUID references, duplicate and missing .meta files
   reverseport report <folder>        ARCHITECTURE.md
   reverseport port help              every ReversePort command and option
 

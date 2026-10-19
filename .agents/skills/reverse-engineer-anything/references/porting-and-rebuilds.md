@@ -37,6 +37,10 @@ routes in the main skill and cite their Evidence.
   class and dex files; `Assembly-CSharp.dll` shows a Unity game's scripts.
 - `re_compare {a, b}` diffs folders, packs or binaries. Report changes grouped
   (scripts, scenes, textures, audio, engine binary), biggest first.
+- `re_refs {path}` audits a Unity project's GUID references: dangling (missing
+  scripts, pink materials), duplicate `.meta` GUIDs, assets without `.meta`,
+  `.meta` without asset. Run it before `port_plan` from Unity: a dangling
+  reference is a component the port would silently lose.
 
 ## Recon without files
 
