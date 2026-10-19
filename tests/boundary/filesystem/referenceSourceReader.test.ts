@@ -176,7 +176,10 @@ describe("readReferenceSource failures and exclusions", () => {
     });
 
     if (!result.ok) throw result.error;
-    expect(checked).toEqual([
+    // Directories are read in filesystem order, which is not fixed; only the final entries are sorted.
+    expect(
+      checked.toSorted(([left], [right]) => left.localeCompare(right)),
+    ).toEqual([
       ["ignored", "directory"],
       ["kept", "file"],
     ]);
