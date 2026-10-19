@@ -118,6 +118,8 @@ Proof (evidence ledger)
 Other
   tools [--all] [--format f] list the tools (--all adds the engine's when built); formats: ${FORMATS.join(', ')}
   describe <tool>            one tool's description and input schema (engine tools too, when built)
+  skills [list]              the skills bundled with this version
+  skills get <name>          one skill's full guide, matching this version (--json for JSON)
   feedback                   notes agents left with share_feedback (stays on this computer)
   connect [client]           config snippet for any agent: MCP clients, HTTP/OpenAPI, OpenAI, Anthropic, Gemini, shell
   serve                      HTTP API on http://127.0.0.1:32147 (REVERSEPORT_PORT)
@@ -152,6 +154,20 @@ export async function main(argv = process.argv.slice(2)) {
     if (!t) return printError(new RPError('UNKNOWN_TOOL', `Unknown tool "${rest[0] ?? ''}". ${closest(rest[0] ?? '', all.map(x => x.name), 3) ? `Did you mean "${closest(rest[0], all.map(x => x.name), 3)}"? ` : ''}reverseport tools --all lists them.`));
     print({ name: t.name, title: t.title, description: t.description, inputSchema: t.inputSchema, annotations: t.annotations, cli: `reverseport ${t.name} ${(POSITIONAL[t.name] ?? []).map(p => `<${p}>`).join(' ')} [--key value] [--args '{…}']`.replace(/\s+/g, ' ').trim() });
     return 0;
+  }
+  if (cmd === 'skills') {
+    const { listSkills, getSkill } = await import('./src/skills.mjs');
+    const [sub, name] = rest.filter(x => !x.startsWith('--'));
+    try {
+      if (!sub || sub === 'list') { print({ version: VERSION, skills: await listSkills() }); return 0; }
+      if (sub === 'get') {
+        const s = await getSkill(name);
+        if (argv.includes('--json')) print({ version: VERSION, name: s.name, description: s.description, body: s.body });
+        else process.stdout.write(`<!-- ReversePort ${VERSION} · skill ${s.name} -->\n${s.text.endsWith('\n') ? s.text : `${s.text}\n`}`);
+        return 0;
+      }
+      return printError(new RPError('INVALID_ARGUMENT', `Unknown skills command "${sub}". Use: reverseport skills list | reverseport skills get <name>`));
+    } catch (e) { return printError(e); }
   }
   if (cmd === 'feedback') { print(await readFeedback()); return 0; }
   if (cmd === 'connect') {
