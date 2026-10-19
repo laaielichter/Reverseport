@@ -22,7 +22,7 @@ cat('docs', 'md txt rst pdf html htm');
 
 // npm dependency → framework name, for "what is this built with" in JS/TS projects.
 const JS_FRAMEWORKS = [['three', 'three.js'], ['phaser', 'Phaser'], ['@babylonjs/core', 'Babylon.js'], ['babylonjs', 'Babylon.js'], ['pixi.js', 'PixiJS'], ['playcanvas', 'PlayCanvas'], ['excalibur', 'Excalibur'], ['kaboom', 'Kaboom'], ['kaplay', 'KAPLAY'],
-  ['electron', 'Electron'], ['@tauri-apps/api', 'Tauri'], ['@capacitor/core', 'Capacitor'], ['react-native', 'React Native'], ['expo', 'Expo'],
+  ['electron', 'Electron'], ['electron-vite', 'Electron'], ['electron-builder', 'Electron'], ['@tauri-apps/api', 'Tauri'], ['@capacitor/core', 'Capacitor'], ['react-native', 'React Native'], ['expo', 'Expo'],
   ['react', 'React'], ['vue', 'Vue'], ['svelte', 'Svelte'], ['solid-js', 'SolidJS'], ['preact', 'Preact'], ['@angular/core', 'Angular'], ['lit', 'Lit'],
   ['next', 'Next.js'], ['nuxt', 'Nuxt'], ['@sveltejs/kit', 'SvelteKit'], ['@solidjs/start', 'SolidStart'], ['astro', 'Astro'], ['@remix-run/react', 'Remix'], ['react-router', 'React Router'],
   ['vite', 'Vite'], ['webpack', 'webpack'], ['esbuild', 'esbuild'],
@@ -159,7 +159,13 @@ export async function detectEngines(root, files) {
   }
   if (rels.some(r => /(^|\/)resources\/app\.asar$/i.test(r))) add({ id: 'electron-build', name: 'Electron app build', kind: 'build', evidence: rels.filter(r => /app\.asar$/i.test(r)).slice(0, 3) });
   if (find(/(^|\/)pubspec\.yaml$/).length) add({ id: 'flutter', name: 'Flutter / Dart', kind: 'project', evidence: find(/(^|\/)pubspec\.yaml$/).map(f => f.rel) });
-  if (find(/(^|\/)AndroidManifest\.xml$/).length) add({ id: 'android', name: 'Android app', kind: 'project', evidence: find(/(^|\/)AndroidManifest\.xml$/).slice(0, 3).map(f => f.rel) });
+  const depthOfRel = r => r.split('/').length;
+  const manifests = find(/(^|\/)AndroidManifest\.xml$/).map(f => f.rel).sort((a, b) => depthOfRel(a) - depthOfRel(b));
+  if (manifests.length) {
+    // The project root is the folder above src/main (and above app/ for a Gradle app module).
+    const root = path.posix.dirname(manifests[0]).replace(/(^|\/)src\/main$/, '').replace(/(^|\/)app$/, '');
+    add({ id: 'android', name: 'Android app', kind: 'project', root: root === '.' ? '' : root, evidence: manifests.slice(0, 3) });
+  }
   if (find(/\.xcodeproj\//).length) add({ id: 'xcode', name: 'Xcode project (Apple)', kind: 'project', evidence: [...new Set(find(/\.xcodeproj\//).map(f => f.rel.split('.xcodeproj/')[0] + '.xcodeproj'))].slice(0, 3) });
   if (find(/\.sln$/i).length && !engines.some(e => ['unity', 'godot'].includes(e.id))) add({ id: 'dotnet', name: '.NET solution', kind: 'project', evidence: find(/\.sln$/i).map(f => f.rel).slice(0, 3) });
   for (const [file, id, name] of [['go.mod', 'go', 'Go module'], ['CMakeLists.txt', 'cmake', 'CMake (C/C++)'], ['pyproject.toml', 'python', 'Python project'], ['setup.py', 'python', 'Python project'], ['requirements.txt', 'python', 'Python project'], ['pom.xml', 'maven', 'Maven (Java)'], ['build.gradle', 'gradle', 'Gradle (JVM)'], ['build.gradle.kts', 'gradle', 'Gradle (JVM)'], ['Makefile', 'make', 'Makefile build']]) {

@@ -71,3 +71,23 @@ test('symbols in other languages and comment stripping', () => {
   assert.deepEqual(lua.functions.map(f => f.name), ['update', 'helper']);
   assert.equal(stripComments('a // b\n/* c */d', 'csharp'), 'a     \n       d');
 });
+
+test('scan: in a monorepo the root app wins over nested packages and Android modules', async () => {
+  const { tempDir } = await import('./helpers.mjs');
+  const fs = await import('node:fs/promises');
+  const root = await tempDir();
+  const put = async (rel, content) => { await fs.mkdir(path.join(root, path.dirname(rel)), { recursive: true }); await fs.writeFile(path.join(root, rel), content); };
+  // More nested packages than the old cap of 10, all sorting before the root package.json.
+  for (let i = 0; i < 12; i++) await put(`cloud/apps/svc${i}/package.json`, JSON.stringify({ name: `svc${i}`, main: 'dist/index.js' }));
+  await put('mobile/modules/shell/android/src/main/AndroidManifest.xml', '<manifest/>');
+  await put('mobile/package.json', JSON.stringify({ name: 'mobile', dependencies: { expo: '1', 'react-native': '1' } }));
+  await put('package.json', JSON.stringify({ name: 'desk', main: './out/main/index.js', devDependencies: { 'electron-vite': '1', react: '1' } }));
+  const s = await scanProject({ path: root });
+  assert.notEqual(s.primary.id, 'android');
+  const rootApp = s.engines.find(e => e.id === 'node' && e.root === '');
+  assert.ok(rootApp.details.frameworks.includes('Electron'));
+  const android = s.engines.find(e => e.id === 'android');
+  assert.equal(android.root, 'mobile/modules/shell/android');
+  assert.ok(s.engines.some(e => e.id === 'node' && e.details.frameworks.includes('Expo')));
+  assert.ok(s.entryPoints.some(e => e.file === 'out/main/index.js'));
+});
