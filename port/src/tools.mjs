@@ -21,6 +21,7 @@ import { upgradeTool } from './upgrade.mjs';
 import { saveTool } from './save.mjs';
 import { portShaderTool } from './shader.mjs';
 import { portTraceTool } from './trace.mjs';
+import { decodeTool } from './godotbin.mjs';
 
 /** One version for the whole package: the root package.json. */
 export const VERSION = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')).version;
@@ -80,6 +81,9 @@ export const tools = [
   { name: 're_save', brief: 'Save files: container layers, fields with roles (health, currency, position…), verified checksums, what changed between two saves, and a schema + SaveData.gd/.cs to port the format.', title: 'Analyse a save file',
     description: 'Peels the open layers of a save file (gzip/zlib, base64, LZ-String as RPG Maker MV/MZ uses, JSON, XML, INI/ConfigFile, Godot store_var) and lists every field with type, sample and a guessed role (health, currency, score, position, progress, collection, time, version, identity, integrity, rng, settings). Checksum fields are verified by recomputing md5/sha1/sha256/crc32 over the save without that field; binary saves are checked for CRC32 trailers/headers and get record strides and strings. compare:<second save> lists the fields that changed between two saves, the fastest way to learn which field is which. action:"schema" writes a JSON schema plus SaveData.gd and SaveData.cs with the same field names, to port the save format. Encrypted, XOR-obfuscated, .NET BinaryFormatter and pickle content is reported, never decoded.',
     inputSchema: obj({ file: str('The save file.'), compare: str('A second save of the same game to diff against.'), action: str('inspect (default) or schema (write schema + data classes).', { enum: ['inspect', 'schema'] }), out: str('schema: folder for the files (default workspace/saves).'), limit: int('Max fields/changes (default 400).', { minimum: 10, maximum: 10000 }) }, ['file']) },
+  { name: 're_decode', brief: 'Godot export back to editable files: .gdc → .gd, binary .scn/.res → .tscn/.tres, project.binary → project.godot.', title: 'Decode Godot binary exports',
+    description: 'Turns what a Godot export leaves into editable text: compiled GDScript (.gdc: Godot 3 bytecode v10–13 and Godot 4.3+ binary tokens v100/v101, zstd-compressed or not) back to .gd with indentation, binary resources and scenes (RSRC/RSCC .scn/.res, also under .godot/exported with their .remap targets) to .tscn/.tres with ext/sub resources, node tree, groups, instances and signal connections, and project.binary to project.godot. Give the folder re_archive extracted from the .pck. Names, constants and structure are exact; comments and the original formatting are not in the export. Encrypted scripts (.gde) are reported, never decrypted.',
+    inputSchema: obj({ path: str('A .gdc/.scn/.res/project.binary file or an extracted pack folder.'), out: str('Output folder (default workspace/decoded/<name>).'), limit: int('Max files (default 2000).', { minimum: 1, maximum: 100000 }) }, ['path']) },
   { name: 're_report', brief: 'Write ARCHITECTURE.md for a project folder.', title: 'Write an architecture report',
     description: 'Writes ARCHITECTURE.md for a project: stack, languages, entry points, mermaid module graph, cycles, most-used files, scene trees of the entry scenes, class table, possibly unused files and external dependencies.',
     inputSchema: obj({ path: str('Project folder.'), out: str('Output .md path (default: workspace/reports).') }, ['path']) },
@@ -138,7 +142,7 @@ for (const t of tools) t.annotations = annotationsFor(t.name);
 
 const handlers = {
   re_scan: scanProject, re_graph: graphTool, re_symbols: symbolsTool, re_scene: a => readScene(a.file), re_binary: inspectBinary,
-  re_archive: archiveTool, re_probe: probe, re_extract: carve, re_compare: compare, re_refs: refsTool, re_strings: stringsTool, re_apicheck: apicheckTool, port_upgrade: upgradeTool, re_save: saveTool, port_shader: portShaderTool, port_trace: portTraceTool, re_report: report, re_lookup: lookupTool, re_blueprint: blueprintTool,
+  re_archive: archiveTool, re_probe: probe, re_extract: carve, re_compare: compare, re_refs: refsTool, re_strings: stringsTool, re_apicheck: apicheckTool, re_decode: decodeTool, port_upgrade: upgradeTool, re_save: saveTool, port_shader: portShaderTool, port_trace: portTraceTool, re_report: report, re_lookup: lookupTool, re_blueprint: blueprintTool,
   port_map: portMapTool, port_convert: convert, port_plan: planPort, port_unit: portUnit, port_write: portWrite, port_scene: portScene,
   port_copy_assets: portCopyAssets, port_status: portStatus, port_verify: portVerify, re_case: caseTool, share_feedback: shareFeedback,
 };

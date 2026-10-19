@@ -32,7 +32,8 @@ routes in the main skill and cite their Evidence.
 
 - Godot packs can sit inside the `.exe`: `re_archive {file}` lists them; add
   `action: "extract", match: "*.gd"` to extract. Encrypted packs are reported,
-  never opened.
+  never opened. Exported packs hold .gdc, binary .scn/.res and project.binary:
+  `re_decode {path: <extracted folder>}` writes an editable project back.
 - `re_binary` reads PE (with .NET types and methods), ELF, Mach-O, wasm, Java
   class and dex files; `Assembly-CSharp.dll` shows a Unity game's scripts.
 - `re_compare {a, b}` diffs folders, packs or binaries. Report changes grouped
