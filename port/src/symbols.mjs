@@ -55,6 +55,25 @@ function lineIndex(text) {
 
 const all = (re, text) => [...text.matchAll(re)];
 
+/** `a::{b, c::{self, D}, *}` → `a::b`, `a::c`, `a::c::D`, `a`. Aliases (`as X`) and leading `::` are dropped. */
+export function expandRustUse(spec) {
+  const text = spec.replace(/\s+as\s+\w+/g, '').replace(/\s+/g, '').replace(/^::/, '');
+  const out = [];
+  const walk = (prefix, s) => {
+    const open = s.indexOf('{');
+    if (open < 0) { const p = `${prefix}${s}`.replace(/::(self|\*)$/, '').replace(/^(self|\*)$/, ''); if (p) out.push(p); return; }
+    let depth = 0, close = open;
+    for (; close < s.length; close++) { if (s[close] === '{') depth++; else if (s[close] === '}' && --depth === 0) break; }
+    const items = [];
+    let start = open + 1, level = 0;
+    for (let i = open + 1; i < close; i++) { if (s[i] === '{') level++; else if (s[i] === '}') level--; else if (s[i] === ',' && !level) { items.push(s.slice(start, i)); start = i + 1; } }
+    items.push(s.slice(start, close));
+    for (const item of items) if (item) walk(prefix + s.slice(0, open), item);
+  };
+  walk('', text);
+  return [...new Set(out)];
+}
+
 export function extractSymbols(text, language) {
   const code = stripComments(text, language);
   const line = lineIndex(code);
@@ -150,7 +169,9 @@ export function extractSymbols(text, language) {
       for (const m of all(/\bfn\s+(\w+)/g, code)) fn(m[1], m);
       for (const m of all(/\b(struct|enum|trait|union)\s+(\w+)/g, code)) cls(m[2], m, { kind: m[1] });
       for (const m of all(/^\s*(?:pub(?:\([^)]*\))?\s+)?mod\s+(\w+)\s*;/gm, code)) dep(m[1], 'mod');
-      for (const m of all(/^\s*(?:pub\s+)?use\s+([\w:]+)/gm, code)) dep(m[1], 'use');
+      // `use a::{b, c::{self, D}};` names every leaf; a `use super::…` that is indented sits in an inline
+      // `mod tests { … }`, whose parent is this file, so one `super` becomes `self`.
+      for (const m of all(/^([ \t]*)(?:pub(?:\([^)]*\))?\s+)?use\s+([^;]+);/gm, code)) for (const spec of expandRustUse(m[2])) dep(m[1] ? spec.replace(/^super(?=::|$)/, 'self') : spec, 'use');
       if (/\bfn\s+main\s*\(/.test(code)) out.entry = true;
       break;
     }

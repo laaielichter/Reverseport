@@ -125,8 +125,8 @@ function validate(schema, args, where = 'arguments') {
       throw new RPError('INVALID_ARGUMENT', `Unknown argument ${hints.join(', ')}${where === 'arguments' ? '' : ` in ${where}`}. Allowed: ${allowed.join(', ')}.`);
     }
     for (const r of schema.required ?? []) if (args[r] === undefined || args[r] === null || args[r] === '') {
-      const d = schema.properties?.[r]?.description;
-      throw new RPError('INVALID_ARGUMENT', `Missing ${r}${d ? ` (${d.replace(/\.$/, '')})` : ''}.`);
+      const { description: d, enum: choices } = schema.properties?.[r] ?? {};
+      throw new RPError('INVALID_ARGUMENT', `Missing ${r}${d ? ` (${d.replace(/\.$/, '')})` : ''}.${choices ? ` One of: ${choices.join(', ')}.` : ''}`);
     }
     for (const [k, v] of Object.entries(args)) if (v !== undefined && v !== null && schema.properties?.[k]) validate(schema.properties[k], v, k);
     return;
