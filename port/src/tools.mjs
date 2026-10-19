@@ -19,6 +19,7 @@ import { stringsTool } from './strings.mjs';
 import { apicheckTool, GODOT_VERSIONS } from './apicheck.mjs';
 import { upgradeTool } from './upgrade.mjs';
 import { saveTool } from './save.mjs';
+import { portShaderTool } from './shader.mjs';
 
 /** One version for the whole package: the root package.json. */
 export const VERSION = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')).version;
@@ -107,6 +108,9 @@ export const tools = [
   { name: 'port_scene', brief: 'Convert a scene/prefab automatically.', title: 'Convert a scene/prefab',
     description: 'Converts a scene deterministically: Godot .tscn → Unity prefab/scene spec (+ editor builder menu), three.js TypeScript builder module, Unreal scene spec (cm, Z-up) or Godot C# (script paths swapped); Unity .unity/.prefab → Godot .tscn (bodies, colliders, primitive meshes, cameras, lights, scripts, prefab instances and variants with their overrides, uGUI Canvas/Image/Text/TextMeshPro/Button/Slider/Toggle/ScrollRect/layout groups → Control nodes with Godot anchors and offsets, Animator → AnimationPlayer + state-machine script); Unity .anim → Godot Animation .tres (position/rotation/scale/property/sprite/event tracks) and .controller → GDScript state machine with the same states, parameters and transition conditions. Transforms are converted between coordinate systems. With planId it writes the unit; with file+to it writes into the workspace.',
     inputSchema: obj({ planId, unit, file: str('Scene file (without a plan).'), to: str('Target engine (without a plan).', { enum: engines }), out: str('Output file (without a plan).') }) },
+  { name: 'port_shader', brief: 'First draft of a shader in another engine: Unity ShaderLab/HLSL → Godot, Shadertoy/GLSL → Godot or three.js, Godot → three.js or Unity; every untranslatable piece marked PORT:.', title: 'Port a shader',
+    description: 'Translates shader code between engines as a faithful first draft: Unity ShaderLab (surface shaders → fragment() with ALBEDO/NORMAL_MAP/METALLIC/ROUGHNESS/EMISSION/ALPHA; vertex/fragment shaders → vertex()/fragment() with varyings) → Godot .gdshader with Properties as uniforms (hints, ranges, _ST tiling), HLSL types/intrinsics/built-ins mapped (float4→vec4, lerp→mix, tex2D→texture, saturate→clamp, _Time.y→TIME, UnityObjectToClipPos→VERTEX, unity_ObjectToWorld→MODEL_MATRIX…); Shadertoy or plain GLSL → Godot canvas_item (iTime/iResolution/iChannelN/fragCoord mapped, Y flipped) or a three.js ShaderMaterial module; Godot .gdshader → three.js ShaderMaterial (uniforms object included) or Unity ShaderLab (canvas_item → sprite shader, spatial → Standard surface shader). Lighting models and coordinate spaces differ per engine, so the result lists leftovers (identifiers with no equivalent) and PORT: markers; compile it in the target engine before trusting it.',
+    inputSchema: obj({ file: str('Shader file (.shader, .gdshader, .glsl, .hlsl, .cginc).'), content: str('Shader code instead of file.'), to: str('Target: godot, threejs or unity.', { enum: ['godot', 'threejs', 'unity'] }), out: str('Output file (default workspace/shaders/<name>.<ext>).'), name: str('Shader name for the output.') }, ['to']) },
   { name: 'port_copy_assets', brief: 'Copy all asset units of a plan.', title: 'Copy all asset units',
     description: 'Copies every pending asset unit (textures, audio, models, fonts, video) of a plan into the output project. match limits it with a regex.',
     inputSchema: obj({ planId, match: str('Regex over source paths.') }, ['planId']) },
@@ -130,7 +134,7 @@ for (const t of tools) t.annotations = annotationsFor(t.name);
 
 const handlers = {
   re_scan: scanProject, re_graph: graphTool, re_symbols: symbolsTool, re_scene: a => readScene(a.file), re_binary: inspectBinary,
-  re_archive: archiveTool, re_probe: probe, re_extract: carve, re_compare: compare, re_refs: refsTool, re_strings: stringsTool, re_apicheck: apicheckTool, port_upgrade: upgradeTool, re_save: saveTool, re_report: report, re_lookup: lookupTool, re_blueprint: blueprintTool,
+  re_archive: archiveTool, re_probe: probe, re_extract: carve, re_compare: compare, re_refs: refsTool, re_strings: stringsTool, re_apicheck: apicheckTool, port_upgrade: upgradeTool, re_save: saveTool, port_shader: portShaderTool, re_report: report, re_lookup: lookupTool, re_blueprint: blueprintTool,
   port_map: portMapTool, port_convert: convert, port_plan: planPort, port_unit: portUnit, port_write: portWrite, port_scene: portScene,
   port_copy_assets: portCopyAssets, port_status: portStatus, port_verify: portVerify, re_case: caseTool, share_feedback: shareFeedback,
 };

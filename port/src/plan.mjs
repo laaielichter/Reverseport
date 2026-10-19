@@ -273,7 +273,7 @@ const CHECKLIST = {
   ],
   scene: ['Run port_scene {planId, unit}: it writes the converted scene/spec and marks the unit. Then review its reverseport TODO notes.'],
   resource: ['Port the data with the field names of its ported script/class. Keep values; convert units if they are distances.'],
-  shader: ['Port the shader to the target shading system; uniforms keep their names. Mark untranslatable parts with PORT: comments.'],
+  shader: ['Start from port_shader {file, to}: it maps uniforms, intrinsics and built-ins and marks the rest with PORT: comments. Resolve every leftover it lists; uniforms keep their names.'],
   asset: ['Copy as-is: port_write {planId, unit, copy:true}. The target engine imports it itself.'],
   config: ['Recreate these project settings in the target (input actions, tags/groups, autoloads/singletons, main scene). Write what you did into the notes file.'],
 };

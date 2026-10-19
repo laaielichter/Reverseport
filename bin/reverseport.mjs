@@ -19,7 +19,7 @@ const PORT_COMMANDS = new Set([
   'compare-builds', 'report', 'lookup', 'recon', 'web', 'blueprint', 'rebuild', 'map', 'convert', 'plan', 'unit',
   'write', 'port-scene', 'copy-assets', 'status', 'verify', 'case', 'proof', 'tools', 'serve', 'describe', 'feedback',
   'connect', 'skills', 'refs', 'guids', 'strings', 'i18n', 'l10n', 'apicheck', 'api', 'upgrade', 'godot3to4', 'save',
-  'savefile',
+  'savefile', 'shader',
 ]);
 const ALWAYS_ENGINE = ['setup', 'doctor', 'update', 'uninstall', 'mcp', 'capabilities', 'providers', 'help'];
 
@@ -68,6 +68,7 @@ Understand anything (no build needed)
   reverseport apicheck <file|folder> Godot 3 names, invented members, too-new classes; --engine godot@4.3
   reverseport upgrade <godot3-project> Godot 3 → 4 as a copy; --action apply --out <folder>; lists what needs a human
   reverseport save <file> [other]    save file: layers, fields with roles, checksums, diff against another save; --action schema
+  reverseport shader <file> <godot|threejs|unity>  first draft of a shader in another engine, leftovers listed
   reverseport report <folder>        ARCHITECTURE.md
   reverseport port help              every ReversePort command and option
 

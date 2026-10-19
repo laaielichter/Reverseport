@@ -92,6 +92,9 @@ Unity → Unreal, or any language.
    Scenes, uGUI, prefab variants, `.anim` and `.controller`: `port_scene {planId, unit}`. Code: write the port, then
    `port_write {planId, unit, files}` and fix every leftover and
    missing function it reports before moving on.
+   Shaders: `port_shader {file, to}` gives a marked first draft (uniforms,
+   intrinsics, built-ins); resolve its leftovers and `PORT:` markers, then
+   `port_write` it as the unit's file.
 4. Translate behaviour, not syntax: events instead of signals, serialized
    references instead of node paths, timers or coroutines instead of awaits.
    Convert every position, direction, rotation, speed and distance with
