@@ -65,6 +65,10 @@ These tools run without an analysis engine or provider:
   Encrypted or obfuscated saves are reported, never decoded.
 - No files, only a name, store page, website or public repository: `re_lookup`,
   then `re_blueprint` for a clean-room rebuild spec measured against the original.
+- Solana: `re_solana` with action `program` (upgrade authority, framework, IDL),
+  `account` (wallet, token account, mint authorities, Token-2022 extensions),
+  `tx` (what a transaction does before signing; `simulate:true` for real
+  changes) or `address` (keypair or PDA, derive a PDA from seeds).
 - Port between engines or languages: `port_map` → `port_plan` → `port_unit` /
   `port_write` (scenes: `port_scene`, assets: `port_copy_assets`) →
   `port_verify` until it passes. Convert every transform with `port_convert`.

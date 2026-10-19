@@ -5,8 +5,8 @@ description: Reverse engineer and port software, games and code with ReversePort
 
 # ReversePort on claude.ai
 
-ReversePort (github.com/laaielichter/reverseport) runs in the code-execution workspace. Its own 23 tools (recon,
-builds, lookups, blueprints, porting) need nothing but Node; you drive them through the `reverseport` CLI and get
+ReversePort (github.com/laaielichter/reverseport) runs in the code-execution workspace. Its own 34 tools (recon,
+builds, lookups, blueprints, porting, Solana) need nothing but Node; you drive them through the `reverseport` CLI and get
 JSON back. Read the result, then answer or keep going.
 
 ## 1. Get ReversePort (once per session)

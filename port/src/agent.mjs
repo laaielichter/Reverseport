@@ -78,8 +78,8 @@ function distance(a, b) {
 
 // ---------------------------------------------------------------------------------------------------- annotations
 // MCP hints: clients use them to skip approval prompts for reads and to run reads in parallel.
-const READ_ONLY = new Set(['re_scan', 're_graph', 're_symbols', 're_scene', 're_binary', 're_probe', 're_compare', 're_refs', 're_strings', 're_apicheck', 're_save', 're_decode', 're_il2cpp', 'port_map', 'port_trace', 'port_convert', 'port_status', 'port_verify']);
-const OPEN_WORLD = new Set(['re_lookup']);
+const READ_ONLY = new Set(['re_scan', 're_graph', 're_symbols', 're_scene', 're_binary', 're_probe', 're_compare', 're_refs', 're_strings', 're_apicheck', 're_save', 're_decode', 're_il2cpp', 'port_map', 'port_trace', 'port_convert', 'port_status', 'port_verify', 're_solana']);
+const OPEN_WORLD = new Set(['re_lookup', 're_solana']);
 
 export function annotationsFor(name) {
   const readOnly = READ_ONLY.has(name);

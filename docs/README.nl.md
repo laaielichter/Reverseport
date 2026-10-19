@@ -53,6 +53,9 @@ zonder installatie: `node bin/reverseport.mjs scan ./MijnGame`.
   betrouwbaarheid, stack, waar de bestanden staan en bestaande open-source remakes.
 - **Precies nabouwen** — `re_blueprint` maakt daar een clean-room bouwspecificatie van: systemen, wat je aan het
   origineel meet, een `parity.json` en een projectskelet met elke waarde als instelbare parameter.
+- **Solana** — `re_solana` leest programma's, accounts en transacties zonder SDK: wie een programma mag aanpassen,
+  waar het mee gebouwd is, wat een token-mint of tokenaccount mag, en wat een transactie écht met je wallet doet
+  vóór je tekent (in gewone taal, met waarschuwingen en desgewenst een droge simulatie).
 - **Porten** — Godot ⇄ Unity, Godot → Unreal, Godot → three.js, GDScript → Godot C#, of van taal naar taal. Scènes en
   transformaties gaan automatisch; de agent port de code per bestand (`port_unit`, `port_write`) en `port_verify`
   controleert dat er niets ontbreekt.

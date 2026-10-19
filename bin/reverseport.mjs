@@ -19,7 +19,7 @@ const PORT_COMMANDS = new Set([
   'compare-builds', 'report', 'lookup', 'recon', 'web', 'blueprint', 'rebuild', 'map', 'convert', 'plan', 'unit',
   'write', 'port-scene', 'copy-assets', 'status', 'verify', 'case', 'proof', 'tools', 'serve', 'describe', 'feedback',
   'connect', 'skills', 'refs', 'guids', 'strings', 'i18n', 'l10n', 'apicheck', 'api', 'upgrade', 'godot3to4', 'save',
-  'savefile', 'shader', 'trace', 'rpgmaker', 'rpgm', 'decode', 'gdc', 'il2cpp',
+  'savefile', 'shader', 'trace', 'rpgmaker', 'rpgm', 'decode', 'gdc', 'il2cpp', 'solana', 'sol',
 ]);
 const ALWAYS_ENGINE = ['setup', 'doctor', 'update', 'uninstall', 'mcp', 'capabilities', 'providers', 'help'];
 
@@ -88,6 +88,11 @@ Rebuild and port
   reverseport blueprint --lookup-id <id>   clean-room rebuild spec + parity table + skeleton
   reverseport plan <source> --to unity     port Godot ⇄ Unity, → Unreal, → three.js, → Godot C#, any language
   reverseport verify <planId>              prove nothing was left behind
+
+Solana
+  reverseport solana program <programId>   who can upgrade it, framework, crates, IDL, security.txt
+  reverseport solana account <address>     wallet, token account, mint authorities, Token-2022 extensions
+  reverseport solana tx <base64|signature> what a transaction does to the wallet (--simulate for a dry run)
 
 Proof (evidence ledger)
   reverseport case init --question "…" --target <what>   open a proof case

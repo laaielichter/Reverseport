@@ -19,6 +19,7 @@ Any client config: `reverseport connect <client>`.
 - Compiled code in depth: `open_binary` → `search_procedures` / `search_strings` → `procedure_pseudo_code`, `xrefs`, `procedure_callers` (Ghidra, Hopper or IDA).
 - .NET: `inspect_managed_artifact`. Android: `inspect_android_package`. Electron/web bundles: `analyze_javascript_application`. Live pages: `list_browser_targets`, `observe_web_session`.
 - No files (name, store page, website, public repo): `re_lookup` → `re_blueprint` (clean-room rebuild spec, parity table, skeleton).
+- Solana: `re_solana` — program (who can upgrade it, framework, crates, instructions, IDL, security.txt), account (wallet, token account, mint and its authorities, Token-2022 extensions), tx (what a transaction does to a wallet before signing; `simulate:true` for real balance changes), address (keypair or PDA, derive PDAs).
 - Findings someone will act on: `re_case` keeps a proof case (evidence → claims that cite it → unknowns → decision → tests → report); `check` before you answer.
 - Port (Godot ⇄ Unity, → Unreal, → three.js, → Godot C#, any language): `port_map` → `port_plan` → `port_unit` / `port_write` / `port_scene` / `port_copy_assets` → `port_verify`. Always `port_convert` transforms.
 

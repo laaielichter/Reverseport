@@ -80,7 +80,7 @@ Every agent can reach every tool. What changes is how much is listed up front:
 | Profile              | Lists                                                                           | About           | For                                                |
 | -------------------- | ------------------------------------------------------------------------------- | --------------- | -------------------------------------------------- |
 | `compact`            | 8 ReversePort tools + 6 engine essentials, one-line descriptions, short schemas | 17 tools        | small or older models, small context windows       |
-| `standard` (default) | ReversePort's 23 tools + about 20 core engine tools                             | 46 tools        | most agents                                        |
+| `standard` (default) | ReversePort's 34 tools + about 20 core engine tools                             | 57 tools        | most agents                                        |
 | `full`               | every tool                                                                      | about 200 tools | large-context agents whose client allows that many |
 
 Some clients cap the number of tools (Cursor has used about 40, VS Code and OpenAI 128, Windsurf 100). Pick
