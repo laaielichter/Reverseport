@@ -259,3 +259,34 @@ test('SWF: stage, tags, AS3 classes, symbols, assets; compressed SWF inflates on
   assert.equal(again.compression, 'none');
   await fs.rm(dir, { recursive: true, force: true });
 });
+
+test('web exports: Unity WebGL .data (plain and brotli) and Emscripten .data with its loader', async () => {
+  const dir = await tempDir();
+  await fs.mkdir(path.join(dir, 'Build'));
+  const files = { 'data.unity3d': Buffer.from('UnityFS-ish'), 'Il2CppData/Metadata/global-metadata.dat': Buffer.from([0xaf, 0x1b, 0xb1, 0xfa, 29, 0, 0, 0]), 'StreamingAssets/config.json': Buffer.from('{"a":1}') };
+  const magic = Buffer.from('UnityWebData1.0\0');
+  const table = Object.keys(files).map(n => ({ n, b: Buffer.from(n) }));
+  const headerSize = magic.length + 4 + table.reduce((s, t) => s + 12 + t.b.length, 0);
+  let off = headerSize; const parts = [];
+  for (const t of table) { const d = files[t.n]; parts.push(Buffer.concat([u32(off), u32(d.length), u32(t.b.length), t.b])); off += d.length; }
+  const blob = Buffer.concat([magic, u32(headerSize), ...parts, ...Object.values(files)]);
+  await fs.writeFile(path.join(dir, 'Build', 'game.data'), blob);
+  await fs.writeFile(path.join(dir, 'Build', 'game.data.br'), zlib.brotliCompressSync(blob));
+  for (const name of ['game.data', 'game.data.br']) {
+    const l = await archiveTool({ file: path.join(dir, 'Build', name) });
+    assert.equal(l.format, 'unity-webgl-data');
+    assert.equal(l.unity.il2cpp, true);
+    const ex = await archiveTool({ file: path.join(dir, 'Build', name), action: 'extract', out: path.join(dir, `out-${name}`) });
+    assert.equal(ex.extracted, 3);
+    assert.equal(await fs.readFile(path.join(dir, `out-${name}`, 'StreamingAssets', 'config.json'), 'utf8'), '{"a":1}');
+  }
+  const em = Buffer.concat([Buffer.from('GDPC-pack-bytes'), Buffer.from('print("hi")')]);
+  await fs.writeFile(path.join(dir, 'game2.data'), em);
+  await fs.writeFile(path.join(dir, 'game2.js'), `var Module;Module.expectedDataFileDownloads++;loadPackage({"files": [{"filename": "/index.pck", "start": 0, "end": 15}, {"filename": "/main.py", "start": 15, "end": 26}], "remote_package_size": 26});`);
+  const e = await archiveTool({ file: path.join(dir, 'game2.data') });
+  assert.equal(e.format, 'emscripten-data');
+  assert.deepEqual(e.entries.map(x => x.path), ['index.pck', 'main.py']);
+  const ex = await archiveTool({ file: path.join(dir, 'game2.data'), action: 'extract', out: path.join(dir, 'em') });
+  assert.equal(await fs.readFile(path.join(dir, 'em', 'main.py'), 'utf8'), 'print("hi")');
+  await fs.rm(dir, { recursive: true, force: true });
+});

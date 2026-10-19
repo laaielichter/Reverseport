@@ -26,6 +26,7 @@ re_archive {file:"data.win"}                         → GameMaker: game name/ve
 re_archive {file:"archive.rpa"}                      → Ren'Py: scripts/images/audio (.rpyc = compiled AST, no source)
 re_archive {file:"Master.bank"} / {file:"Init.bnk"}  → FMOD events + FSB5 samples / Wwise media (.wem) + object counts
 re_archive {file:"Game.pak"}                         → Unreal: entries, compression, stored/Zlib extract; encrypted = listed only
+re_archive {file:"Build/game.data.br"}              → Unity WebGL: data files, StreamingAssets, IL2CPP metadata; Emscripten .data via its loader .js
 re_archive {file:"game.swf"}                         → Flash: stage, AS2/AS3, classes, symbols, images/sounds/ABC extract
 re_binary  {file:"<Game>_Data/Managed/Assembly-CSharp.dll"}   → Unity Mono build: game classes and methods
 re_binary  {file:"Game.exe"}                         → arch, imports (graphics API, Steam, FMOD/Wwise…), hints

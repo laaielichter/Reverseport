@@ -13,7 +13,7 @@ import { RPError, readAt, requireFile, compileMatcher, sha256, MiB } from './uti
 import { identify } from './formats.mjs';
 import { parsePE, parseELF } from './binary.mjs';
 import { safeJoin, workspaceDir, extractionName } from './workspace.mjs';
-import { readRpa, readGameMaker, readFmodBank, readWwiseBank, readUnrealPak, readSwf } from './gamearchives.mjs';
+import { readRpa, readGameMaker, readFmodBank, readWwiseBank, readUnrealPak, readSwf, readUnityWebData, readEmscriptenData } from './gamearchives.mjs';
 
 const MAX_ENTRIES = 2_000_000;
 
@@ -258,6 +258,8 @@ export async function openArchive(file) {
   if (kind === 'fmod-bank') return { abs, size, ...(await readFmodBank(abs, size)) };
   if (kind === 'wwise-bank') return { abs, size, ...(await readWwiseBank(abs, size)) };
   if (kind === 'swf') return { abs, size, ...(await readSwf(abs, size)) };
+  if (head.subarray(0, 16).toString('latin1').startsWith('UnityWebData') || /\.(data\.(gz|br)|unityweb)$/i.test(abs) || (/\.data$/i.test(abs) && /Build[\\/]/.test(abs))) { try { return { abs, size, ...(await readUnityWebData(abs)) }; } catch (e) { if (e.code !== 'BAD_FORMAT') throw e; } }
+  if (/\.data$/i.test(abs)) { try { return { abs, size, ...(await readEmscriptenData(abs)) }; } catch (e) { if (e.code !== 'BAD_FORMAT') throw e; } }
   if (/\.pak$/i.test(abs) && kind !== 'zip') { try { return { abs, size, ...(await readUnrealPak(abs, size)) }; } catch (e) { if (e.code !== 'BAD_FORMAT') throw e; } }
   if (kind === 'unityfs' || /\.pak$/i.test(abs)) { const d = await describeOnly(abs, size, kind); if (d) return { abs, size, ...d }; }
   try { return { abs, size, ...(await readPck(abs, size)) }; } catch (e) { if (e.code !== 'NOT_A_PCK') throw e; }
@@ -274,7 +276,7 @@ export async function archiveTool({ file, action = 'list', match, limit = 500, o
   const want = compileMatcher(match);
   const selected = arc.entries.filter(e => want(e.path));
   const summary = { format: arc.format, file: arc.abs, size: arc.size };
-  for (const k of ['packVersion', 'godotVersion', 'embedded', 'embeddedVia', 'start', 'encryptedDirectory', 'unityVersion', 'unityRevision', 'compression', 'pakVersion', 'bundleFormat', 'note', 'rpaVersion', 'keyed', 'renpy', 'chunks', 'game', 'counts', 'names', 'fsb', 'events', 'buses', 'vcas', 'bankVersion', 'bankId', 'objects', 'objectCount', 'namedIds', 'mountPoint', 'encryptedIndex', 'encryptionKeyGuid', 'compressionMethods', 'unreal', 'swfVersion', 'stage', 'tags', 'actionScript', 'documentClass', 'symbolClasses', 'frameLabels', 'classes', 'identifierStrings']) if (arc[k] !== undefined) summary[k] = arc[k];
+  for (const k of ['packVersion', 'godotVersion', 'embedded', 'embeddedVia', 'start', 'encryptedDirectory', 'unityVersion', 'unityRevision', 'compression', 'pakVersion', 'bundleFormat', 'note', 'rpaVersion', 'keyed', 'renpy', 'chunks', 'game', 'counts', 'names', 'fsb', 'events', 'buses', 'vcas', 'bankVersion', 'bankId', 'objects', 'objectCount', 'namedIds', 'mountPoint', 'encryptedIndex', 'encryptionKeyGuid', 'compressionMethods', 'unreal', 'swfVersion', 'stage', 'tags', 'actionScript', 'documentClass', 'symbolClasses', 'frameLabels', 'classes', 'identifierStrings', 'loader', 'packageSize', 'engine', 'unity']) if (arc[k] !== undefined) summary[k] = arc[k];
   const byExt = {};
   for (const e of arc.entries) { const ext = path.extname(e.path).toLowerCase() || '(none)'; byExt[ext] = byExt[ext] ?? { files: 0, bytes: 0 }; byExt[ext].files++; byExt[ext].bytes += e.size ?? 0; }
   const topTypes = Object.entries(byExt).sort((a, b) => b[1].bytes - a[1].bytes).slice(0, 25).map(([ext, v]) => ({ ext, ...v }));
@@ -329,6 +331,8 @@ export async function archiveTool({ file, action = 'list', match, limit = 500, o
         const start = await zipDataStart(arc.abs, e);
         const src = e.compressedSize ? createReadStream(arc.abs, { start, end: start + e.compressedSize - 1 }) : Readable.from([]);
         await (e.method === 8 ? pipeline(src, zlib.createInflateRaw(), createWriteStream(dest)) : pipeline(src, createWriteStream(dest)));
+      } else if (e.inMemory && arc.data) {
+        await fs.writeFile(dest, arc.data.subarray(e.offset, e.offset + e.size));
       } else if (e.zlibBlocks) {
         const ws = createWriteStream(dest);
         for (const b of e.zlibBlocks) { const chunk = await readAt(arc.abs, b.start, b.end - b.start); await new Promise((res, rej) => ws.write(zlib.inflateSync(chunk), err => (err ? rej(err) : res()))); }

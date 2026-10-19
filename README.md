@@ -123,7 +123,7 @@ See [Connect any agent](docs/connect-any-agent.md).
 | ------------------------------------------------------------------------ | ------------------------------------------------------------------------------- |
 | _What is this game made with, and how is it built?_                      | `re_scan` → engine + version, languages, entry points, how it starts            |
 | _Map this codebase and write ARCHITECTURE.md._                           | `re_graph`, `re_symbols`, `re_report`                                           |
-| _All I have is data.win / an .rpa / a .pak / a .swf / a sound bank._      | `re_archive`: names, assets and facts out of GameMaker, Ren'Py, Unreal, Flash, FMOD and Wwise containers |
+| _All I have is data.win / an .rpa / a .pak / a .swf / a sound bank / a web build._ | `re_archive`: names, assets and facts out of GameMaker, Ren'Py, Unreal, Flash, FMOD, Wwise, Unity WebGL and Emscripten containers |
 | _I only have the exported Godot game, not the project._                  | `re_archive` extracts the .pck, `re_decode` turns .gdc/.scn/.res/project.binary back into an editable project |
 | _What changed between build 43 and 44?_                                  | `re_compare` folder-to-folder and pack-to-pack, biggest changes first           |
 | _Why are my Unity materials pink and scripts "missing" after a move?_   | `re_refs`: dangling, duplicate and missing GUIDs, with remap suggestions       |

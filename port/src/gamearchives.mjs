@@ -433,3 +433,44 @@ export async function readSwf(abs, size) {
     note: sig === 'CWS' ? 'Compressed SWF: entries are listed from the inflated body; to extract, save the inflated body as FWS (re_archive action:"extract" writes it) and extract from that.' : 'Images, sounds and ABC blocks extract as-is; shapes, sprites and timelines are vector/timeline data (rebuild from the symbol and class names with re_blueprint; Ruffle can run the original).',
   };
 }
+
+// ------------------------------------------------------------------------------------------------ web exports
+/** Unity WebGL Build/*.data (UnityWebData1.0), also gzip/brotli-compressed (.data.gz, .data.br, .unityweb). */
+export async function readUnityWebData(abs) {
+  let buf = await fs.readFile(abs);
+  const layers = [];
+  if (buf[0] === 0x1f && buf[1] === 0x8b) { buf = zlib.gunzipSync(buf); layers.push('gzip'); }
+  else if (!buf.subarray(0, 16).toString('latin1').startsWith('UnityWebData')) { try { const b = zlib.brotliDecompressSync(buf); if (b.subarray(0, 16).toString('latin1').startsWith('UnityWebData')) { buf = b; layers.push('brotli'); } } catch { /* not brotli */ } }
+  if (!buf.subarray(0, 16).toString('latin1').startsWith('UnityWebData')) throw new RPError('BAD_FORMAT', 'Not a Unity WebGL data file (UnityWebData1.0).');
+  const headerEnd = buf.indexOf(0, 0) + 1;
+  const headerSize = buf.readUInt32LE(headerEnd);
+  let p = headerEnd + 4;
+  const entries = [];
+  while (p < headerSize) {
+    const offset = buf.readUInt32LE(p), size = buf.readUInt32LE(p + 4), nl = buf.readUInt32LE(p + 8);
+    const name = buf.toString('utf8', p + 12, p + 12 + nl);
+    p += 12 + nl;
+    entries.push({ path: name, offset, size, ...(layers.length ? { inMemory: true } : {}) });
+  }
+  const meta = entries.find(e => /global-metadata\.dat$/.test(e.path));
+  return { format: 'unity-webgl-data', compression: layers[0] ?? 'none', entries, data: layers.length ? buf : null,
+    unity: { il2cpp: !!meta, note: meta ? 'IL2CPP build: Il2CppData/Metadata/global-metadata.dat holds type, method and field names (re_il2cpp); code is in the .wasm (re_binary).' : 'Mono/older build or no metadata entry.' },
+    note: 'data.unity3d / level files / sharedassets are Unity serialized files (open them with an asset tool); Resources and StreamingAssets entries are plain files.' };
+}
+
+/** Emscripten file_packager output: the .data blob plus the loader .js that lists files with start/end offsets. */
+export async function readEmscriptenData(abs) {
+  const dir = path.dirname(abs), base = path.basename(abs).replace(/\.data$/i, '');
+  const candidates = [`${base}.js`, `${base}.loader.js`, 'index.js', ...(await fs.readdir(dir).catch(() => [])).filter(f => f.endsWith('.js'))];
+  for (const c of [...new Set(candidates)]) {
+    const js = await fs.readFile(path.join(dir, c), 'utf8').catch(() => null);
+    if (!js || !/loadPackage|remote_package_size|"files"\s*:\s*\[/.test(js)) continue;
+    const m = js.match(/loadPackage\(\s*(\{[\s\S]*?"remote_package_size"\s*:\s*\d+[^}]*\})\s*\)/) ?? js.match(/(\{"files"\s*:\s*\[[\s\S]*?\][^}]*\})/);
+    if (!m) continue;
+    let meta; try { meta = JSON.parse(m[1]); } catch { continue; }
+    const entries = (meta.files ?? []).map(f => ({ path: String(f.filename).replace(/^\/+/, ''), offset: f.start, size: f.end - f.start, ...(f.audio ? { audio: true } : {}) }));
+    const engine = entries.some(e => /\.pck$/.test(e.path)) ? 'Godot (pack inside: re_archive it after extracting)' : entries.some(e => /love|main\.lua$/.test(e.path)) ? 'LÖVE' : entries.some(e => /\.rpa|renpy/.test(e.path)) ? "Ren'Py web" : entries.some(e => /\.py$/.test(e.path)) ? 'Python (Pyodide/pygbag)' : null;
+    return { format: 'emscripten-data', loader: c, packageSize: meta.remote_package_size ?? null, entries, ...(engine ? { engine } : {}), note: meta.package_uuid ? `package ${meta.package_uuid}` : undefined };
+  }
+  throw new RPError('BAD_FORMAT', 'Emscripten .data needs its loader .js next to it (the file that calls loadPackage with the file list).');
+}
