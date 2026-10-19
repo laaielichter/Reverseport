@@ -16,7 +16,7 @@ ReversePort can attach to a user-owned Chrome-family browser through the Chrome 
 - `observe_web_session` / `reverseport observe-web-session` arms an observation window of the requested duration for an external user action and records ordered reload, SPA navigation, redirect, failure, lifecycle, and target-termination metadata.
 - `discover_webmcp_tools` / `reverseport discover-webmcp-tools` uses the experimental CDP WebMCP domain to return every in-scope registration and its complete observed `input_schema` declaration and canonical `input_schema_sha256` digest inline. Declarations are untrusted JSON data, including declared types, required fields, enums, examples and reference URLs. ReversePort does not resolve schema references. These fields replace `input_schema_shape`. Registrations with the same name and URL in distinct observed frames retain separate identities. `tool_key` includes the observed frame ID; it is not a stable identity across navigation or browser sessions. Same-frame registration updates replace that owner only, and removal leaves other owners intact. ReversePort never exposes `WebMCP.invokeTool`; malformed protocol payloads fail explicitly instead of returning incomplete tool metadata.
 - `compare_web_captures` / `reverseport compare-web-captures` compares passive captures or exact-step-aligned browser scenarios. Scenario results commit reproducible literal normalization and expose alignment failures plus artifact-level action, screenshot, DOM, accessibility, URL, history, storage, and event differences. Missing or truncated evidence is never treated as equivalence.
-- `capture_web_screenshot` / `reverseport capture-web-screenshot` returns a content-addressed visible-viewport PNG.
+- `capture_web_screenshot` / `reverseport capture-web-screenshot` returns a content-addressed visible-viewport PNG. With `selector` / `--selector` it crops to one element and adds its box, `outer_html` and computed style, read through the DOM and CSS domains.
 - `compare_web_screenshots` / `reverseport compare-web-screenshots` performs bounded local PNG pixel comparison without OCR or external services.
 - The CLI comparison commands accept each capture, screenshot artifact or normalization policy as inline JSON or a JSON file path. Use files for screenshot artifacts and scenario captures, whose embedded PNG bytes can exceed the host's command-line length limit.
 - Every surface has equivalent CLI and MCP contracts and returns Evidence provenance.
@@ -140,6 +140,13 @@ Screenshot capture returns the complete visible viewport as an inline image arti
 ```bash
 reverseport capture-web-screenshot http://127.0.0.1:9222 TARGET_ID \
   --json
+```
+
+To rebuild or port a page part by part, capture one element instead. The image is cropped to the part of the element inside the viewport, and the result adds `element` with its border box, `outer_html` (up to 64 KiB) and computed style (up to 600 properties). Scroll the element into view in the browser first; ReversePort does not scroll. The markup includes attribute values as the page has them.
+
+```bash
+reverseport capture-web-screenshot http://127.0.0.1:9222 TARGET_ID \
+  --selector "header nav" --json
 ```
 
 ## MCP input
