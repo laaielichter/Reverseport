@@ -56,7 +56,9 @@ export async function verifyBrowserRuntime(
       executable,
       activePortPath: join(profile, "DevToolsActivePort"),
       stderr: () => stderr,
-      timeoutMs: 20_000,
+      // A loaded CI runner sometimes needs more than 20 s to start Chrome (about 3 s locally); only a slow start is
+      // forgiven, a browser that never starts still fails after the wait.
+      timeoutMs: 60_000,
     });
     const endpoint = `http://127.0.0.1:${port}`;
     const targets = await new CdpBrowserProvider().listTargets({
