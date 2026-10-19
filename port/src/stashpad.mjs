@@ -22,7 +22,7 @@ function locate(env = process.env) {
       if (existsSync(full)) return { command: [full] };
     }
   }
-  return { missing: 'Stashpad is not installed (optional). See docs/stashpad.md.' };
+  return { missing: 'Stashpad is not installed (optional). See docs/proof-and-memory.md.' };
 }
 
 function run(command, args, input) {

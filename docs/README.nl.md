@@ -29,6 +29,11 @@ Claude Code kan ook de plugin gebruiken (met de port-skills en de `port-architec
 /plugin install reverseport@reverseport
 ```
 
+Dezelfde marketplace heeft ook de zusterplugins [Stashpad](https://github.com/laaielichter/stashpad) (geheugen voor
+agents dat je kunt lezen en nakijken: `/plugin install stashpad@reverseport`) en
+[agentdisk](https://github.com/laaielichter/agentdisk) (wat agents op je schijf achterlaten, en opruimen met undo:
+`/plugin install agentdisk@reverseport`; daarvoor moet de `agentdisk`-binary geïnstalleerd zijn).
+
 Vanuit de broncode: `git clone https://github.com/laaielichter/reverseport`, dan `npm ci && npm run build` en
 `./bin/reverseport.mjs setup`. De verken-, build-, lookup-, blueprint- en port-commando's werken direct na de clone,
 zonder installatie: `node bin/reverseport.mjs scan ./MijnGame`.
