@@ -42,6 +42,11 @@ describe("release configuration", () => {
               path: "server.json",
               jsonpath: "$.packages[0].version",
             },
+            {
+              type: "json",
+              path: ".claude-plugin/plugin.json",
+              jsonpath: "$.version",
+            },
           ],
         },
       },
