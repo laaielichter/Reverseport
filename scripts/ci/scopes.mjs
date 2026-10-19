@@ -220,6 +220,7 @@ export const SCOPES = {
     ".github/workflows/nativeaot-fixtures.yml",
   ],
   website: [
+    "site/**",
     "website/**",
     "scripts/*website*.py",
     "README*.md",
