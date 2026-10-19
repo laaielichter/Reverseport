@@ -146,7 +146,7 @@ test('relay: without an engine the local tools still work and the instructions s
     const i = await s.call(1, 'initialize', init);
     assert.equal(i.result.serverInfo.name, 'reverseport');
     const list = await s.call(2, 'tools/list', {});
-    assert.equal(list.result.tools.length, 26, "25 ReversePort tools + set_tool_profile");
+    assert.equal(list.result.tools.length, 27, "26 ReversePort tools + set_tool_profile");
     const unknown = await s.call(3, 'tools/call', { name: 'decompile', arguments: {} });
     assert.equal(unknown.result.isError, true, 'unknown tools are tool results agents can read');
     assert.equal(unknown.result.structuredContent.error.code, 'UNKNOWN_TOOL');
@@ -167,6 +167,6 @@ test('relay: an engine that fails to start is reported, not fatal', async () => 
     const i = await s.call(1, 'initialize', init);
     assert.match(i.result.instructions, /did not start \(exited with code 1\)/);
     const list = await s.call(2, 'tools/list', {});
-    assert.equal(list.result.tools.length, 26, "25 ReversePort tools + set_tool_profile");
+    assert.equal(list.result.tools.length, 27, "26 ReversePort tools + set_tool_profile");
   } finally { s.close(); }
 });

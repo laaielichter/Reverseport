@@ -90,7 +90,9 @@ Unity → Unreal, or any language.
 5. `port_verify {planId}` until it passes; `port_status` shows progress. Both
    return `resume`: read it first after a context reset. Verify also flags
    dormant logic (empty or thin bodies, unwired functions and signals, added
-   suppressions); an empty body is not a port.
+   suppressions); an empty body is not a port. Godot targets: also
+   `re_apicheck {path: <output>, engine}` so no Godot 3 names or invented
+   members survive.
 6. Tell the user how to open the result. Unity: copy `Assets/` in, then Tools ▸
    ReversePort ▸ Build prefabs and scenes from specs. Godot: open the folder.
    three.js: `npm install && npm run dev`. Unreal: Generate project files, build.

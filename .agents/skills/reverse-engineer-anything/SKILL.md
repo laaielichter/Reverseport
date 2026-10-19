@@ -53,6 +53,9 @@ These tools run without an analysis engine or provider:
 - Localisation: `re_strings` extracts user-facing text (Godot, Unity, RPG
   Maker, Ren'Py, i18n JSON) to .pot/.csv with stable ids; `action:"apply"`
   writes a translated copy and checks placeholders. Never edit strings by hand.
+- Godot code you or a model wrote: `re_apicheck {path, engine:"godot@4.3"}`
+  before opening Godot. Fix every renamed-* with its replacement and every
+  unknown-* with a real API; never invent members.
 - No files, only a name, store page, website or public repository: `re_lookup`,
   then `re_blueprint` for a clean-room rebuild spec measured against the original.
 - Port between engines or languages: `port_map` → `port_plan` → `port_unit` /

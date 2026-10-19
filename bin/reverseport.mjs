@@ -18,7 +18,7 @@ const PORT_COMMANDS = new Set([
   'scan', 'graph', 'symbols', 'scene', 'binary', 'bin', 'archive', 'pck', 'probe', 'extract', 'carve', 'diff',
   'compare-builds', 'report', 'lookup', 'recon', 'web', 'blueprint', 'rebuild', 'map', 'convert', 'plan', 'unit',
   'write', 'port-scene', 'copy-assets', 'status', 'verify', 'case', 'proof', 'tools', 'serve', 'describe', 'feedback',
-  'connect', 'skills', 'refs', 'guids', 'strings', 'i18n', 'l10n',
+  'connect', 'skills', 'refs', 'guids', 'strings', 'i18n', 'l10n', 'apicheck', 'api',
 ]);
 const ALWAYS_ENGINE = ['setup', 'doctor', 'update', 'uninstall', 'mcp', 'capabilities', 'providers', 'help'];
 
@@ -64,6 +64,7 @@ Understand anything (no build needed)
   reverseport diff <a> <b>           what changed between two builds, packs or binaries
   reverseport refs <unity-project>   broken Unity GUID references, duplicate and missing .meta files
   reverseport strings <folder>       extract translatable text (.pot/.csv); --action apply writes a translated copy
+  reverseport apicheck <file|folder> Godot 3 names, invented members, too-new classes; --engine godot@4.3
   reverseport report <folder>        ARCHITECTURE.md
   reverseport port help              every ReversePort command and option
 

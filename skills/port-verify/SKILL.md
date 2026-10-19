@@ -32,6 +32,10 @@ ported dependencies, and the open findings. Read it before continuing.
 
 Run `port_verify` again until it passes (or the remaining items are explained to the user).
 
+Godot output: also `re_apicheck {path: <output folder>, engine: "godot@4.x"}`. Every `renamed-*` is a Godot 3 name
+(replace with the given Godot 4 name), every `unknown-*` an invented or misspelled API (use the suggestion or the
+real API), `too-new` a class the target version does not have yet.
+
 ## Hand-over (short and factual)
 
 - Where the output is and how to open/run it in the target engine.

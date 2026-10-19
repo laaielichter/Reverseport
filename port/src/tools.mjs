@@ -16,6 +16,7 @@ import { caseTool, ACTIONS as CASE_ACTIONS, INTENTS, KINDS, CONFIDENCE, PHASES, 
 import { annotationsFor, closest, formatTools, shareFeedback } from './agent.mjs';
 import { refsTool } from './refs.mjs';
 import { stringsTool } from './strings.mjs';
+import { apicheckTool, GODOT_VERSIONS } from './apicheck.mjs';
 
 /** One version for the whole package: the root package.json. */
 export const VERSION = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')).version;
@@ -66,6 +67,9 @@ export const tools = [
   { name: 're_strings', brief: 'Extract user-facing text for translation (Godot, Unity, RPG Maker, Ren\'Py, i18n JSON) and write translations back into a copy.', title: 'Extract and apply translatable text',
     description: 'Localisation: extracts user-facing text with stable ids from Godot scenes/resources and GDScript (text, tooltips, tr()), Unity YAML (m_Text, TextMeshPro) and C#, RPG Maker MV/MZ data (Show Text, choices, database names, terms), Ren\'Py scripts (say, menu), web code and i18n JSON files. Writes a catalog plus .pot (gettext) and/or CSV with file:line references and placeholder hints. action:"apply" takes a translated .po/.csv/.json and writes a translated COPY of the project into out, checking placeholders and flagging strings that grew a lot. The source is never modified.',
     inputSchema: obj({ path: str('Project folder.'), action: str('extract (default) or apply.', { enum: ['extract', 'apply'] }), format: str('extract: json (default), po, csv or all.', { enum: ['json', 'po', 'csv', 'all'] }), out: str('extract: folder for the catalog/.pot/.csv (default workspace/strings). apply: new or empty folder for the translated copy.'), translations: str('apply: translated .po, .csv (id|source + translation columns) or .json ({id|source: translation}).'), lang: str('Language code for the output (e.g. nl).'), match: str('Only files whose path contains this.'), limit: int('Entries to return inline (default 500; the files hold all).', { minimum: 1, maximum: 20000 }) }, ['path']) },
+  { name: 're_apicheck', brief: 'Does this GDScript/C# use APIs that exist in the Godot version it targets? Flags Godot 3 names in Godot 4 code (with replacements), invented members and too-new classes.', title: 'Check code against a real engine API',
+    description: 'Checks GDScript (and class names in C#, names in shaders) against name-only snapshots of the real Godot API (' + GODOT_VERSIONS.map(v => 'godot@' + v).join(', ') + ') plus the official 3→4 rename table. Reports: renamed-class/function/member/pattern (Godot 3 names in Godot 4 code with the Godot 4 replacement: KinematicBody2D, instance(), yield, deg2rad, string connect, export/onready without @), unknown-class/method/member (not in that version: a model-invented or misspelled API, with the closest real name), too-new (exists only in a newer version, or Godot 4 names in a Godot 3 project). Members are checked only where the receiver type is known (extends, typed vars, Class.new(), singletons, parameters with type hints); untyped receivers are skipped, not guessed. The Godot version comes from engine, else from project.godot, else the newest snapshot. Run it on every file an agent wrote before opening Godot.',
+    inputSchema: obj({ path: str('A .gd/.cs/.gdshader file or a project folder.'), content: str('Code to check instead of path.'), engine: str('Target: godot@4.7, godot@4.3, godot@3 (or just 4 / 3). Default: project.godot, else newest.'), limit: int('Max files in the result (default 300).', { minimum: 1, maximum: 5000 }) }, []) },
   { name: 're_report', brief: 'Write ARCHITECTURE.md for a project folder.', title: 'Write an architecture report',
     description: 'Writes ARCHITECTURE.md for a project: stack, languages, entry points, mermaid module graph, cycles, most-used files, scene trees of the entry scenes, class table, possibly unused files and external dependencies.',
     inputSchema: obj({ path: str('Project folder.'), out: str('Output .md path (default: workspace/reports).') }, ['path']) },
@@ -118,7 +122,7 @@ for (const t of tools) t.annotations = annotationsFor(t.name);
 
 const handlers = {
   re_scan: scanProject, re_graph: graphTool, re_symbols: symbolsTool, re_scene: a => readScene(a.file), re_binary: inspectBinary,
-  re_archive: archiveTool, re_probe: probe, re_extract: carve, re_compare: compare, re_refs: refsTool, re_strings: stringsTool, re_report: report, re_lookup: lookupTool, re_blueprint: blueprintTool,
+  re_archive: archiveTool, re_probe: probe, re_extract: carve, re_compare: compare, re_refs: refsTool, re_strings: stringsTool, re_apicheck: apicheckTool, re_report: report, re_lookup: lookupTool, re_blueprint: blueprintTool,
   port_map: portMapTool, port_convert: convert, port_plan: planPort, port_unit: portUnit, port_write: portWrite, port_scene: portScene,
   port_copy_assets: portCopyAssets, port_status: portStatus, port_verify: portVerify, re_case: caseTool, share_feedback: shareFeedback,
 };
