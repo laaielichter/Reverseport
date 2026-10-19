@@ -48,6 +48,24 @@ test('package candidates: exports patterns and dist → src fallback', () => {
   assert.ok(d.includes('p/src/index.js'));
 });
 
+test('alias targets: every * in the target is replaced, and $-sequences in the match stay literal', async () => {
+  // Node: "./*": "./dist/*/*.js" → every * in the target takes the matched subpath.
+  const c = packageCandidates({ dir: 'p', pkg: { exports: { './*': './dist/*/*.js' } } }, 'a');
+  assert.equal(c[0], 'p/dist/a/a.js');
+  // A subpath such as "$lib" or "a$&b" must not be read as a replacement pattern.
+  const d = packageCandidates({ dir: 'p', pkg: { exports: { './*': './src/*.ts' } } }, 'a$&b');
+  assert.equal(d[0], 'p/src/a$&b.ts');
+  // tsconfig "paths": same rules for the target.
+  const root = await tempDir('rp-alias-');
+  await writeTree(root, {
+    'tsconfig.json': { compilerOptions: { baseUrl: '.', paths: { '$lib/*': ['./lib/*/*.ts'], '@/*': ['./src/*'] } } },
+    'lib/util/util.ts': 'export const u = 1\n',
+    'src/index.ts': "import { u } from '$lib/util'\nexport const x = u\n",
+  });
+  const g = await graphTool({ path: root });
+  assert.ok(g.edges.some(e => e.from === 'src/index.ts' && e.to === 'lib/util/util.ts'), JSON.stringify(g.edges));
+});
+
 test('scan: monorepo tooling, frameworks, and a root script that starts a file in a package', async () => {
   const s = await scanProject({ path: await monorepo() });
   assert.equal(s.primary.id, 'js-monorepo');
