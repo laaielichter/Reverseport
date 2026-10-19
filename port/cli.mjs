@@ -12,6 +12,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { tools, callTool, VERSION } from './src/tools.mjs';
 import { workspaceRoot } from './src/workspace.mjs';
+import { diskReport } from './src/agentdisk.mjs';
 import { isMainModule } from './src/main-module.mjs';
 import { errorPayload, formatTools, FORMATS, closest, readFeedback } from './src/agent.mjs';
 import { RPError } from './src/util.mjs';
@@ -74,7 +75,8 @@ export async function doctor() {
   try { await fs.mkdir(ws, { recursive: true }); await fs.writeFile(path.join(ws, '.doctor'), 'ok'); await fs.rm(path.join(ws, '.doctor')); } catch { writable = false; }
   const [maj, min] = process.versions.node.split('.').map(Number);
   const nodeOk = (maj === 22 && min >= 19) || (maj === 24 && min >= 11) || maj >= 26 || maj === 25 || maj === 23;
-  return { ok: nodeOk && writable, version: VERSION, node: process.versions.node, nodeOk, nodeRequired: '>=22.19 (22.x), >=24.11 (24.x) or newer', workspace: ws, workspaceWritable: writable, tools: tools.length, platform: `${os.platform()} ${os.arch()}` };
+  const disk = await diskReport(ws);
+  return { ok: nodeOk && writable, version: VERSION, node: process.versions.node, nodeOk, nodeRequired: '>=22.19 (22.x), >=24.11 (24.x) or newer', workspace: ws, workspaceWritable: writable, workspaceBytes: disk.bytes, workspaceFolders: disk.folders.slice(0, 12), agentdisk: disk.agentdisk, tools: tools.length, platform: `${os.platform()} ${os.arch()}` };
 }
 
 function help() {
@@ -124,7 +126,7 @@ Other
   connect [client]           config snippet for any agent: MCP clients, HTTP/OpenAPI, OpenAI, Anthropic, Gemini, shell
   serve                      HTTP API on http://127.0.0.1:32147 (REVERSEPORT_PORT)
   mcp                        MCP server on stdio (these tools + the deep-analysis engine)
-  port doctor                check Node and the workspace (${workspaceRoot()})
+  port doctor                check Node and the workspace (${workspaceRoot()}); disk use, with agentdisk when installed
 `;
 }
 

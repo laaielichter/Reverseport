@@ -1001,6 +1001,21 @@ symbolic link is retained and reported rather than followed. Uninstall checks
 ReversePort's managed shared and Claude Code personal skill locations. See the
 [CLI guide](cli.md#output-and-exit-status) for exit statuses.
 
+### Disk use (agentdisk, optional)
+
+ReversePort keeps its own output in the workspace (`REVERSEPORT_HOME`, else `~/.reverseport`): extracted packs,
+large tool results, port plans, proof cases and reports. `reverseport port doctor` lists how much each folder uses.
+ReversePort never deletes from the workspace by itself.
+
+With [agentdisk](https://github.com/laaielichter/agentdisk) installed, `port doctor` also shows what deleting would
+really free (hardlinks counted once) and how to clean up safely. agentdisk knows the workspace: extracted files, tool
+output, the lookup cache and reports are regenerable; port plans, blueprints and scenes are user data; proof cases,
+feedback and the engine's state are never planned for cleanup. Only a person applies a plan, items go to quarantine
+first and `agentdisk restore` puts them back.
+
+ReversePort finds agentdisk through `AGENTDISK_BIN`, else `agentdisk` on `PATH`, and only runs its read-only
+`--version` and `size --json`. `REVERSEPORT_AGENTDISK=off` turns the link off. Without agentdisk nothing changes.
+
 ## MCP Registry
 
 ReversePort is published in the official MCP Registry as `io.github.laaielichter/reverseport`. Registry
