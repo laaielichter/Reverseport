@@ -9,6 +9,7 @@
     "docs/api/**",
     "node_modules/**",
     "CHANGELOG.md",
+    ".claude-plugin/plugin.json",
     "package-lock.json",
     "_reference/**",
     "third_party/**",
