@@ -37,7 +37,6 @@ are listed for an AnimationTree by hand). Model meshes and materials stay flagge
 After writing each script, `re_apicheck {path, engine: "godot@4.x"}`: models mix Godot 3 (`KinematicBody2D`,
 `instance()`, `yield`, string `connect`) into Godot 4 code and invent members; the tool names the replacement.
 
-
 - One GameObject with several MonoBehaviours → one node per behaviour (child nodes) or merge them into one script.
 - `GetComponent<T>()` → the node itself or a child (`$Child`); components are nodes in Godot.
 - `[SerializeField]` → `@export`; prefab fields (`GameObject`) → `PackedScene`.
