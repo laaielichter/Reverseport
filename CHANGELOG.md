@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.3.0](https://github.com/laaielichter/Reverseport/compare/reverseport-1.2.0...reverseport-1.3.0) (2026-10-19)
+
+
+### Bug Fixes
+
+* **ci:** format the sister tools table and expect plugin.json in release files ([#19](https://github.com/laaielichter/Reverseport/issues/19)) ([51a8332](https://github.com/laaielichter/Reverseport/commit/51a83321d3bf8f79a82616c8730ee353cb957d4f))
+* **ci:** keep main green across releases ([#21](https://github.com/laaielichter/Reverseport/issues/21)) ([71d0e33](https://github.com/laaielichter/Reverseport/commit/71d0e33b62fa3d4081c8de9e5290d33deec37c6c))
+
 ## [1.2.0](https://github.com/laaielichter/Reverseport/compare/reverseport-1.1.0...reverseport-1.2.0) (2026-10-19)
 
 
