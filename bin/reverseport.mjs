@@ -77,6 +77,12 @@ Rebuild and port
   reverseport plan <source> --to unity     port Godot ⇄ Unity, → Unreal, → three.js, → Godot C#, any language
   reverseport verify <planId>              prove nothing was left behind
 
+Proof (evidence ledger)
+  reverseport case init --question "…" --target <what>   open a proof case
+  reverseport case evidence <caseId> ...                 add supporting evidence
+  reverseport case claim <caseId> ...                    record a claim with evidence
+  reverseport case check <caseId>                        validate the proof case
+
 Only analyse or port what you own or may legally use. https://github.com/laaielichter/reverseport
 `;
 }

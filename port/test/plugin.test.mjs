@@ -51,7 +51,13 @@ test('skills and agent: frontmatter, and only real tool names', async () => {
 test('front door: help, version, port commands, and a clear message when the engine is not built', () => {
   const env = { ...process.env, REVERSEPORT_HOME: path.join(os.tmpdir(), 'reverseport-front-door-test') };
   const run = (...args) => spawnSync(process.execPath, [path.join(REPO, 'bin', 'reverseport.mjs'), ...args], { env, encoding: 'utf8' });
-  assert.match(run('help').stdout, /reverseport setup/);
+  const help = run('help').stdout;
+  assert.match(help, /reverseport setup/);
+  assert.match(help, /Proof \(evidence ledger\)/);
+  assert.match(help, /reverseport case init/);
+  assert.match(help, /reverseport case evidence/);
+  assert.match(help, /reverseport case claim/);
+  assert.match(help, /reverseport case check/);
   assert.equal(run('--version').stdout.trim(), VERSION);
   const scan = run('scan', path.join(REPO, 'port', 'test', 'fixtures', 'godot-mini'));
   assert.equal(scan.status, 0, scan.stderr);
