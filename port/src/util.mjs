@@ -15,7 +15,21 @@ export const IGNORED_DIRS = new Set([
   '.git', '.svn', '.hg', 'node_modules', '.godot', '.import', 'Library', 'Temp', 'Logs', 'UserSettings', 'obj',
   '__pycache__', '.venv', 'venv', '.gradle', '.idea', '.vs', '.vscode', 'DerivedDataCache', 'Intermediate', 'Saved',
   '.mono', '.reverseport', '.cache', '.next', '.nuxt', '.parcel-cache', '.turbo', 'Pods', '.dart_tool',
+  '.pytest_cache', '.mypy_cache', '.ruff_cache', '.tox', 'zig-cache', '.zig-cache', 'zig-out', 'DerivedData',
+  '.svelte-kit', '.angular', '.vite', '.expo', '.terraform', 'bower_components', 'jspm_packages',
 ]);
+
+/**
+ * Folders that are build output or a package store only next to a marker file: `target/` is Rust or Maven output
+ * beside Cargo.toml/pom.xml but may be real source elsewhere; `vendor/` holds copied dependencies beside go.mod,
+ * composer.json or a Gemfile.
+ */
+export const IGNORED_DIRS_BESIDE = {
+  target: ['Cargo.toml', 'pom.xml', 'build.sbt'],
+  vendor: ['go.mod', 'composer.json', 'Gemfile'],
+  '.build': ['Package.swift'],
+  '.gradle': [],
+};
 
 export async function statOrNull(file) { try { return await fs.stat(file); } catch { return null; } }
 
@@ -88,7 +102,7 @@ export function isText(buf) {
 export const toPosix = p => p.split(path.sep).join('/');
 
 /** Walk a folder. Returns files with posix relative paths; skips IGNORED_DIRS and symlinks. */
-export async function walk(root, { maxFiles = 50000, ignore = IGNORED_DIRS, maxDepth = 40 } = {}) {
+export async function walk(root, { maxFiles = 50000, ignore = IGNORED_DIRS, ignoreBeside = ignore === IGNORED_DIRS ? IGNORED_DIRS_BESIDE : {}, maxDepth = 40 } = {}) {
   const files = [];
   const skipped = new Set();
   const unreadable = [];
@@ -98,12 +112,14 @@ export async function walk(root, { maxFiles = 50000, ignore = IGNORED_DIRS, maxD
     let entries;
     try { entries = await fs.readdir(dir, { withFileTypes: true }); } catch (e) { if (unreadable.length < 50) unreadable.push({ path: toPosix(path.relative(root, dir)) || '.', code: e.code ?? 'ERROR' }); return; }
     entries.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+    const names = new Set(entries.map(e => e.name));
+    const buildOutput = name => ignoreBeside[name]?.some(marker => names.has(marker));
     for (const e of entries) {
       if (truncated) return;
       const abs = path.join(dir, e.name);
       if (e.isSymbolicLink()) continue;
       if (e.isDirectory()) {
-        if (ignore.has(e.name)) { skipped.add(toPosix(path.relative(root, abs))); continue; }
+        if (ignore.has(e.name) || buildOutput(e.name)) { skipped.add(toPosix(path.relative(root, abs))); continue; }
         await visit(abs, depth + 1);
       } else if (e.isFile()) {
         if (files.length >= maxFiles) { truncated = true; return; }

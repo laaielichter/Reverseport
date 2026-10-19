@@ -103,10 +103,27 @@ export async function buildGraph(dir, { maxFiles = 30000 } = {}) {
     for (const b of ['', path.posix.dirname(from)]) for (const c of [`${p}.lua`, `${p}/init.lua`]) { const hit = exists(path.posix.normalize(b ? `${b}/${c}` : c)); if (hit) return hit; }
     return null;
   };
-  const resolveRustMod = (from, name) => {
-    const dir = path.posix.dirname(from), stem = path.posix.basename(from, '.rs');
-    const base = ['mod', 'main', 'lib'].includes(stem) ? dir : path.posix.join(dir, stem);
-    return exists(path.posix.normalize(`${base}/${name}.rs`)) ?? exists(path.posix.normalize(`${base}/${name}/mod.rs`));
+  // Rust: a file's child modules live in `<stem>/` (or next to mod.rs/lib.rs/main.rs); `crate::` starts at the
+  // crate's src/, and a workspace crate is reachable by its package name (`-` reads as `_`).
+  const rustModuleDir = from => { const dir = path.posix.dirname(from), stem = path.posix.basename(from, '.rs'); return ['mod', 'main', 'lib'].includes(stem) ? dir : path.posix.join(dir, stem); };
+  const rustModuleFile = dir => exists(`${dir}.rs`) ?? exists(`${dir}/mod.rs`) ?? exists(`${dir}/lib.rs`) ?? exists(`${dir}/main.rs`);
+  const resolveRustMod = (from, name) => { const base = rustModuleDir(from); return exists(path.posix.normalize(`${base}/${name}.rs`)) ?? exists(path.posix.normalize(`${base}/${name}/mod.rs`)); };
+  const rustCrates = new Map();
+  for (const f of files) if (/(^|\/)Cargo\.toml$/.test(f.rel)) {
+    const name = (await fs.readFile(f.abs, 'utf8').catch(() => '')).match(/^\[package\][^[]*?^\s*name\s*=\s*"([^"]+)"/ms)?.[1];
+    if (name) rustCrates.set(name.replace(/-/g, '_'), path.posix.join(path.posix.dirname(f.rel), 'src').replace(/^\.\//, ''));
+  }
+  const rustCrateSrc = from => { let dir = path.posix.dirname(from); while (dir && dir !== '.') { if (path.posix.basename(dir) === 'src' && exists(path.posix.join(path.posix.dirname(dir), 'Cargo.toml'))) return dir; dir = path.posix.dirname(dir); } return null; };
+  const resolveRustUse = (from, spec) => {
+    const segs = spec.split('::').filter(Boolean);
+    let base;
+    if (segs[0] === 'crate') { base = rustCrateSrc(from); segs.shift(); }
+    else if (segs[0] === 'self') { base = rustModuleDir(from); segs.shift(); }
+    else if (segs[0] === 'super') { base = rustModuleDir(from); while (segs[0] === 'super') { segs.shift(); base = path.posix.dirname(base); } }
+    else if (rustCrates.has(segs[0])) base = rustCrates.get(segs.shift());
+    if (!base || base === '.') return null;
+    for (let i = segs.length; i >= 1; i--) { const p = `${base}/${segs.slice(0, i).join('/')}`; const hit = exists(`${p}.rs`) ?? exists(`${p}/mod.rs`); if (hit) return hit; }
+    return rustModuleFile(base);
   };
 
   for (const n of nodes.values()) {
@@ -134,7 +151,7 @@ export async function buildGraph(dir, { maxFiles = 30000 } = {}) {
         case 'python': hit = resolvePy(n.file, d.spec); if (!hit && !d.spec.startsWith('.')) external(d.spec.split('.')[0]); break;
         case 'c': case 'c-header': case 'cpp': case 'objc': if (d.kind === 'system') external(`<${d.spec}>`); else { hit = resolveInclude(n.file, d.spec); if (!hit) external(`"${d.spec}"`); } break;
         case 'lua': hit = resolveLua(n.file, d.spec); if (!hit) external(d.spec); break;
-        case 'rust': if (d.kind === 'mod') hit = resolveRustMod(n.file, d.spec); else if (!/^(crate|self|super)::/.test(d.spec)) external(d.spec.split('::')[0]); break;
+        case 'rust': if (d.kind === 'mod') hit = resolveRustMod(n.file, d.spec); else { hit = resolveRustUse(n.file, d.spec); if (!hit && !/^(crate|self|super)(::|$)/.test(d.spec)) external(d.spec.split('::')[0]); } break;
         case 'go':
           if (goModule && d.spec.startsWith(`${goModule}/`)) {
             const pkgDir = d.spec.slice(goModule.length + 1);
@@ -239,9 +256,14 @@ export function tarjanOrder(keys, out) {
   return { sccs, order: sccs.flat() };
 }
 
+/** Test files: under a test folder, or named *.test.*, *.spec.*, *_test.*, test_*. */
+export const isTestFile = rel => /(^|\/)(tests?|__tests__|specs?|testing)\//.test(rel) || /(\.(test|spec)\.\w+|_tests?\.\w+)$/.test(rel) || /(^|\/)test_[^/]+$/.test(rel);
+
 export function graphMermaid(graph, max = 60) {
   const score = k => (graph.inDegree.get(k) ?? 0) + (graph.outEdges.get(k)?.length ?? 0);
-  const keep = [...graph.nodes.keys()].sort((a, b) => score(b) - score(a)).slice(0, max);
+  // Tests depend on many files, so by degree alone they would crowd out the modules a reader wants to see.
+  const ranked = [...graph.nodes.keys()].sort((a, b) => score(b) - score(a));
+  const keep = [...ranked.filter(k => !isTestFile(k)), ...ranked.filter(isTestFile)].slice(0, max);
   const id = new Map(keep.map((k, i) => [k, `f${i}`]));
   const lines = ['graph LR'];
   for (const k of keep) lines.push(`  ${id.get(k)}["${path.posix.basename(k).replace(/"/g, "'")}"]`);
