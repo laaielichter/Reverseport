@@ -1,0 +1,34 @@
+name: Diagnose
+
+# Temporary: prints the end of the package check output as annotations, because the logs cannot be read from
+# where this is being debugged. Remove before merging.
+on:
+  push:
+    branches: [fix/repository-skill-check]
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    name: diagnose verify-package
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      NO_COLOR: "1"
+      FORCE_COLOR: "0"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - name: Run and report
+        shell: bash
+        run: |
+          set +e
+          npm run verify:package > out.log 2>&1
+          code=$?
+          node .github/diagnose/report.mjs verify-package "$code" out.log
+          exit 0
