@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.0](https://github.com/laaielichter/Reverseport/compare/reverseport-1.1.0...reverseport-1.2.0) (2026-10-19)
+
+
+### Features
+
+* **plugin:** list Stashpad and agentdisk in the ReversePort marketplace ([#17](https://github.com/laaielichter/Reverseport/issues/17)) ([140bbb2](https://github.com/laaielichter/Reverseport/commit/140bbb2035ce3ff241803c695011d5004721b865))
+
 ## [1.1.0](https://github.com/laaielichter/Reverseport/compare/reverseport-1.0.0...reverseport-1.1.0) (2026-10-19)
 
 
