@@ -227,8 +227,9 @@ DRM, anti-cheat or licensing. See [RESPONSIBLE-USE.md](RESPONSIBLE-USE.md).
 **Does it upload my files?** No. It runs on your machine, only reads the target and writes output to new folders.
 
 **Does it port my code automatically?** Scenes, transforms and assets convert automatically. Code is written by your
-agent, one unit at a time, with an API map for the engine pair; `port_verify` then checks for leftovers and missing
-functions.
+agent, one unit at a time, with an API map for the engine pair; `port_verify` then checks for leftovers, missing
+functions and dormant logic (stub bodies, functions nothing calls, silenced warnings), so a port that "compiles" but
+does nothing is not reported as done.
 
 **Do I need Ghidra?** Only for decompiling native binaries. Scanning, packs, lookup, blueprints and porting need
 nothing extra.

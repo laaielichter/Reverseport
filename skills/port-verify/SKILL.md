@@ -11,7 +11,12 @@ port_verify {planId}
 
 `passed:true` requires: every unit done or deliberately skipped, no missing output files, no source-engine API
 left in ported code (`leftovers`), every source function and signal present in the port (`missingSymbols`; lifecycle
-renames like `_ready` → `Awake` are understood), and no units marked partial.
+renames like `_ready` → `Awake` are understood), no units marked partial, and no dormant logic (`dormant`): a name
+that exists but has an empty or stub body, a function the source called that nothing in the port calls, a signal the
+port only declares, or a suppression (`as any`, `@warning_ignore`, `#pragma warning disable`) the port added.
+
+Lost your context? `port_verify` and `port_status` return `resume`: the plan, where it stands, the next unit with its
+ported dependencies, and the open findings. Read it before continuing.
 
 ## Fix loop
 
@@ -23,6 +28,7 @@ renames like `_ready` → `Awake` are understood), and no units marked partial.
 | `lifecycle callbacks without a counterpart` | Fine when the work moved (e.g. connections replaced by OnTriggerEnter) — check it did.                            |
 | `marked partial`                            | Finish it or explain what is missing and who needs to do it.                                                      |
 | `PORT:` markers                             | Each is an open item: resolve it or list it in the hand-over.                                                     |
+| `dormant logic`                             | `empty-body`/`thin-body`: port the statements. `unwired`: call or connect it where the source did. `suppression`: remove it and port the real fix. |
 
 Run `port_verify` again until it passes (or the remaining items are explained to the user).
 

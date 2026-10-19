@@ -99,10 +99,10 @@ export const tools = [
     description: 'Copies every pending asset unit (textures, audio, models, fonts, video) of a plan into the output project. match limits it with a regex.',
     inputSchema: obj({ planId, match: str('Regex over source paths.') }, ['planId']) },
   { name: 'port_status', brief: 'Port progress, or the list of plans.', title: 'Port progress',
-    description: 'Without planId: lists all port plans in the workspace with progress. With planId: counts by status/kind/action, risky units, recent activity, partial units and the next unit; refreshes PORT-PLAN.md in the output folder.',
+    description: 'Without planId: lists all port plans in the workspace with progress. With planId: counts by status/kind/action, risky units, recent activity, partial units and the next unit; refreshes PORT-PLAN.md in the output folder. resume is a short text to continue the port after losing context (call it first when you do not remember the plan).',
     inputSchema: obj({ planId }) },
   { name: 'port_verify', brief: 'Check a port: missing files, leftovers, missing functions, markers.', title: 'Verify a port',
-    description: 'Checks a port: missing output files, units not ported yet, source-engine API leftovers, functions and signals from the source that do not exist in the port (lifecycle renames understood), PORT/TODO markers, partial units. passed is true only when everything is ported and clean.',
+    description: 'Checks a port: missing output files, units not ported yet, source-engine API leftovers, functions and signals from the source that do not exist in the port (lifecycle renames understood), PORT/TODO markers, partial units, and dormant logic (empty or stub bodies, functions the source called that nothing in the port calls, signals only declared, suppressions like `as any` or @warning_ignore added by the port). passed is true only when everything is ported and clean. Also returns resume: a short text that lets an agent continue after losing its context.',
     inputSchema: obj({ planId }, ['planId']) },
   // ------------------------------------------------------------ proof (evidence ledger)
   { name: 're_case', brief: 'Evidence ledger: save what you inspected, cite it in claims, record decisions and tests, check the gates.', title: 'Keep a proof case for an investigation or port',

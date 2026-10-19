@@ -87,7 +87,10 @@ Unity → Unreal, or any language.
    Convert every position, direction, rotation, speed and distance with
    `port_convert` (Unreal: centimeters, Z-up; Unity mirrors Z; three.js matches
    Godot). Leave `PORT:` markers instead of silent gaps.
-5. `port_verify {planId}` until it passes; `port_status` shows progress.
+5. `port_verify {planId}` until it passes; `port_status` shows progress. Both
+   return `resume`: read it first after a context reset. Verify also flags
+   dormant logic (empty or thin bodies, unwired functions and signals, added
+   suppressions); an empty body is not a port.
 6. Tell the user how to open the result. Unity: copy `Assets/` in, then Tools ▸
    ReversePort ▸ Build prefabs and scenes from specs. Godot: open the folder.
    three.js: `npm install && npm run dev`. Unreal: Generate project files, build.

@@ -15,6 +15,7 @@ import { ENGINES, normEngine, mapFor, apiHits, leftovers, LIFECYCLE_EQUIV, portM
 import { readScene, parseGodotScene, parseUnityYaml } from './scene.mjs';
 import { convertTree } from './convert.mjs';
 import { writeTscn, unitySpec, threeModule, unrealSpec, scaffold, sceneFunctionName } from './porters.mjs';
+import { dormantFindings, resumePack } from './dormant.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const TARGETS = ['godot', 'godot-csharp', 'unity', 'unreal', 'threejs'];
@@ -433,13 +434,13 @@ export async function portStatus({ planId } = {}) {
   }
   const plan = await loadPlan(planId);
   await savePlan(plan);
-  return { ...summary(plan), progress: progress(plan), recent: plan.log.slice(-10), partial: plan.units.filter(u => u.status === 'partial').map(u => ({ unit: u.id, source: u.source, notes: u.notes })).slice(0, 30), planFile: path.join(plan.output, 'PORT-PLAN.md') };
+  return { ...summary(plan), progress: progress(plan), recent: plan.log.slice(-10), partial: plan.units.filter(u => u.status === 'partial').map(u => ({ unit: u.id, source: u.source, notes: u.notes })).slice(0, 30), planFile: path.join(plan.output, 'PORT-PLAN.md'), resume: resumePack(plan, { verify: plan.lastVerify ?? null }) };
 }
 
 export async function portVerify({ planId } = {}) {
   const plan = await loadPlan(planId);
   const errors = [], warnings = [], notPorted = [];
-  let markers = 0, left = 0, missingTotal = 0;
+  let markers = 0, left = 0, missingTotal = 0, dormantTotal = 0;
   for (const u of plan.units) {
     if (u.status === 'skipped') continue;
     if (['pending', 'in_progress'].includes(u.status)) { notPorted.push(u.id); continue; }
@@ -457,18 +458,24 @@ export async function portVerify({ planId } = {}) {
       const parity = parityFor(check.sym, src, texts.join('\n'));
       if (parity.missing.length) { missingTotal += parity.missing.length; warnings.push({ unit: u.id, source: u.source, issue: 'functions/signals not found in the port', missing: parity.missing.slice(0, 40) }); }
       if (parity.lifecycle.length) warnings.push({ unit: u.id, source: u.source, issue: 'lifecycle callbacks without a counterpart (fine if their work moved elsewhere)', lifecycle: parity.lifecycle });
+      // Dormant logic: names exist but do nothing, or nothing calls them, or errors were silenced.
+      const srcLang = languageOf(u.source);
+      const srcText = srcLang && CODE_LANGUAGES.has(srcLang) ? await fs.readFile(path.join(plan.source, u.source), 'utf8').catch(() => null) : null;
+      const findings = dormantFindings({ sourceText: srcText, sourceLang: srcLang, targetText: texts.join('\n'), targetLang: languageOf(u.target), lifecycleGroups: LIFECYCLE_EQUIV });
+      if (findings.length) { dormantTotal += findings.length; warnings.push({ unit: u.id, source: u.source, issue: 'dormant logic: empty or thin bodies, functions the source called but the port never does, added suppressions', findings: findings.slice(0, 40) }); }
     }
     if (u.status === 'partial') warnings.push({ unit: u.id, source: u.source, issue: 'marked partial', notes: u.notes });
   }
   const p = progress(plan);
-  const passed = !errors.length && p.pending === 0 && p.partial === 0 && left === 0 && missingTotal === 0;
+  const passed = !errors.length && p.pending === 0 && p.partial === 0 && left === 0 && missingTotal === 0 && dormantTotal === 0;
   if (notPorted.length) warnings.unshift({ issue: 'not ported yet', count: notPorted.length, units: notPorted.slice(0, 10) });
   const onlyPending = !errors.length && warnings.length === (notPorted.length ? 1 : 0);
-  const report = { planId, passed, progress: p, errors, warnings: warnings.slice(0, 200), portMarkers: markers, leftovers: left, missingSymbols: missingTotal, output: plan.output,
-    next: passed ? 'Open the output in the target engine, build, run, and compare behaviour with the original.' : onlyPending ? `Nothing is wrong so far; ${notPorted.length} unit(s) are not ported yet. Continue: ${nextCall(plan)}` : 'Fix the errors and the warnings above (leftovers, missing functions, partial units), then run port_verify again.',
+  const report = { planId, passed, progress: p, errors, warnings: warnings.slice(0, 200), portMarkers: markers, leftovers: left, missingSymbols: missingTotal, dormant: dormantTotal, output: plan.output,
+    next: passed ? 'Open the output in the target engine, build, run, and compare behaviour with the original.' : onlyPending ? `Nothing is wrong so far; ${notPorted.length} unit(s) are not ported yet. Continue: ${nextCall(plan)}` : 'Fix the errors and the warnings above (leftovers, missing functions, dormant logic, partial units), then run port_verify again.',
     ...(passed ? {} : { nextCall: onlyPending ? nextCallObj(plan) : call('port_verify', { planId }) }) };
   plan.lastVerify = { at: new Date().toISOString(), passed, errors: errors.length, warnings: warnings.length };
   await savePlan(plan);
+  report.resume = resumePack(plan, { verify: report });
   return report;
 }
 

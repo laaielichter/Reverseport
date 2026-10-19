@@ -86,3 +86,40 @@ test('safety: output never inside the source, never over foreign files, no path 
   await assert.rejects(callTool('port_write', { planId: plan.planId, unit: 'u001', files: [{ path: '../../escape.cs', content: 'x' }] }), /unsafe path/i);
   await assert.rejects(callTool('port_plan', { source: path.join(F, 'godot-mini'), to: 'cobol' }), /Unknown target/);
 });
+
+test('verify catches dormant logic: stub bodies, unwired functions, added suppressions; resume pack is returned', async () => {
+  const plan = await callTool('port_plan', { source: path.join(F, 'godot-mini'), to: 'unity', include: 'actors/player\\.gd$' });
+  // Every name exists, but Shoot is a stub, OnHit is never wired, the signal is never raised, and a warning is silenced.
+  const content = `#pragma warning disable 0414
+using UnityEngine;
+public class Player : MonoBehaviour {
+  public event System.Action<int> Hit;
+  void Awake() { }
+  void FixedUpdate() { transform.position += Vector3.right * Time.fixedDeltaTime; }
+  public void Shoot() { // PORT: later
+  }
+  void OnHit(int damage) { Debug.Log("hit"); }
+}
+`;
+  await callTool('port_write', { planId: plan.planId, unit: 'u001', content });
+  const v = await callTool('port_verify', { planId: plan.planId });
+  assert.equal(v.passed, false);
+  const w = v.warnings.find(x => x.issue.startsWith('dormant logic'));
+  assert.ok(w, JSON.stringify(v.warnings));
+  const has = (name, kind) => w.findings.some(f => f.name === name && f.kind === kind);
+  assert.ok(has('Shoot', 'empty-body'), JSON.stringify(w.findings));
+  assert.ok(has('OnHit', 'unwired'), JSON.stringify(w.findings));
+  assert.ok(has('#pragma warning disable', 'suppression'));
+  assert.ok(w.findings.some(f => f.name === 'signal hit' && f.kind === 'unwired'), JSON.stringify(w.findings));
+  assert.ok(v.dormant >= 4);
+  assert.match(v.resume, /# Port .*godot → unity/);
+  assert.match(v.resume, /dormant logic/);
+  assert.ok(v.resume.length < 6100);
+  // The canned, real port has none of these.
+  const good = await callTool('port_write', { planId: plan.planId, unit: 'u001', content: await fs.readFile(path.join(F, 'ports', 'godot-mini-unity', 'Player.cs'), 'utf8') });
+  assert.ok(good);
+  const v2 = await callTool('port_verify', { planId: plan.planId });
+  assert.equal(v2.dormant, 0, JSON.stringify(v2.warnings));
+  const st = await callTool('port_status', { planId: plan.planId });
+  assert.match(st.resume, /progress 1\/1 done/);
+});
