@@ -17,7 +17,7 @@ const VERSION = JSON.parse(readFileSync(path.join(REPO, 'package.json'), 'utf8')
 const PORT_COMMANDS = new Set([
   'scan', 'graph', 'symbols', 'scene', 'binary', 'bin', 'archive', 'pck', 'probe', 'extract', 'carve', 'diff',
   'compare-builds', 'report', 'lookup', 'recon', 'web', 'blueprint', 'rebuild', 'map', 'convert', 'plan', 'unit',
-  'write', 'port-scene', 'copy-assets', 'status', 'verify', 'case', 'proof', 'tools', 'serve', 'describe', 'feedback', 'connect',
+  'write', 'port-scene', 'copy-assets', 'status', 'verify', 'case', 'proof', 'tools', 'serve', 'describe', 'feedback', 'connect', 'skills',
 ]);
 const ALWAYS_ENGINE = ['setup', 'doctor', 'update', 'uninstall', 'mcp', 'capabilities', 'providers', 'help'];
 
