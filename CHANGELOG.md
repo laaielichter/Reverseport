@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.5.0](https://github.com/laaielichter/Reverseport/compare/reverseport-1.4.0...reverseport-1.5.0) (2026-10-19)
+
+
+### Features
+
+* **cli:** reverseport skills get prints the guide for this version ([#26](https://github.com/laaielichter/Reverseport/issues/26)) ([2e6f315](https://github.com/laaielichter/Reverseport/commit/2e6f315f46a6c00903b1d3e5cd3e2d34e47716e0))
+* **port:** resolve Rust use paths, skip build output, keep tests out of the architecture picture ([#27](https://github.com/laaielichter/Reverseport/issues/27)) ([5413c05](https://github.com/laaielichter/Reverseport/commit/5413c05b3026146ef744290bdcd0aecad5b66573))
+
 ## [1.4.0](https://github.com/laaielichter/Reverseport/compare/reverseport-1.3.0...reverseport-1.4.0) (2026-10-19)
 
 
