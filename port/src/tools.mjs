@@ -23,6 +23,7 @@ import { portShaderTool } from './shader.mjs';
 import { portTraceTool } from './trace.mjs';
 import { decodeTool } from './godotbin.mjs';
 import { il2cppTool } from './il2cpp.mjs';
+import { portRpgMakerTool } from './rpgmaker.mjs';
 
 /** One version for the whole package: the root package.json. */
 export const VERSION = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')).version;
@@ -123,6 +124,9 @@ export const tools = [
   { name: 'port_trace', brief: 'Prove behaviour parity: a per-tick trace logger for Godot/Unity/three.js/Unreal, and a comparer that finds where two traces diverge.', title: 'Trace and compare behaviour',
     description: 'action:"harness" returns (and with out writes) a small logger for the engine (ReversePortTrace.gd/.cs/.js/.h) that records the chosen properties of one node per physics tick to JSON with a fixed seed and tick rate. Run it in the original and in the port from the same start, then action:"compare" {a, b, tolerance} resamples both by time (different tick rates are fine), reports per property the first divergence, max and mean error and whether the error grows (integration differs: delta, damping, gravity, friction), differs from tick 0 (units, axes, spawn) or jumps at one moment (an event happened differently). port_verify already flags timing/randomness/order differences statically; this is the runtime proof.',
     inputSchema: obj({ action: str('harness (default) or compare.', { enum: ['harness', 'compare'] }), engine: str('harness: godot, unity, threejs or unreal.', { enum: ['godot', 'unity', 'threejs', 'unreal'] }), node: str('harness: node path to watch (default the harness\'s target).'), properties: { type: 'array', items: { type: 'string' }, description: 'harness: properties to log (default ["position"]; velocity, rotation, custom fields).' }, ticks: int('harness: ticks to record (default 300).', { minimum: 10, maximum: 100000 }), out: str('harness: write the logger to this file.'), a: str('compare: trace JSON from the original.'), b: str('compare: trace JSON from the port.'), tolerance: num('compare: allowed error per sample (default 0.01).'), axisMap: { type: 'array', items: { type: 'string' }, description: 'compare: reorder/negate b\'s vector components, e.g. ["0","2","-1"] maps b=[x,y,z] to [x,z,-y].' } }, []) },
+  { name: 'port_rpgmaker', brief: 'RPG Maker MV/MZ project → runnable Godot 4 project: maps drawn from the tilesets, events with an interpreter for the common commands, database autoload, list of what is left.', title: 'Port an RPG Maker MV/MZ game to Godot',
+    description: 'Ports an RPG Maker MV/MZ project (data/*.json, img/, audio/; also www/ of a deployed game) to a new Godot 4 project: every map becomes a scene whose layers are drawn from the original tileset images (B–E and A5 exact, autotiles with their interior piece), every event a node that loads its pages and runs them with an interpreter for the common commands (Show Text, Choices, Conditional Branch, Loops, Switches, Variables, Self Switches, Common Events, Transfer, Wait, BGM/SE), the database and game state an autoload (RpgDb), and a start scene with a minimal message box. Returns a census of every event command with which ones run; PORT-NOTES.md lists the rest (movement, menus, battles, plugins). Encrypted images/audio are copied, never decrypted.',
+    inputSchema: obj({ path: str('RPG Maker MV/MZ project folder (or the www/ folder of a deployed game).'), out: str('New or empty folder for the Godot project (default workspace/ports/<name>-godot).'), limit: int('Max maps listed (default 300).', { minimum: 1, maximum: 10000 }) }, ['path']) },
   { name: 'port_copy_assets', brief: 'Copy all asset units of a plan.', title: 'Copy all asset units',
     description: 'Copies every pending asset unit (textures, audio, models, fonts, video) of a plan into the output project. match limits it with a regex.',
     inputSchema: obj({ planId, match: str('Regex over source paths.') }, ['planId']) },
@@ -146,7 +150,7 @@ for (const t of tools) t.annotations = annotationsFor(t.name);
 
 const handlers = {
   re_scan: scanProject, re_graph: graphTool, re_symbols: symbolsTool, re_scene: a => readScene(a.file), re_binary: inspectBinary,
-  re_archive: archiveTool, re_probe: probe, re_extract: carve, re_compare: compare, re_refs: refsTool, re_strings: stringsTool, re_apicheck: apicheckTool, re_decode: decodeTool, re_il2cpp: il2cppTool, port_upgrade: upgradeTool, re_save: saveTool, port_shader: portShaderTool, port_trace: portTraceTool, re_report: report, re_lookup: lookupTool, re_blueprint: blueprintTool,
+  re_archive: archiveTool, re_probe: probe, re_extract: carve, re_compare: compare, re_refs: refsTool, re_strings: stringsTool, re_apicheck: apicheckTool, re_decode: decodeTool, re_il2cpp: il2cppTool, port_upgrade: upgradeTool, re_save: saveTool, port_shader: portShaderTool, port_trace: portTraceTool, port_rpgmaker: portRpgMakerTool, re_report: report, re_lookup: lookupTool, re_blueprint: blueprintTool,
   port_map: portMapTool, port_convert: convert, port_plan: planPort, port_unit: portUnit, port_write: portWrite, port_scene: portScene,
   port_copy_assets: portCopyAssets, port_status: portStatus, port_verify: portVerify, re_case: caseTool, share_feedback: shareFeedback,
 };

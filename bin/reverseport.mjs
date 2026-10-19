@@ -19,7 +19,7 @@ const PORT_COMMANDS = new Set([
   'compare-builds', 'report', 'lookup', 'recon', 'web', 'blueprint', 'rebuild', 'map', 'convert', 'plan', 'unit',
   'write', 'port-scene', 'copy-assets', 'status', 'verify', 'case', 'proof', 'tools', 'serve', 'describe', 'feedback',
   'connect', 'skills', 'refs', 'guids', 'strings', 'i18n', 'l10n', 'apicheck', 'api', 'upgrade', 'godot3to4', 'save',
-  'savefile', 'shader', 'trace', 'decode', 'gdc', 'il2cpp',
+  'savefile', 'shader', 'trace', 'rpgmaker', 'rpgm', 'decode', 'gdc', 'il2cpp',
 ]);
 const ALWAYS_ENGINE = ['setup', 'doctor', 'update', 'uninstall', 'mcp', 'capabilities', 'providers', 'help'];
 
@@ -71,6 +71,7 @@ Understand anything (no build needed)
   reverseport upgrade <godot3-project> Godot 3 → 4 as a copy; --action apply --out <folder>; lists what needs a human
   reverseport save <file> [other]    save file: layers, fields with roles, checksums, diff against another save; --action schema
   reverseport shader <file> <godot|threejs|unity>  first draft of a shader in another engine, leftovers listed
+  reverseport rpgmaker <project> [out]  RPG Maker MV/MZ → runnable Godot 4 project + list of what is left
   reverseport trace harness <engine> | trace compare --a <json> --b <json>  prove behaviour parity per tick
   reverseport report <folder>        ARCHITECTURE.md
   reverseport port help              every ReversePort command and option
