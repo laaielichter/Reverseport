@@ -1,6 +1,6 @@
 {
   "name": "reverseport",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "Reverse engineer anything. Port it anywhere. One MCP server for agents: recon any project, exported game, binary or website (even without files), decompile and trace native, .NET, Android, Electron and web targets with evidence, write clean-room rebuild specs, and port games and code between Godot, Unity, Unreal, three.js and languages with verified parity.",
   "author": {
     "name": "ReversePort contributors"
