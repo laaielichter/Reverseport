@@ -21,6 +21,7 @@ Ren'Py (`.rpa`), RPG Maker, Electron (`app.asar`), LÖVE.
 re_archive {file:"Game.pck"}                         → entries, sizes, types, Godot version, pack format
 re_archive {file:"Game.exe"}                         → same, when the pack is embedded in the executable
 re_archive {file, action:"extract", match:"*.gd"}    → extract (MD5-checked) into the workspace or out
+re_il2cpp {file:"…/Metadata/global-metadata.dat"}    → Unity IL2CPP: assemblies, classes, method names, literals, C# skeleton
 re_decode {path:"<extracted pack folder>"}         → .gdc → .gd, .scn/.res → .tscn/.tres, project.binary → project.godot
 re_archive {file:"data.win"}                         → GameMaker: game name/version, sprite/object/room names, textures + audio
 re_archive {file:"archive.rpa"}                      → Ren'Py: scripts/images/audio (.rpyc = compiled AST, no source)

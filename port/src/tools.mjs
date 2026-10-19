@@ -22,6 +22,7 @@ import { saveTool } from './save.mjs';
 import { portShaderTool } from './shader.mjs';
 import { portTraceTool } from './trace.mjs';
 import { decodeTool } from './godotbin.mjs';
+import { il2cppTool } from './il2cpp.mjs';
 
 /** One version for the whole package: the root package.json. */
 export const VERSION = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')).version;
@@ -84,6 +85,9 @@ export const tools = [
   { name: 're_decode', brief: 'Godot export back to editable files: .gdc → .gd, binary .scn/.res → .tscn/.tres, project.binary → project.godot.', title: 'Decode Godot binary exports',
     description: 'Turns what a Godot export leaves into editable text: compiled GDScript (.gdc: Godot 3 bytecode v10–13 and Godot 4.3+ binary tokens v100/v101, zstd-compressed or not) back to .gd with indentation, binary resources and scenes (RSRC/RSCC .scn/.res, also under .godot/exported with their .remap targets) to .tscn/.tres with ext/sub resources, node tree, groups, instances and signal connections, and project.binary to project.godot. Give the folder re_archive extracted from the .pck. Names, constants and structure are exact; comments and the original formatting are not in the export. Encrypted scripts (.gde) are reported, never decrypted.',
     inputSchema: obj({ path: str('A .gdc/.scn/.res/project.binary file or an extracted pack folder.'), out: str('Output folder (default workspace/decoded/<name>).'), limit: int('Max files (default 2000).', { minimum: 1, maximum: 100000 }) }, ['path']) },
+  { name: 're_il2cpp', brief: 'Unity IL2CPP game without source: assemblies, namespaces, classes, method names and string literals from global-metadata.dat, plus a C# skeleton.', title: 'Read Unity IL2CPP metadata',
+    description: 'Reads a Unity IL2CPP global-metadata.dat (metadata versions 24–31; sections are recognised by validating their records, not by fixed offsets): assemblies with type counts, every type with namespace and method names, MonoBehaviours (types with Unity callbacks) and string literals. Writes one C# skeleton per game assembly (namespaces, classes, method names as comments) to rebuild or port from. Method bodies are native code in GameAssembly.dll / libil2cpp.so / the .wasm (re_binary). Encrypted or obfuscated metadata is reported, never decrypted.',
+    inputSchema: obj({ file: str('global-metadata.dat (<Game>_Data/il2cpp_data/Metadata/ or Il2CppData/Metadata in WebGL builds).'), match: str('Only types whose name or methods contain this.'), includeSystem: bool('Also list Unity/System/mscorlib types (default false).'), out: str('Folder for the C# skeletons (default workspace/il2cpp/<game>).'), limit: int('Max types listed (default 400).', { minimum: 1, maximum: 100000 }) }, ['file']) },
   { name: 're_report', brief: 'Write ARCHITECTURE.md for a project folder.', title: 'Write an architecture report',
     description: 'Writes ARCHITECTURE.md for a project: stack, languages, entry points, mermaid module graph, cycles, most-used files, scene trees of the entry scenes, class table, possibly unused files and external dependencies.',
     inputSchema: obj({ path: str('Project folder.'), out: str('Output .md path (default: workspace/reports).') }, ['path']) },
@@ -142,7 +146,7 @@ for (const t of tools) t.annotations = annotationsFor(t.name);
 
 const handlers = {
   re_scan: scanProject, re_graph: graphTool, re_symbols: symbolsTool, re_scene: a => readScene(a.file), re_binary: inspectBinary,
-  re_archive: archiveTool, re_probe: probe, re_extract: carve, re_compare: compare, re_refs: refsTool, re_strings: stringsTool, re_apicheck: apicheckTool, re_decode: decodeTool, port_upgrade: upgradeTool, re_save: saveTool, port_shader: portShaderTool, port_trace: portTraceTool, re_report: report, re_lookup: lookupTool, re_blueprint: blueprintTool,
+  re_archive: archiveTool, re_probe: probe, re_extract: carve, re_compare: compare, re_refs: refsTool, re_strings: stringsTool, re_apicheck: apicheckTool, re_decode: decodeTool, re_il2cpp: il2cppTool, port_upgrade: upgradeTool, re_save: saveTool, port_shader: portShaderTool, port_trace: portTraceTool, re_report: report, re_lookup: lookupTool, re_blueprint: blueprintTool,
   port_map: portMapTool, port_convert: convert, port_plan: planPort, port_unit: portUnit, port_write: portWrite, port_scene: portScene,
   port_copy_assets: portCopyAssets, port_status: portStatus, port_verify: portVerify, re_case: caseTool, share_feedback: shareFeedback,
 };
