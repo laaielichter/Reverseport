@@ -14,7 +14,7 @@ import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { generate, PUBLIC_SEED, GENERATOR_VERSION } from './challenges/generate.mjs';
 import { accepts } from './challenges/oracle.mjs';
 
@@ -53,7 +53,7 @@ export async function selfcheck({ seed = PUBLIC_SEED, cc = findCompiler(), keep 
   const challenges = generate(seed);
   const work = keep ? path.resolve(keep) : fs.mkdtempSync(path.join(os.tmpdir(), 'rp-bench-'));
   fs.mkdirSync(work, { recursive: true });
-  const { inspectBinary } = await import(path.join(ROOT, 'port', 'src', 'binary.mjs'));
+  const { inspectBinary } = await import(pathToFileURL(path.join(ROOT, 'port', 'src', 'binary.mjs')).href);
   const results = [];
   for (const ch of challenges) {
     const valid = validInput(ch);
