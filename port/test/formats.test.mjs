@@ -22,6 +22,8 @@ test('identifies formats by content', () => {
   assert.equal(identify(buildPck({ 'res://a': 'x' })).id, 'godot-pck');
   assert.equal(identify(Buffer.from('[gd_scene load_steps=2 format=3]\n')).id, 'godot-scene');
   assert.equal(identify(Buffer.from('%YAML 1.1\n%TAG !u! tag:unity3d.com,2011:\n')).id, 'unity-yaml');
+  assert.equal(identify(Buffer.from('PACK')).id, 'pak');
+  assert.notEqual(identify(Buffer.from('PAK!')).id, 'pak');
 });
 
 test('finds, sizes and carves files embedded in a blob', async () => {

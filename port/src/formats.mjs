@@ -32,6 +32,7 @@ export const FORMATS = [
   { id: 'unreal-asset', name: 'Unreal package (.uasset/.umap)', category: 'engine', test: (b, o) => u32le(b, o) === 0x9e2a83c1 },
   { id: 'gamemaker-data', name: 'GameMaker data (FORM/GEN8)', category: 'engine', test: (b, o) => str(b, o, 'FORM') && str(b, o + 8, 'GEN8') },
   { id: 'swf', name: 'Flash SWF', category: 'engine', offsetZeroOnly: true, test: (b, o) => o === 0 && ['FWS', 'CWS', 'ZWS'].includes(b.toString('latin1', o, o + 3)) && b[o + 3] >= 1 && b[o + 3] <= 60 },
+  { id: 'pak', name: 'Quake PAK archive', category: 'archive', test: (b, o) => str(b, o, 'PACK') },
   { id: 'renpy-rpa', name: "Ren'Py archive (RPA)", category: 'archive', test: (b, o) => str(b, o, 'RPA-3.0 ') || str(b, o, 'RPA-2.0 ') },
   { id: 'asar', name: 'Electron archive (asar)', category: 'archive', offsetZeroOnly: true, test: (b, o) => o === 0 && u32le(b, 0) === 4 && str(b, 16, '{"files"') },
   { id: 'zip', name: 'ZIP archive (also apk/jar/ipa/docx/nupkg)', category: 'archive', test: (b, o) => at(b, o, [0x50, 0x4b, 3, 4]) || at(b, o, [0x50, 0x4b, 5, 6]) },
