@@ -8,13 +8,13 @@
     "url": "https://github.com/laaielichter/reverseport",
     "source": "github"
   },
-  "version": "1.6.0",
+  "version": "1.7.0",
   "packages": [
     {
       "registryType": "npm",
       "registryBaseUrl": "https://registry.npmjs.org",
       "identifier": "reverseport",
-      "version": "1.6.0",
+      "version": "1.7.0",
       "runtimeHint": "npx",
       "transport": {
         "type": "stdio"
