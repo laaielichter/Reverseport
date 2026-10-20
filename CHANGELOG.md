@@ -1,5 +1,48 @@
 # Changelog
 
+## [1.8.0](https://github.com/laaielichter/Reverseport/compare/reverseport-1.7.0...reverseport-1.8.0) (2026-10-20)
+
+
+### Features
+
+* **bench:** add rea-lab's large challenge set to the self-check ([#14](https://github.com/laaielichter/Reverseport/issues/14)) ([edf46cc](https://github.com/laaielichter/Reverseport/commit/edf46cc4ea22c392efef2183368e8d29b3d8a853))
+* **browser:** capture one element with a selector (HTML, CSS, cropped image) ([#29](https://github.com/laaielichter/Reverseport/issues/29)) ([2209d63](https://github.com/laaielichter/Reverseport/commit/2209d6352ef6aca47922294aab39e16107bd6faf))
+* **cli:** reverseport skills get prints the guide for this version ([#26](https://github.com/laaielichter/Reverseport/issues/26)) ([2e6f315](https://github.com/laaielichter/Reverseport/commit/2e6f315f46a6c00903b1d3e5cd3e2d34e47716e0))
+* **plugin:** list Stashpad and agentdisk in the ReversePort marketplace ([#17](https://github.com/laaielichter/Reverseport/issues/17)) ([140bbb2](https://github.com/laaielichter/Reverseport/commit/140bbb2035ce3ff241803c695011d5004721b865))
+* **port:** 20 real-world porting problems — API check, Godot 3→4, saves, shaders, physics, traces, game containers, Godot/IL2CPP/RPG Maker ([#35](https://github.com/laaielichter/Reverseport/issues/35)) ([b43d414](https://github.com/laaielichter/Reverseport/commit/b43d4143a08dee50636f90f8d048215cc29d31b2))
+* **port:** accept plain ids for list arguments on the command line ([#12](https://github.com/laaielichter/Reverseport/issues/12)) ([9f5953b](https://github.com/laaielichter/Reverseport/commit/9f5953bb24774bbabc6a1ffb0e0ca457c0d676f2))
+* **port:** optional agentdisk link: workspace disk use in port doctor ([#37](https://github.com/laaielichter/Reverseport/issues/37)) ([50dacc1](https://github.com/laaielichter/Reverseport/commit/50dacc11378c28c72a76792334a0e83377bc7e66))
+* **port:** output budget for big results and more forgiving input ([#25](https://github.com/laaielichter/Reverseport/issues/25)) ([c2456dd](https://github.com/laaielichter/Reverseport/commit/c2456dd7bd66c06c9b4574d813a45a0afef29879))
+* **port:** proof cases, guard hooks and an optional Stashpad link ([#1](https://github.com/laaielichter/Reverseport/issues/1)) ([f204e40](https://github.com/laaielichter/Reverseport/commit/f204e407ea742eae478c74c13d6733ac47713101))
+* **port:** resolve Rust use paths, skip build output, keep tests out of the architecture picture ([#27](https://github.com/laaielichter/Reverseport/issues/27)) ([5413c05](https://github.com/laaielichter/Reverseport/commit/5413c05b3026146ef744290bdcd0aecad5b66573))
+* **port:** understand JS/TS monorepos in scan and graph ([#22](https://github.com/laaielichter/Reverseport/issues/22)) ([9c9018f](https://github.com/laaielichter/Reverseport/commit/9c9018f959cb7a8938e1f7c11482964670d8ddeb))
+* **site:** read a real Godot pack field by field, and show proof cases ([#2](https://github.com/laaielichter/Reverseport/issues/2)) ([ba80c6f](https://github.com/laaielichter/Reverseport/commit/ba80c6f598140741cf93fad3bdb4a4961d83eb5a))
+
+
+### Bug Fixes
+
+* **ci:** format the sister tools table and expect plugin.json in release files ([#19](https://github.com/laaielichter/Reverseport/issues/19)) ([51a8332](https://github.com/laaielichter/Reverseport/commit/51a83321d3bf8f79a82616c8730ee353cb957d4f))
+* **ci:** keep main green across releases ([#21](https://github.com/laaielichter/Reverseport/issues/21)) ([71d0e33](https://github.com/laaielichter/Reverseport/commit/71d0e33b62fa3d4081c8de9e5290d33deec37c6c))
+* **ci:** let the repository skill check accept tracked plugin skills ([#9](https://github.com/laaielichter/Reverseport/issues/9)) ([bfd3d2c](https://github.com/laaielichter/Reverseport/commit/bfd3d2c54fdabaeea93c465fa93aa5dcbfac8c42))
+* close the two CodeQL alerts and give Chrome more time in CI ([#40](https://github.com/laaielichter/Reverseport/issues/40)) ([db78afc](https://github.com/laaielichter/Reverseport/commit/db78afcf3f0a95d14123a6436b1ba92da87fbc34))
+* include proof commands in help ([#10](https://github.com/laaielichter/Reverseport/issues/10)) ([1f60f3e](https://github.com/laaielichter/Reverseport/commit/1f60f3e803ad70c87c682e5fccec6fcf2addecdf))
+* include proof commands in help ([#8](https://github.com/laaielichter/Reverseport/issues/8)) ([a5d5498](https://github.com/laaielichter/Reverseport/commit/a5d54985fcdd015b6fbe9cacf37c0fff47158fd2))
+* **scan:** give Android modules a root; detect electron-vite ([#24](https://github.com/laaielichter/Reverseport/issues/24)) ([68c5374](https://github.com/laaielichter/Reverseport/commit/68c53742066ddf9bd80cd31d8ee6ea56434b5bc1))
+
+
+### Documentation
+
+* show the skills and recent features on the README and the site ([#39](https://github.com/laaielichter/Reverseport/issues/39)) ([351d1fd](https://github.com/laaielichter/Reverseport/commit/351d1fddd8394aadd43245c72b113a48e2fb3c68))
+* **site:** add a website, a real demo and a sharper README ([d411e40](https://github.com/laaielichter/Reverseport/commit/d411e40dfb43c52a0d2d4e1fe19a170477bfda80))
+* **site:** use the live Pages address ([c3e6740](https://github.com/laaielichter/Reverseport/commit/c3e6740549ad0c0580218f319b5156debb23e0bf))
+* translate the proof cases guide to Dutch ([#13](https://github.com/laaielichter/Reverseport/issues/13)) ([1b36b05](https://github.com/laaielichter/Reverseport/commit/1b36b057a0b914caa69b2b05f29c43a3f911976f))
+
+
+### Tests
+
+* **javascript:** compare the #/ import key only with a Node that accepts it ([#34](https://github.com/laaielichter/Reverseport/issues/34)) ([4631d9b](https://github.com/laaielichter/Reverseport/commit/4631d9b1687a2db810376ae54e9d9a087e99bd69))
+* **reference:** do not depend on the filesystem's directory order ([#38](https://github.com/laaielichter/Reverseport/issues/38)) ([ffedf61](https://github.com/laaielichter/Reverseport/commit/ffedf617d162c80157b454fb89a769c8c93d8edb))
+
 ## [1.7.0](https://github.com/laaielichter/Reverseport/compare/reverseport-1.6.0...reverseport-1.7.0) (2026-10-19)
 
 
