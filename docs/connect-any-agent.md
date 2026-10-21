@@ -1,5 +1,7 @@
 # Connect any agent
 
+_Nederlands: [connect-any-agent.nl.md](connect-any-agent.nl.md)_
+
 ReversePort works the same for every agent, whoever made it and however large or small the model. Pick the door
 that fits your agent; all of them reach the same tools.
 
