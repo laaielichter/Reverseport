@@ -9,9 +9,11 @@ import { z } from "zod";
  * client that compiles advertised patterns — schema compilation happens before
  * arguments are supplied, so the whole tools request fails rather than one call.
  *
- * The accepted set is identical to the Zod validator; only the offset class
- * escapes `-`, as `\x2d`, because an escaped `-` inside a character class is
- * removed by `oxlint --fix` as a useless escape.
+ * The accepted set is the one the Zod validator had when this schema replaced
+ * it (Zod 4.4); Zod 4.6 since rejects an offset time without seconds, which
+ * this schema still accepts so existing inputs keep validating. Only the
+ * offset class escapes `-`, as `\x2d`, because an escaped `-` inside a
+ * character class is removed by `oxlint --fix` as a useless escape.
  */
 export const offsetDateTimeSchema = z
   .string()

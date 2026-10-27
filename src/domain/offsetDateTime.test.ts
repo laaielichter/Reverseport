@@ -6,6 +6,12 @@ import { offsetDateTimeSchema } from "./offsetDateTime.js";
 /** The validator this schema replaces; it remains the oracle for the accepted set. */
 const replaced = z.string().datetime({ offset: true });
 
+/**
+ * Zod 4.6 follows RFC 3339 and stopped accepting an offset time without
+ * seconds; this schema keeps the set it was introduced with.
+ */
+const KNOWN_DIVERGENCES: readonly string[] = ["omitted seconds"];
+
 const ACCEPTED: readonly (readonly [string, string])[] = [
   ["a UTC timestamp", "2026-10-09T04:00:00Z"],
   ["a positive offset", "2026-10-09T04:00:00+02:00"],
@@ -59,7 +65,7 @@ describe("offset datetime schema", () => {
         offsetDateTimeSchema.safeParse(value).success !==
         replaced.safeParse(value).success,
     ).map(([label]) => label);
-    expect(divergences).toEqual([]);
+    expect(divergences).toEqual(KNOWN_DIVERGENCES);
   });
 
   it("emits a pattern that compiles in every mode a client may use", () => {
