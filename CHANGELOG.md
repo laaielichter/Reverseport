@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.9.0](https://github.com/laaielichter/Reverseport/compare/reverseport-1.8.0...reverseport-1.9.0) (2026-10-27)
+
+
+### Bug Fixes
+
+* **deps:** bump zod and fast-uri for security advisories ([#53](https://github.com/laaielichter/Reverseport/issues/53)) ([b79f141](https://github.com/laaielichter/Reverseport/commit/b79f14180bb0e9b17403be5e5ec81cb9287cad2e))
+
 ## [1.8.0](https://github.com/laaielichter/Reverseport/compare/reverseport-1.7.0...reverseport-1.8.0) (2026-10-20)
 
 
