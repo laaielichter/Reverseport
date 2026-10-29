@@ -1,13 +1,13 @@
 # Elke agent verbinden
 
-_Nederlands: [connect-any-agent.nl.md](connect-any-agent.nl.md)_
+_English: [connect-any-agent.md](connect-any-agent.md)_
 
 ReversePort werkt hetzelfde voor elke agent, ongeacht wie hem heeft gemaakt en hoe groot of klein het model is. Kies de deur
 die bij je agent past; ze komen allemaal uit bij dezelfde tools.
 
 | Je agent                                                                                                         | Deur                                | Eén commando                                                     |
 | ---------------------------------------------------------------------------------------------------------------- | ----------------------------------- | ---------------------------------------------------------------- |
-| Claude Code, Codex, Cursor, Gemini CLI, GitHub Copilot, OpenCode en andere ge?nstalleerde agents                 | MCP (stdio), voor je geconfigureerd | `npx -y reverseport@latest setup`                                |
+| Claude Code, Codex, Cursor, Gemini CLI, GitHub Copilot, OpenCode en andere geïnstalleerde agents                 | MCP (stdio), voor je geconfigureerd | `npx -y reverseport@latest setup`                                |
 | Elke MCP-client, handmatig geconfigureerd (Windsurf, Cline, Roo Code, Continue, Zed, Goose, LM Studio, VS Code…) | MCP (stdio)                         | `reverseport connect <client>` toont het exacte fragment         |
 | Clients die een MCP-URL accepteren (n8n, LangChain `MultiServerMCPClient`, Open WebUI via mcpo…)                 | MCP via HTTP                        | `reverseport serve` → `http://127.0.0.1:32147/mcp`               |
 | OpenAI Chat Completions / Responses, OpenAI-compatibele servers (vLLM, Ollama, LM Studio, llama.cpp)             | Functieaanroepen                    | `GET /api/agent/tools?format=openai-strict` (of `responses`)     |
@@ -77,7 +77,7 @@ Elke agent kan elke tool bereiken. Wat verandert, is hoeveel er vooraf wordt wee
 
 | Profiel              | Lijsten                                                                                       | Over               | Voor                                                                   |
 | -------------------- | --------------------------------------------------------------------------------------------- | ------------------ | ---------------------------------------------------------------------- |
-| `compact`            | 8 ReversePort-tools + 6 essenti?le engine-tools, beschrijvingen van ??n regel, korte schema's | 17 tools           | kleine of oudere modellen, kleine contextvensters                      |
+| `compact`            | 8 ReversePort-tools + 6 essentiële engine-tools, beschrijvingen van één regel, korte schema's | 17 tools           | kleine of oudere modellen, kleine contextvensters                      |
 | `standard` (default) | ReversePort's 23 tools + ongeveer 20 kern-engine-tools                                        | 46 tools           | de meeste agents                                                       |
 | `full`               | every tool                                                                                    | ongeveer 200 tools | agents met grote contextvensters waarvan de client dit aantal toestaat |
 
@@ -115,10 +115,10 @@ Tool-aanroepen via elke deur geven hetzelfde foutobject terug, zodat een agent k
 }
 ```
 
-ReversePort's codes are UPPERCASE (`NOT_FOUND`, `INVALID_ARGUMENT`, `ENGINE_STOPPED`…); the deep-analysis engine's
-are lowercase (`provider_unavailable`, `resource_constraint`…). Beide gebruiken dezelfde categorie?n en bevatten `retryable`
-en `remediation`. Een onbekende toolnaam levert een toolresultaat met `UNKNOWN_TOOL` en de meest overeenkomende naam. On the CLI, usage
-gebruikfouten eindigen met 2 en andere fouten met 1; de fout is JSON op stderr (in een interactieve terminal toont het `reverseport`-commando in plaats daarvan platte tekst). Via HTTP volgt de status de code: 400 voor invoer, 404 voor een onbekende tool, 503 wanneer de engine of een openbare bron niet beschikbaar is, 500 voor onverwachte fouten.
+De codes van ReversePort zijn in hoofdletters (`NOT_FOUND`, `INVALID_ARGUMENT`, `ENGINE_STOPPED`…); die van de
+deep-analysis-engine in kleine letters (`provider_unavailable`, `resource_constraint`…). Beide gebruiken dezelfde categorieën en bevatten `retryable`
+en `remediation`. Een onbekende toolnaam levert een toolresultaat met `UNKNOWN_TOOL` en de meest overeenkomende naam. In de CLI eindigen
+gebruiksfouten met 2 en andere fouten met 1; de fout is JSON op stderr (in een interactieve terminal toont het `reverseport`-commando in plaats daarvan platte tekst). Via HTTP volgt de status de code: 400 voor invoer, 404 voor een onbekende tool, 503 wanneer de engine of een openbare bron niet beschikbaar is, 500 voor onverwachte fouten.
 
 De engine-statussen zijn verschillend, dus de volgende stap is altijd duidelijk: `ENGINE_UNAVAILABLE` (not built — install it),
 `ENGINE_OFF` (turned off — unset `REVERSEPORT_ENGINE`), `ENGINE_STOPPED` (crashed — call again once; it restarts),
