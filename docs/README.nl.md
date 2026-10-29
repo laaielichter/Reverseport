@@ -22,6 +22,8 @@ npx reverseport setup
 Kies je agents, bekijk de wijzigingen en keur ze goed. Setup registreert één MCP-server en installeert de skill, met
 back-ups van je bestaande configuratie. Herstart daarna je agent.
 
+Zie [connect-any-agent.nl.md](connect-any-agent.nl.md) voor alle manieren om een agent met ReversePort te verbinden.
+
 Claude Code kan ook de plugin gebruiken (met de port-skills en de `port-architect`-agent):
 
 ```text
