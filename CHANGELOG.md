@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.10.0](https://github.com/laaielichter/Reverseport/compare/reverseport-1.9.0...reverseport-1.10.0) (2026-10-30)
+
+
+### Features
+
+* recognize Quake PAK archives ([#49](https://github.com/laaielichter/Reverseport/issues/49)) ([642e319](https://github.com/laaielichter/Reverseport/commit/642e319987af04ceb449ea8306ffd3a61b252b62))
+
+
+### Bug Fixes
+
+* **docs:** regenerate the error schema for zod 4.6 ([#57](https://github.com/laaielichter/Reverseport/issues/57)) ([34ea2c2](https://github.com/laaielichter/Reverseport/commit/34ea2c236216fc3cde8e0358265aba68e055b3e0))
+
+
+### Documentation
+
+* add Dutch agent connection guide ([#47](https://github.com/laaielichter/Reverseport/issues/47)) ([499f340](https://github.com/laaielichter/Reverseport/commit/499f3407741d185de3343327bcb117799ebbde7b))
+* fix letters and leftovers in the Dutch agent guide ([#56](https://github.com/laaielichter/Reverseport/issues/56)) ([e9e06d4](https://github.com/laaielichter/Reverseport/commit/e9e06d48a87dee3318bd763639a6f6fefdb167a6))
+
 ## [1.9.0](https://github.com/laaielichter/Reverseport/compare/reverseport-1.8.0...reverseport-1.9.0) (2026-10-27)
 
 
