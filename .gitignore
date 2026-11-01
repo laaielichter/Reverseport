@@ -71,3 +71,6 @@ Thumbs.db
 
 # Complete static website output, including generated language editions.
 website/_site/
+
+# claude plugin eval output
+evals/results/
