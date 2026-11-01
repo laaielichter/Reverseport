@@ -1,6 +1,6 @@
 # Working on ReversePort
 
-Read [AGENTS.md](AGENTS.md): layout, architecture rules, checks and tests for both engines.
+Read [AGENTS.md](../AGENTS.md): layout, architecture rules, checks and tests for both engines.
 
 - `port/` (ReversePort's own engine): Node ESM, zero runtime dependencies. New tool → schema and handler in
   `port/src/tools.mjs`, then docs, skills and tests. `npm run test:port`.

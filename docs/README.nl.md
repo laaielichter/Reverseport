@@ -42,6 +42,10 @@ Vanuit de broncode: `git clone https://github.com/laaielichter/reverseport`, dan
 `./bin/reverseport.mjs setup`. De verken-, build-, lookup-, blueprint- en port-commando's werken direct na de clone,
 zonder installatie: `node bin/reverseport.mjs scan ./MijnGame`.
 
+Haal het alleen van npm (`reverseport`), uit de MCP Registry (`io.github.laaielichter/reverseport`) of uit deze repo;
+kopieën onder andere namen zijn niet van ons. Er is geen telemetrie: [PRIVACY.md](../PRIVACY.md) noemt de paar keer
+dat het het netwerk gebruikt.
+
 ## Wat het kan
 
 - **Verkennen** — `re_scan` herkent engine en versie (Godot, Unity, Unreal, GameMaker, RPG Maker, Ren'Py, LÖVE,
