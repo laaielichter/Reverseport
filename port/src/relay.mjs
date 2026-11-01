@@ -86,7 +86,7 @@ META_TOOLS.push({ name: 'run_batch', title: 'Run several tools in one call',
   annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false } });
 
 const ENGINE_MISSING = 'The deep-analysis engine is not built in this copy of ReversePort, so decompilation and the other engine tools are not available yet. ReversePort\'s own tools work now — continue with them. To add the engine, ask the user first, then: `npx -y reverseport@latest setup`, or in this checkout `npm ci && npm run build`; the agent client then needs a restart.';
-const ENGINE_MISSING_PLUGIN = 'The deep-analysis engine is not included in the Claude Code plugin, so decompilation and the other engine tools are not available yet. ReversePort\'s own tools work now — continue with them. To add the engine, ask the user to start Claude Code with REVERSEPORT_ENGINE_FETCH=npx set (it downloads the published engine once). Do not also run setup.';
+const ENGINE_MISSING_PLUGIN = 'The deep-analysis engine is not included in the Claude Code plugin, so decompilation and the other engine tools are not available yet. ReversePort\'s own tools work now — continue with them. To add the engine, ask the user to turn on the plugin\'s "Deep-analysis engine" setting (/plugin → reverseport → configure; it downloads the published engine once through npx), or to start Claude Code with REVERSEPORT_ENGINE_FETCH=npx. Do not also run setup.';
 const ENGINE_OFF = 'The deep-analysis engine is turned off (REVERSEPORT_ENGINE=off). Unset it and reconnect to use the engine tools.';
 
 /** The command that starts the engine's MCP server: { command } or { off | missing | error }. */

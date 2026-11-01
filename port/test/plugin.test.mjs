@@ -33,6 +33,26 @@ test('Claude Code plugin and marketplace manifests', async () => {
     ['agentdisk', { source: 'github', repo: 'laaielichter/agentdisk' }],
   ]);
   for (const p of market.plugins) assert.ok(p.description?.length >= 40, `${p.name}: description`);
+  // Settings the user fills in once, instead of editing settings.json by hand; every one reaches the server.
+  for (const [key, option] of Object.entries(m.userConfig)) {
+    assert.match(key, /^[a-z_]+$/);
+    assert.ok(['string', 'number', 'boolean', 'directory', 'file'].includes(option.type), `${key}: type`);
+    assert.ok(option.title && option.description, `${key}: title and description`);
+    assert.ok(Object.values(m.mcpServers.reverseport.env).includes(`\${user_config.${key}}`), `${key}: passed to the server`);
+  }
+});
+
+test('plugin settings: empty or unsubstituted values are unset; the engine setting fetches the engine', async () => {
+  const { applyPluginSettings } = await import('../plugin/mcp-launch.mjs');
+  const env = applyPluginSettings({ REVERSEPORT_PLUGIN_ENGINE: 'true', REVERSEPORT_PROFILE: 'compact', REVERSEPORT_HOME: '', GHIDRA_INSTALL_DIR: '${user_config.ghidra_install_dir}' });
+  assert.equal(env.REVERSEPORT_ENGINE_FETCH, 'npx');
+  assert.equal(env.REVERSEPORT_PROFILE, 'compact');
+  assert.equal('REVERSEPORT_HOME' in env, false);
+  assert.equal('GHIDRA_INSTALL_DIR' in env, false);
+  assert.equal('REVERSEPORT_PLUGIN_ENGINE' in env, false);
+  const off = applyPluginSettings({ REVERSEPORT_PLUGIN_ENGINE: 'false' });
+  assert.equal(off.REVERSEPORT_ENGINE_FETCH, undefined);
+  assert.equal(applyPluginSettings({ REVERSEPORT_PLUGIN_ENGINE: 'true', REVERSEPORT_ENGINE_FETCH: 'off' }).REVERSEPORT_ENGINE_FETCH, 'off', 'an explicit environment choice wins');
 });
 
 test('skills and agent: frontmatter, and only real tool names', async () => {

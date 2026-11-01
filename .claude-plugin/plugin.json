@@ -27,7 +27,37 @@
       "command": "node",
       "args": [
         "${CLAUDE_PLUGIN_ROOT}/port/plugin/mcp-launch.mjs"
-      ]
+      ],
+      "env": {
+        "REVERSEPORT_PLUGIN_ENGINE": "${user_config.engine}",
+        "REVERSEPORT_PROFILE": "${user_config.tool_profile}",
+        "REVERSEPORT_HOME": "${user_config.workspace}",
+        "GHIDRA_INSTALL_DIR": "${user_config.ghidra_install_dir}"
+      }
+    }
+  },
+  "userConfig": {
+    "engine": {
+      "type": "boolean",
+      "title": "Deep-analysis engine",
+      "description": "Run the published engine through npx (downloaded once) so decompilation, Android, .NET, Electron and browser tools work in the plugin. Off: ReversePort's own tools only.",
+      "default": false
+    },
+    "tool_profile": {
+      "type": "string",
+      "title": "Tool list size",
+      "description": "compact (small models or contexts), standard, or full (every engine tool listed). Agents can also switch with set_tool_profile.",
+      "default": "standard"
+    },
+    "workspace": {
+      "type": "directory",
+      "title": "Workspace folder",
+      "description": "Where ReversePort keeps extracted packs, port plans, reports and saved big results. Empty: ~/.reverseport."
+    },
+    "ghidra_install_dir": {
+      "type": "directory",
+      "title": "Ghidra installation (optional)",
+      "description": "Your own Ghidra folder for native decompilation. Empty: none or found by setup."
     }
   }
 }
