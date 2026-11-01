@@ -29,13 +29,32 @@ const planFile = async id => path.join(await plansDir(), id, 'plan.json');
 
 export async function loadPlan(id) {
   if (!id || !/^[a-z0-9-]{3,80}$/.test(id)) throw new RPError('INVALID_ARGUMENT', 'Give a planId (port_status lists them).');
-  const plan = await readJson(await planFile(id), null);
-  if (!plan) throw new RPError('UNKNOWN_PLAN', `No port plan "${id}". port_status without planId lists the plans.`);
-  return plan;
+  const file = await planFile(id);
+  let text;
+  try { text = await fs.readFile(file, 'utf8'); } catch (e) {
+    if (e.code === 'ENOENT') throw new RPError('UNKNOWN_PLAN', `No port plan "${id}". port_status without planId lists the plans.`);
+    throw e;
+  }
+  try { return JSON.parse(text); } catch (e) {
+    // A damaged plan is not a missing one: fall back to the copy kept at the previous save, and say so.
+    const backup = await readJson(`${file}.bak`, null);
+    if (backup?.id === id) { backup.recovered = `plan.json was unreadable (${e.message}); continued from the copy saved at ${backup.updated ?? 'the previous save'}. The last change before that may be missing — port_status shows what is recorded.`; return backup; }
+    throw new RPError('PLAN_UNREADABLE', `The port plan "${id}" exists but ${file} is not valid JSON (${e.message}), and there is no usable backup.`);
+  }
 }
+/** Saves of one plan go one at a time in this process, so they never race for the same file. */
+const saving = new Map();
 async function savePlan(plan) {
+  const queued = (saving.get(plan.id) ?? Promise.resolve()).catch(() => {}).then(() => writePlan(plan));
+  saving.set(plan.id, queued);
+  try { return await queued; } finally { if (saving.get(plan.id) === queued) saving.delete(plan.id); }
+}
+async function writePlan(plan) {
   plan.updated = new Date().toISOString();
-  await writeJson(await planFile(plan.id), plan);
+  const file = await planFile(plan.id);
+  await fs.copyFile(file, `${file}.bak`).catch(() => {}); // the copy loadPlan falls back to
+  const { recovered, ...stored } = plan;
+  await writeJson(file, stored);
   try { await fs.writeFile(path.join(plan.output, 'PORT-PLAN.md'), planMarkdown(plan)); plan.planFileError = undefined; }
   catch (e) { plan.planFileError = `PORT-PLAN.md could not be written: ${e.code ?? e.message}`; }
 }
@@ -60,7 +79,8 @@ function nextCall(plan) {
   return u ? `${callText(c)}  (next: ${u.id} ${u.source})` : `${callText(c)}  (every unit is handled)`;
 }
 
-const withNext = (plan, extra = {}) => ({ ...extra, next: nextCall(plan), nextCall: nextCallObj(plan) });
+const recoveredNote = plan => (plan.recovered ? { recovered: plan.recovered } : {});
+const withNext = (plan, extra = {}) => ({ ...recoveredNote(plan), ...extra, next: nextCall(plan), nextCall: nextCallObj(plan) });
 
 function detectFrom(graph, scanEngines) {
   const e = scanEngines.find(x => ['godot', 'unity', 'unreal'].includes(x.id));
@@ -241,6 +261,7 @@ function summary(plan, extra = {}) {
   const by = (k) => plan.units.reduce((o, u) => { o[u[k]] = (o[u[k]] ?? 0) + 1; return o; }, {});
   const next = nextUnit(plan);
   return {
+    ...recoveredNote(plan),
     planId: plan.id, name: plan.name, from: plan.from, to: plan.to, source: plan.source, output: plan.output, map: plan.map,
     units: plan.units.length, byKind: by('kind'), byStatus: by('status'), byAction: by('action'),
     risky: plan.units.filter(u => u.risk === 'high').map(u => u.source).slice(0, 20),
@@ -252,10 +273,11 @@ function summary(plan, extra = {}) {
   };
 }
 
+/** Untouched work first; units marked partial come back only when nothing else is left, so they never loop. */
 function nextUnit(plan) {
   const done = new Set(plan.units.filter(u => ['done', 'skipped'].includes(u.status)).map(u => u.id));
-  const open = plan.units.filter(u => u.status === 'pending' || u.status === 'in_progress' || u.status === 'partial');
-  return open.find(u => u.kind !== 'asset' && u.dependsOn.every(d => done.has(d) || d === u.id)) ?? open.find(u => u.kind !== 'asset') ?? open[0] ?? null;
+  const pick = open => open.find(u => u.kind !== 'asset' && u.dependsOn.every(d => done.has(d) || d === u.id)) ?? open.find(u => u.kind !== 'asset') ?? open[0] ?? null;
+  return pick(plan.units.filter(u => u.status === 'pending' || u.status === 'in_progress')) ?? pick(plan.units.filter(u => u.status === 'partial'));
 }
 
 function findUnit(plan, unit) {
@@ -370,6 +392,8 @@ export async function portWrite({ planId, unit, content, files, copy, status = '
   if (!['done', 'partial', 'skipped'].includes(status)) throw new RPError('INVALID_ARGUMENT', 'status must be done, partial or skipped.');
   let written = [];
   if (status === 'skipped') { u.status = 'skipped'; u.notes = notes ?? u.notes; await savePlan(plan); return withNext(plan, { planId, unit: u.id, status: 'skipped' }); }
+  const given = [typeof content === 'string' && 'content', files !== undefined && files !== null && 'files', copy === true && 'copy'].filter(Boolean);
+  if (given.length > 1) throw new RPError('INVALID_ARGUMENT', `Give exactly one of content, files or copy:true (got ${given.join(' and ')}).`);
   if (copy) {
     const dest = safeJoin(plan.output, u.target);
     await fs.mkdir(path.dirname(dest), { recursive: true });
@@ -382,7 +406,8 @@ export async function portWrite({ planId, unit, content, files, copy, status = '
   }
   const texts = [];
   for (const rel of written) { const b = await fs.readFile(safeJoin(plan.output, rel)); if (isText(b)) texts.push(b.toString('utf8')); }
-  const check = copy ? null : checkTarget(plan, u, texts);
+  // A copied script is still checked: copying source code into another engine is not a port.
+  const check = (copy && u.kind === 'asset') || !texts.length ? null : checkTarget(plan, u, texts);
   u.status = status;
   u.written = [...new Set([...(u.written ?? []), ...written])];
   u.finished = new Date().toISOString();
@@ -483,9 +508,9 @@ export async function portVerify({ planId } = {}) {
   }
   const p = progress(plan);
   const passed = !errors.length && p.pending === 0 && p.partial === 0 && left === 0 && missingTotal === 0 && dormantTotal === 0 && behaviourTotal === 0;
-  if (notPorted.length) warnings.unshift({ issue: 'not ported yet', count: notPorted.length, units: notPorted.slice(0, 10) });
+  if (notPorted.length) warnings.unshift({ issue: 'not ported yet', count: notPorted.length, units: notPorted.slice(0, 10), ...(notPorted.length > 10 ? { more: notPorted.length - 10, seeAll: call('port_status', { planId }) } : {}) });
   const onlyPending = !errors.length && warnings.length === (notPorted.length ? 1 : 0);
-  const report = { planId, passed, progress: p, errors, warnings: warnings.slice(0, 200), portMarkers: markers, leftovers: left, missingSymbols: missingTotal, dormant: dormantTotal, behaviour: behaviourTotal, output: plan.output,
+  const report = { ...recoveredNote(plan), planId, passed, progress: p, errors, warnings: warnings.slice(0, 200), portMarkers: markers, leftovers: left, missingSymbols: missingTotal, dormant: dormantTotal, behaviour: behaviourTotal, output: plan.output,
     next: passed ? 'Open the output in the target engine, build, run, and compare behaviour with the original.' : onlyPending ? `Nothing is wrong so far; ${notPorted.length} unit(s) are not ported yet. Continue: ${nextCall(plan)}` : 'Fix the errors and the warnings above (leftovers, missing functions, dormant logic, behaviour parity, partial units), then run port_verify again. To prove behaviour, log both with port_trace harnesses and compare.',
     ...(passed ? {} : { nextCall: onlyPending ? nextCallObj(plan) : call('port_verify', { planId }) }) };
   plan.lastVerify = { at: new Date().toISOString(), passed, errors: errors.length, warnings: warnings.length };

@@ -118,7 +118,8 @@ Proof (evidence ledger)
   case decision|test|limit|phase|check|report|show <caseId> …   (case list: all cases)
 
 Other
-  tools [--all] [--format f] list the tools (--all adds the engine's when built); formats: ${FORMATS.join(', ')}
+  tools [--all] [--format f] [--profile compact|standard|full]   list the tools (--all adds the engine's when built); formats: ${FORMATS.join(', ')}
+  run_batch --calls '[{"tool":"re_scan","arguments":{"path":"./Game"},"select":["primary.id"]}]'   several tools, one call
   describe <tool>            one tool's description and input schema (engine tools too, when built)
   skills [list]              the skills bundled with this version
   skills get <name>          one skill's full guide, matching this version (--json for JSON)
@@ -139,7 +140,9 @@ export async function main(argv = process.argv.slice(2)) {
   if (cmd === '--version' || cmd === 'version') { process.stdout.write(`${VERSION}\n`); return 0; }
   if (cmd === 'tools') {
     const fi = rest.indexOf('--format');
-    const all = await withEngineTools(rest.includes('--all'));
+    const pi = rest.indexOf('--profile');
+    let all;
+    try { all = await listing({ include: rest.includes('--all'), profile: pi >= 0 ? rest[pi + 1] : process.env.REVERSEPORT_PROFILE }); } catch (e) { return printError(e); }
     try {
       if (fi < 0) print(all.map(t => ({ name: t.name, title: t.title, description: t.description })));
       else print(formatTools(all, rest[fi + 1]));
@@ -147,7 +150,7 @@ export async function main(argv = process.argv.slice(2)) {
     } catch (e) { return printError(e); }
   }
   if (cmd === 'describe') {
-    const all = await withEngineTools(true);
+    const all = await listing({ include: true, profile: 'full' });
     const t = all.find(x => x.name === (ALIASES[rest[0]] ?? rest[0]));
     if (!t) {
       const { knownEngineToolNames } = await import('./src/relay.mjs');
@@ -184,36 +187,77 @@ export async function main(argv = process.argv.slice(2)) {
   if (cmd === 'doctor') { const r = await doctor(); print(r); return r.ok ? 0 : 1; }
   if (cmd === 'serve') { const { start } = await import('./server.mjs'); const s = await start(); console.log(`ReversePort ${VERSION} — http://127.0.0.1:${s.address().port}/api/agent/tools`); return null; }
   if (cmd === 'mcp') { await import('./mcp.mjs'); return null; }
+  if (cmd === 'port') return main(rest.length ? rest : ['help']); // `reverseport port <command>` reaches this file as-is
   const name = ALIASES[cmd] ?? cmd;
+  if (!tools.some(t => t.name === name) && name !== 'run_batch' && name !== 'set_tool_profile') {
+    const { knownEngineToolNames } = await import('./src/relay.mjs');
+    if (knownEngineToolNames().has(name) || name === 'engine_call' || name === 'engine_tools') return printError(new RPError('ENGINE_UNAVAILABLE', `${name} is a deep-analysis engine tool. On the command line it runs through the engine commands (\`reverseport engine --help\`), and over MCP or \`reverseport serve\` as a tool; this file only runs ReversePort's own tools.`));
+  }
+  if (name === 'set_tool_profile') return printError(new RPError('INVALID_ARGUMENT', 'set_tool_profile changes what an MCP client lists. On the command line every tool can always be called; for a shorter list use `reverseport tools --profile compact` (or set REVERSEPORT_PROFILE).'));
+  if (name === 'run_batch') {
+    try { return await runBatch(await readRequest(rest), rest, print); } catch (e) { return printError(e); }
+  }
   if (!tools.some(t => t.name === name)) {
-    const near = closest(cmd, [...Object.keys(ALIASES), ...tools.map(t => t.name)], 2);
+    const near = closest(cmd, [...Object.keys(ALIASES), ...tools.map(t => t.name), 'run_batch'], 2);
     return printError(new RPError('UNKNOWN_TOOL', `Unknown command "${cmd}".${near ? ` Did you mean "${near}"?` : ''} Run: reverseport help`));
   }
   try {
-    let args = {};
-    const reqIdx = rest.indexOf('--request');
-    if (reqIdx >= 0) {
-      const src = rest[reqIdx + 1];
-      if (!src) throw new RPError('INVALID_ARGUMENT', '--request needs a JSON file path, or - for stdin.');
-      let text;
-      try { text = src === '-' ? await readStdin() : await fs.readFile(src, 'utf8'); } catch (e) { throw new RPError(e.code === 'ENOENT' ? 'NOT_FOUND' : 'INVALID_ARGUMENT', `--request: cannot read ${src} (${e.code ?? e.message}).`); }
-      try { args = JSON.parse(text); } catch { throw new RPError('INVALID_ARGUMENT', `--request: ${src} is not a JSON object.`); }
-      rest.splice(reqIdx, 2);
-    }
+    const args = await readRequest(rest);
     Object.assign(args, parseArgs(name, rest));
     print(await callTool(name, args));
     return 0;
   } catch (e) { return printError(e); }
 }
 
-/** ReversePort's tools, plus the engine's when it is built and `include` is set. */
-async function withEngineTools(include) {
-  if (!include) return tools;
-  const { createRelay, engineCommand } = await import('./src/relay.mjs');
-  if (!engineCommand().command) return tools;
-  const relay = createRelay({}, { tools: 'all' });
-  try { await relay.ensureStarted({ name: 'reverseport-cli', version: VERSION }); return [...tools, ...relay.allEngineTools()]; }
-  finally { relay.close(); }
+/** --request <file|-> as the starting arguments (removed from argv), then --args '{…}' merged on top. */
+async function readRequest(rest) {
+  let args = {};
+  const reqIdx = rest.indexOf('--request');
+  if (reqIdx >= 0) {
+    const src = rest[reqIdx + 1];
+    if (!src) throw new RPError('INVALID_ARGUMENT', '--request needs a JSON file path, or - for stdin.');
+    let text;
+    try { text = src === '-' ? await readStdin() : await fs.readFile(src, 'utf8'); } catch (e) { throw new RPError(e.code === 'ENOENT' ? 'NOT_FOUND' : 'INVALID_ARGUMENT', `--request: cannot read ${src} (${e.code ?? e.message}).`); }
+    try { args = JSON.parse(text); } catch { throw new RPError('INVALID_ARGUMENT', `--request: ${src} is not a JSON object.`); }
+    rest.splice(reqIdx, 2);
+  }
+  return args;
+}
+
+/**
+ * run_batch on the command line: the same steps and select as over MCP. The engine starts only when a step needs
+ * one of its tools. Exit code 1 when a step failed; the JSON says which and why.
+ */
+async function runBatch(args, argv, print) {
+  const { createRelay } = await import('./src/relay.mjs');
+  for (const [i, a] of argv.entries()) {
+    if (a === '--args' && /^\s*\{/.test(argv[i + 1] ?? '')) { try { Object.assign(args, JSON.parse(argv[i + 1])); } catch { throw new RPError('INVALID_ARGUMENT', '--args expects a JSON object, e.g. --args \'{"calls":[{"tool":"re_scan","arguments":{"path":"./Game"}}]}\'.'); } }
+    if (a === '--calls') { try { args.calls = JSON.parse(argv[i + 1] ?? ''); } catch { throw new RPError('INVALID_ARGUMENT', '--calls expects a JSON list, e.g. --calls \'[{"tool":"re_scan","arguments":{"path":"./Game"},"select":["primary.id"]}]\'.'); } }
+    if (a === '--continue-on-error') args.continueOnError = true;
+  }
+  const calls = Array.isArray(args.calls) ? args.calls : [];
+  const local = new Set(tools.map(t => t.name));
+  const relay = createRelay({}, calls.every(c => local.has(ALIASES[c?.tool] ?? c?.tool)) ? { engine: false } : {});
+  try {
+    await relay.ensureStarted({ name: 'reverseport-cli', version: VERSION });
+    const result = await relay.call('run_batch', { ...args, calls: calls.map(c => (c && ALIASES[c.tool] ? { ...c, tool: ALIASES[c.tool] } : c)) }, relay.view(undefined, { stateless: true }));
+    const value = result.structuredContent ?? JSON.parse(result.content?.[0]?.text ?? '{}');
+    if (result.isError) { process.stderr.write(`${JSON.stringify(value)}\n`); return value?.error?.category === 'invalid_input' ? 2 : 1; }
+    print(value);
+    return value.results?.every(r => r.ok) ? 0 : 1;
+  } finally { relay.close(); }
+}
+
+/** The list an MCP client gets in that profile (ReversePort's tools, run_batch, and with include every engine tool). */
+async function listing({ include = false, profile } = {}) {
+  const { createRelay, engineCommand, PROFILES } = await import('./src/relay.mjs');
+  if (profile !== undefined && !PROFILES[String(profile).toLowerCase()]) throw new RPError('INVALID_ARGUMENT', `Unknown profile "${profile}". Profiles: ${Object.keys(PROFILES).join(', ')}.`);
+  const withEngine = include && !!engineCommand().command;
+  const relay = createRelay({}, { profile, ...(withEngine ? { tools: 'all' } : { engine: false }) });
+  try {
+    if (withEngine) await relay.ensureStarted({ name: 'reverseport-cli', version: VERSION });
+    return relay.listTools().filter(t => t.name !== 'set_tool_profile');
+  } finally { relay.close(); }
 }
 
 async function readStdin() {

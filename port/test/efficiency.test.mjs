@@ -92,7 +92,7 @@ test('the same failing call twice gets a plain "do not repeat it" instead of the
     const e = second.result.structuredContent.error;
     assert.equal(e.repeated, 2);
     assert.equal(e.retryable, false);
-    assert.match(e.message, /failed 2 times in a row/);
+    assert.match(e.message, /failed 2 times in this session/);
     assert.match(e.remediation.action, /Do not send it again unchanged/);
     const fixed = await s.call(3, 'tools/call', { name: 'port_convert', arguments: { ...bad.arguments, to: 'unity' } });
     assert.equal(fixed.result.isError, false);
@@ -121,5 +121,15 @@ test('a result too big for one answer links to the full one, readable as an MCP 
     assert.ok(templates.result.resourceTemplates.some(t => t.uriTemplate === 'reverseport://tool-output/{file}'));
     const escape = await s.call(4, 'resources/read', { uri: 'reverseport://tool-output/..%2F..%2Fsecret' });
     assert.equal(escape.error.code, -32602, 'only plain names inside the tool-output folder');
+  } finally { s.close(); }
+});
+
+test('run_batch says which select paths found nothing, with the path that works', async () => {
+  const s = await started();
+  try {
+    const r = await s.call(1, 'tools/call', { name: 'run_batch', arguments: { calls: [{ tool: 're_scan', arguments: { path: GODOT }, select: ['primry.id', 'entryPoints.file', 'primary.id'] }] } });
+    const step = r.result.structuredContent.results[0];
+    assert.equal(step.value['primary.id'], 'godot');
+    assert.deepEqual(step.unresolved.map(u => [u.path, u.didYouMean]), [['primry.id', 'primary.id'], ['entryPoints.file', 'entryPoints[*].file']]);
   } finally { s.close(); }
 });

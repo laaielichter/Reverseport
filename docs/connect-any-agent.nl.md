@@ -68,8 +68,14 @@ tools = await client.get_tools()
 Formats: `mcp`, `openai`, `openai-strict`, `responses`, `anthropic`, `gemini`, `json-schema`. In de strikte indelingen
 elk argument is vereist en optionele argumenten accepteren `null`; `null` betekent "niet gegeven". Elke deur accepteert ook
 getallen en booleans die als strings worden verzonden (`"20"`, `"true"`) en objecten die als JSON-tekst worden verzonden. Voor de eigen tools van ReversePort,
-worden getallen buiten het toegestane bereik begrensd en het resultaat vermeldt dit onder `adjusted`. In `openai-strict` en `responses`, a tool whose schema has a
-free-form object is sent with `strict: false`; de andere zijn strikt.
+worden getallen buiten het toegestane bereik begrensd en het resultaat vermeldt dit onder `adjusted`. In `openai-strict`
+en `responses` zijn de tools strikt: een vrij object (zoals `arguments` in `run_batch`) gaat als JSON-tekst mee, en
+ReversePort leest die terug. Alleen een schema dat nog steeds niet strikt kan (een eigenschap zonder enig type) gaat
+mee met `strict: false`. Unions houden elke optie: een veld dat in meerdere vormen voorkomt, houdt al zijn toegestane
+waarden, en de beschrijving zegt welke velden bij elkaar horen. Grenzen die een indeling niet kent (`minLength`,
+`multipleOf`, …) komen in de beschrijving. Functiebeschrijvingen blijven binnen 1024 tekens, OpenAPI-beschrijvingen
+binnen 300 (de grens van GPT Actions), afgekapt na een hele zin — `/api/openapi.json?descriptions=full` geeft de hele
+tekst.
 
 De server antwoordt alleen op localhost. Pagina's die vanaf localhost worden aangeboden, kunnen het vanuit een browser aanroepen (CORS). Stel `REVERSEPORT_TOKEN` in om `Authorization: Bearer <token>` te vereisen. Om het vanuit Docker of via een tunnel te bereiken (gehoste agents zoals GPT Actions hebben een openbare HTTPS-URL nodig), stel `REVERSEPORT_TOKEN`, `REVERSEPORT_HOST=0.0.0.0` and
 `REVERSEPORT_ALLOWED_HOSTS=<host names>`; zonder token weigert de server buiten deze machine te luisteren.
@@ -96,15 +102,25 @@ tool-profiel verandert. Via HTTP antwoordt het endpoint alleen met JSON; vraag d
 
 Elke agent kan elke tool bereiken. Wat verandert, is hoeveel er vooraf wordt weergegeven:
 
-| Profiel              | Lijsten                                                                                       | Over               | Voor                                                                   |
-| -------------------- | --------------------------------------------------------------------------------------------- | ------------------ | ---------------------------------------------------------------------- |
-| `compact`            | 8 ReversePort-tools + 6 essentiële engine-tools, beschrijvingen van één regel, korte schema's | 17 tools           | kleine of oudere modellen, kleine contextvensters                      |
-| `standard` (default) | ReversePort's 23 tools + ongeveer 20 kern-engine-tools                                        | 46 tools           | de meeste agents                                                       |
-| `full`               | every tool                                                                                    | ongeveer 200 tools | agents met grote contextvensters waarvan de client dit aantal toestaat |
+| Profiel              | Toont                                                                                          | Tools                          | Voor                                                                   |
+| -------------------- | ---------------------------------------------------------------------------------------------- | ------------------------------ | ---------------------------------------------------------------------- |
+| `compact`            | 9 ReversePort-tools voor verkennen en porten + 6 essentiële engine-tools, korte beschrijvingen | 19 tools (11 zonder de engine) | kleine of oudere modellen, kleine contextvensters                      |
+| `standard` (default) | alle 33 ReversePort-tools + 20 kern-engine-tools                                               | 57 tools (35 zonder de engine) | de meeste agents                                                       |
+| `full`               | elke tool                                                                                      | meer dan 200 tools             | agents met grote contextvensters waarvan de client dit aantal toestaat |
+
+De aantallen tellen `set_tool_profile` en `run_batch` mee, en met de engine ook `engine_tools` en `engine_call`.
+`reverseport tools --profile compact` toont de lijst zelf.
 
 Sommige clients beperken het aantal tools (Cursor heeft ongeveer 40 gebruikt, VS Code en OpenAI 128, Windsurf 100). Kies
-`compact` voor een strikte limiet. Stel het profiel in met `REVERSEPORT_PROFILE`, of laat de agent op elk moment wisselen met `set_tool_profile`. In elk profiel `engine_tools {query}` vindt elke andere engine-tool en
-`engine_call {tool, arguments}` roept deze aan. `REVERSEPORT_TOOLS=all|port|name,glob*` selecteert exact de vermelde tools.
+`compact` voor een strikte limiet. Stel het profiel in met `REVERSEPORT_PROFILE`, of laat de agent op elk moment wisselen
+met `set_tool_profile`. Een tool die niet in de lijst staat, werkt nog steeds als je hem bij naam aanroept; met de
+engine vindt `engine_tools {query}` elke andere engine-tool en roept `engine_call {tool, arguments}` hem aan.
+`REVERSEPORT_TOOLS=all|port|name,glob*` selecteert exact de vermelde tools.
+
+Over HTTP houdt elke MCP-sessie een eigen profiel en een eigen herhaalbewaking, zodat de ene client nooit verandert wat
+een andere ziet. Verzoeken zonder sessie onthouden niets; vraag dan om een profiel in het adres: `/mcp?profile=compact`,
+`/api/agent/tools?profile=compact` of `/api/openapi.json?profile=compact`. Een sessie die is beëindigd (of nooit
+bestond) krijgt HTTP 404 met JSON-RPC-fout `-32001`: stuur dan opnieuw `initialize`.
 
 Strikte schemavalidators (Gemini, OpenAI strict mode, sommige lokale modelservers) wijzen sommige JSON-Schema-functies af die de
 deep-analysis-engine gebruikt (`$ref`, unions, dependent fields). `REVERSEPORT_SCHEMA=portable` vermeldt elk schema in een
@@ -123,10 +139,11 @@ bytes), of `off`. De CLI toont altijd het volledige resultaat.
 `run_batch` voert tot 20 tool-aanroepen na elkaar uit en antwoordt één keer. Met `select` houd je per resultaat alleen
 de velden die je nodig hebt (`"primary.id"`, `"entryPoints[*].file"`); dat spaart context en heen-en-weer. Bij de
 eerste fout stopt het en zegt het welke aanroep je moet aanpassen en waar je verder kunt; `continueOnError: true`
-voert de rest toch uit. Ook motor-tools werken. Grote resultaten krijgen via MCP een `resource_link` naar
+voert de rest toch uit. Een `select`-pad dat niets vindt, staat voor die stap onder `unresolved`, met de reden en het
+pad dat wel werkt (`"primry.id"` → `"primary.id"`, `"entryPoints.file"` → `"entryPoints[*].file"`). Ook motor-tools werken. Grote resultaten krijgen via MCP een `resource_link` naar
 `reverseport://tool-output/<bestand>`, zodat clients zonder bestandstoegang het volledige resultaat kunnen lezen.
 
-Faalt precies dezelfde aanroep twee keer achter elkaar (drie keer bij fouten met `retryable`), dan komt de fout terug
+Faalt precies dezelfde aanroep twee keer in dezelfde sessie (drie keer bij fouten met `retryable`), dan komt de fout terug
 met `repeated` en `retryable: false` en de duidelijke boodschap: stuur hem niet ongewijzigd opnieuw, maar pas de
 invoer aan, kies een andere tool of vertel de gebruiker wat er in de weg zit.
 

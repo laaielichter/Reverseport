@@ -107,8 +107,8 @@ Any vendor, any framework, any model size — the same tools through the door th
 
 Built for the agent's circumstances too:
 
-- **A short list by default.** About 45 tools are listed instead of almost 200. Every other tool is one call away:
-  `engine_tools` finds it and `engine_call` runs it.
+- **A short list by default.** About 57 tools are listed instead of more than 200. Every other tool is one call
+  away: `engine_tools` finds it and `engine_call` runs it.
 - **The list fits the agent.** Small or older models use `compact`, large-context agents use `full`, and an agent
   can switch itself with `set_tool_profile`.
 - **One error shape everywhere**, with a code, whether retrying helps, and the exact next step.
