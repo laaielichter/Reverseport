@@ -36,7 +36,8 @@ function dispatchOne(line) {
   return relay.handle(msg).then(res => { if (res) write(res); }, e => { process.stderr.write(`reverseport: ${e.stack ?? e.message}\n`); if (msg?.id !== undefined) write({ jsonrpc: '2.0', id: msg.id, error: { code: -32603, message: e.message } }); });
 }
 
-// initialize starts the engine; everything that arrives meanwhile waits for it, then requests run concurrently.
+// A legacy initialize starts the engine and everything that arrives meanwhile waits for it; MCP 2026-07-28 requests
+// (no handshake) start it on first use. Requests run concurrently.
 let gate = null;
 const decoder = new StringDecoder('utf8');
 let buffer = '';
@@ -57,6 +58,7 @@ process.stdin.on('data', chunk => {
 process.stdin.on('end', async () => {
   if (buffer.trim()) await (gate ?? Promise.resolve()).then(() => dispatch(buffer.trim()));
   await gate;
+  relay.endSubscriptions(); // open subscriptions/listen streams end gracefully
   await Promise.allSettled([...inFlight]); // let running calls finish before the engine is closed
   relay.close();
 });

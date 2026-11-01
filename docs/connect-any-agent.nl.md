@@ -71,6 +71,24 @@ free-form object is sent with `strict: false`; de andere zijn strikt.
 De server antwoordt alleen op localhost. Pagina's die vanaf localhost worden aangeboden, kunnen het vanuit een browser aanroepen (CORS). Stel `REVERSEPORT_TOKEN` in om `Authorization: Bearer <token>` te vereisen. Om het vanuit Docker of via een tunnel te bereiken (gehoste agents zoals GPT Actions hebben een openbare HTTPS-URL nodig), stel `REVERSEPORT_TOKEN`, `REVERSEPORT_HOST=0.0.0.0` and
 `REVERSEPORT_ALLOWED_HOSTS=<host names>`; zonder token weigert de server buiten deze machine te luisteren.
 
+## MCP-versies en lange klussen
+
+De server spreekt beide MCP-tijdperken op dezelfde verbinding. Clients die met `initialize` beginnen krijgen de
+klassieke sessie (2025-11-25 en ouder). Clients op MCP 2026-07-28 sturen `server/discover` of een verzoek met
+`io.modelcontextprotocol/protocolVersion` in `_meta` en worden zonder handdruk bediend: elk resultaat heeft
+`resultType`, lijsten hebben `ttlMs` en `cacheScope`, en `tools/list` houdt een vaste volgorde, zodat de
+prompt-cache van de agent warm blijft.
+
+Een 2026-07-28-client die de extensie `io.modelcontextprotocol/tasks` meldt, krijgt lange aanroepen als taak: een
+`tools/call` die na 2,5 seconde nog loopt, geeft een taaknummer terug in plaats van te blijven wachten. `tasks/get`
+toont de stand (voortgang van de motor komt in `statusMessage`) en aan het eind het gewone resultaat.
+`tasks/cancel` stopt de taak. Snelle aanroepen antwoorden direct, dus niets wordt trager. Taaknummers gelden zes
+uur en overleven geen herstart van de server. `REVERSEPORT_TASK_AFTER_MS` verandert de 2,5 seconde. Claude Code
+gebruikt taken in de CLI vanaf v2.1.304.
+
+`subscriptions/listen` (stdio) meldt `notifications/tools/list_changed` als de motor start of stopt, of als het
+tool-profiel verandert. Via HTTP antwoordt het endpoint alleen met JSON; vraag daar `tools/list` gewoon opnieuw op.
+
 ## Pas de tool-lijst aan de agent aan
 
 Elke agent kan elke tool bereiken. Wat verandert, is hoeveel er vooraf wordt weergegeven:
