@@ -84,6 +84,25 @@ function setAtRead(root, at) {
   return o;
 }
 
+/** Saved results are also MCP resources, so clients without file access can read them: reverseport://tool-output/<file>. */
+export const TOOL_OUTPUT_URI = 'reverseport://tool-output/';
+export const toolOutputUri = file => `${TOOL_OUTPUT_URI}${encodeURIComponent(path.basename(file))}`;
+
+/** A resource_link content item for a saved full result. */
+export function toolOutputLink(file, bytes, mimeType) {
+  return { type: 'resource_link', uri: toolOutputUri(file), name: path.basename(file), mimeType, ...(bytes ? { size: bytes } : {}), description: 'The complete result, too big for one answer.' };
+}
+
+/** resources/read for reverseport://tool-output/<file>: only plain names inside the workspace's tool-output folder. */
+export async function readToolOutput(uri) {
+  const name = decodeURIComponent(String(uri).slice(TOOL_OUTPUT_URI.length));
+  if (!name || name !== path.basename(name) || name.startsWith('.')) return null;
+  const file = path.join(await workspaceDir('tool-output'), name);
+  const text = await fs.readFile(file, 'utf8').catch(() => null);
+  if (text === null) return null;
+  return { contents: [{ uri, mimeType: name.endsWith('.json') ? 'application/json' : 'text/plain', text }] };
+}
+
 async function saveFull(tool, text, ext) {
   const dir = await workspaceDir('tool-output');
   const stamp = new Date().toISOString().replace(/[:.]/g, '-');
@@ -112,7 +131,7 @@ export async function budgetValue(tool, value, max = outputLimit()) {
   const fullOutput = await saveFull(tool, full, 'json');
   const room = Math.max(2048, Math.floor(max * 0.9) - 2048);
   const { value: small, shortened } = shrink(value, room);
-  const note = { fullOutput, fullBytes: bytes, limitBytes: max, shortened: shortened.slice(0, 20), next: NEXT };
+  const note = { fullOutput, fullOutputUri: toolOutputUri(fullOutput), fullBytes: bytes, limitBytes: max, shortened: shortened.slice(0, 20), next: NEXT };
   return Array.isArray(small) ? { result: small, outputTruncated: note } : { ...small, outputTruncated: note };
 }
 
@@ -124,12 +143,13 @@ export async function budgetMcpResult(tool, result, max = outputLimit()) {
   if (bytes <= max) return result;
   if (result.structuredContent && typeof result.structuredContent === 'object') {
     const small = await budgetValue(tool, result.structuredContent, max);
-    return { ...result, content: [...(result.content ?? []).filter(c => c?.type !== 'text'), { type: 'text', text: JSON.stringify(small) }], structuredContent: small };
+    const link = small?.outputTruncated?.fullOutput ? [toolOutputLink(small.outputTruncated.fullOutput, small.outputTruncated.fullBytes, 'application/json')] : [];
+    return { ...result, content: [...(result.content ?? []).filter(c => c?.type !== 'text'), { type: 'text', text: JSON.stringify(small) }, ...link], structuredContent: small };
   }
   const full = texts.join('\n');
   const fullOutput = await saveFull(tool, full, 'txt');
   const head = Buffer.from(full, 'utf8').subarray(0, Math.max(1024, max - 1024)).toString('utf8').replace(/�+$/, '');
   const lines = full.split('\n').length, shown = head.split('\n').length;
-  const marker = `\n\n[showing lines 1-${shown} of ${lines} (${head.length} of ${full.length} characters); full output saved to ${fullOutput}. Read the rest from that file, or call again with a narrower request.]`;
-  return { ...result, content: [...(result.content ?? []).filter(c => c?.type !== 'text'), { type: 'text', text: head + marker }] };
+  const marker = `\n\n[showing lines 1-${shown} of ${lines} (${head.length} of ${full.length} characters); full output saved to ${fullOutput}. Read the rest from that file (or MCP resource ${toolOutputUri(fullOutput)}), or call again with a narrower request.]`;
+  return { ...result, content: [...(result.content ?? []).filter(c => c?.type !== 'text'), { type: 'text', text: head + marker }, toolOutputLink(fullOutput, Buffer.byteLength(full, 'utf8'), 'text/plain')] };
 }

@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { errorPayload, closest, formatTools, portableSchema } from '../src/agent.mjs';
 import { dropDisallowedNulls } from '../src/relay.mjs';
 import { RPError } from '../src/util.mjs';
+import { coerceArgs } from '../src/tools.mjs';
 
 test('errors: one shape with a next step, Node errors mapped', () => {
   const e = errorPayload(new RPError('NOT_FOUND', 'x not found'));
@@ -30,8 +31,12 @@ test('portable schemas: refs, unions, const, dropped keywords; strict when possi
   assert.deepEqual([...strict.function.parameters.required].sort(), ['a', 'b', 'c', 'd']);
   const [gemini] = formatTools([{ name: 't', description: 'd', inputSchema: schema }], 'gemini');
   assert.equal(JSON.stringify(gemini).includes('additionalProperties'), false);
-  const free = formatTools([{ name: 'f', description: 'd', inputSchema: { type: 'object', properties: { args: { type: 'object' } } } }], 'openai-strict')[0];
-  assert.equal(free.function.strict, false, 'free-form objects fall back to non-strict for that tool only');
+  const freeSchema = { type: 'object', properties: { args: { type: 'object', description: 'Tool arguments.' } } };
+  const free = formatTools([{ name: 'f', description: 'd', inputSchema: freeSchema }], 'openai-strict')[0];
+  assert.equal(free.function.strict, true, 'a free-form object becomes a JSON string, so the tool stays strict');
+  assert.deepEqual(free.function.parameters.properties.args.type, ['string', 'null']);
+  assert.match(free.function.parameters.properties.args.description, /JSON object as a string/);
+  assert.deepEqual(coerceArgs(freeSchema, { args: '{"path":"/game"}' }), { args: { path: '/game' } }, 'the string is read back as the object');
 });
 
 test('null means "not given" unless the schema allows null', () => {

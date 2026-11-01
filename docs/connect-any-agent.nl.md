@@ -115,6 +115,18 @@ Via MCP en HTTP, a tool result larger than 256 KB is saved whole to `~/.reversep
 eerste regels, en `outputTruncated` (of een afsluitende regel voor platte tekst) vermeldt wat is ingekort en waar het volledige resultaat staat. Opgeslagen resultaten worden na 7 days. `REVERSEPORT_MAX_OUTPUT_BYTES` stelt een andere limiet in (minimaal 4096
 bytes), of `off`. De CLI toont altijd het volledige resultaat.
 
+## Meerdere stappen in één aanroep
+
+`run_batch` voert tot 20 tool-aanroepen na elkaar uit en antwoordt één keer. Met `select` houd je per resultaat alleen
+de velden die je nodig hebt (`"primary.id"`, `"entryPoints[*].file"`); dat spaart context en heen-en-weer. Bij de
+eerste fout stopt het en zegt het welke aanroep je moet aanpassen en waar je verder kunt; `continueOnError: true`
+voert de rest toch uit. Ook motor-tools werken. Grote resultaten krijgen via MCP een `resource_link` naar
+`reverseport://tool-output/<bestand>`, zodat clients zonder bestandstoegang het volledige resultaat kunnen lezen.
+
+Faalt precies dezelfde aanroep twee keer achter elkaar (drie keer bij fouten met `retryable`), dan komt de fout terug
+met `repeated` en `retryable: false` en de duidelijke boodschap: stuur hem niet ongewijzigd opnieuw, maar pas de
+invoer aan, kies een andere tool of vertel de gebruiker wat er in de weg zit.
+
 ## Fouten zien er overal hetzelfde uit
 
 Tool-aanroepen via elke deur geven hetzelfde foutobject terug, zodat een agent kan handelen zonder te hoeven raden:
