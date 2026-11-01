@@ -123,3 +123,37 @@ public class Player : MonoBehaviour {
   const st = await callTool('port_status', { planId: plan.planId });
   assert.match(st.resume, /progress 1\/1 done/);
 });
+
+test('partial units come back last, copying a script is still checked, and only one way to give the port', async () => {
+  const plan = await callTool('port_plan', { source: path.join(F, 'godot-mini'), to: 'unity', include: 'actors/.*\\.gd$|main\\.gd$' });
+  assert.ok(plan.units >= 2, 'two scripts to work through');
+  const first = await callTool('port_unit', { planId: plan.planId });
+  await callTool('port_write', { planId: plan.planId, unit: first.unit, content: 'public class A : MonoBehaviour {}\n', status: 'partial' });
+  const second = await callTool('port_unit', { planId: plan.planId });
+  assert.notEqual(second.unit, first.unit, 'a partial unit does not come back while others are untouched');
+
+  const both = await callTool('port_write', { planId: plan.planId, unit: second.unit, content: 'x', copy: true }).catch(e => e);
+  assert.equal(both.code, 'INVALID_ARGUMENT');
+  assert.match(both.message, /exactly one of content, files or copy/);
+  const copied = await callTool('port_write', { planId: plan.planId, unit: second.unit, copy: true });
+  assert.equal(copied.clean, false, 'a GDScript copied into Unity is not a clean port');
+  assert.ok(copied.leftovers.length > 0);
+});
+
+test('plan saves never collide, and a damaged plan.json falls back to the previous copy', async () => {
+  const plan = await callTool('port_plan', { source: path.join(F, 'godot-mini'), to: 'unity' });
+  const runs = await Promise.allSettled(Array.from({ length: 8 }, (_, i) => callTool(i % 2 ? 'port_verify' : 'port_status', { planId: plan.planId })));
+  assert.deepEqual(runs.filter(r => r.status === 'rejected').map(r => r.reason?.message), [], 'parallel saves all succeed');
+  const file = path.join(process.env.REVERSEPORT_HOME, 'ports', plan.planId, 'plan.json');
+  JSON.parse(await fs.readFile(file, 'utf8'));
+  assert.deepEqual((await fs.readdir(path.dirname(file))).filter(f => f.endsWith('.tmp')), [], 'no temp files left behind');
+
+  await fs.writeFile(file, '{"id": broken');
+  const status = await callTool('port_status', { planId: plan.planId });
+  assert.match(status.recovered, /plan\.json was unreadable/);
+  JSON.parse(await fs.readFile(file, 'utf8'));
+  await fs.writeFile(file, '{"id": broken');
+  await fs.rm(`${file}.bak`);
+  const lost = await callTool('port_status', { planId: plan.planId }).catch(e => e);
+  assert.equal(lost.code, 'PLAN_UNREADABLE', 'damaged is not the same as unknown');
+});

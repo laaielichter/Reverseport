@@ -21,6 +21,8 @@ const PORT_COMMANDS = new Set([
   'connect', 'skills', 'refs', 'guids', 'strings', 'i18n', 'l10n', 'apicheck', 'api', 'upgrade', 'godot3to4', 'save',
   'savefile', 'shader', 'trace', 'rpgmaker', 'rpgm', 'decode', 'gdc', 'il2cpp',
 ]);
+// ReversePort's own tools by name (re_scan, port_plan, share_feedback, run_batch, …): answered without the engine.
+const LOCAL_TOOL = /^((re|port)_[a-z_]+|share_feedback|run_batch|set_tool_profile)$/;
 const ALWAYS_ENGINE = ['setup', 'doctor', 'update', 'uninstall', 'mcp', 'capabilities', 'providers', 'help'];
 
 /** Engine command names, read from the built engine or its source, so a typo is never mistaken for a missing build. */
@@ -136,7 +138,7 @@ else if (cmd === '--version' || cmd === '-v' || cmd === 'version') process.stdou
 else if ((cmd === 'mcp' || cmd === '--mcp') && rest.length === 0) await import(pathToFileURL(path.join(REPO, 'port', 'mcp.mjs')).href);
 else if (cmd === 'port') await runPort(rest.length ? rest : ['help']);
 else if (cmd === 'engine') await runEngine(rest);
-else if (PORT_COMMANDS.has(cmd) || /^(re|port)_[a-z_]+$/.test(cmd)) await runPort(argv);
+else if (PORT_COMMANDS.has(cmd) || LOCAL_TOOL.test(cmd)) await runPort(argv);
 else if (cmd === 'doctor' && !engineBuilt()) {
   const { doctor } = await import(pathToFileURL(path.join(REPO, 'port', 'cli.mjs')).href);
   const report = await doctor();

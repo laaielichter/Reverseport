@@ -132,7 +132,8 @@ test('re_lookup by name: Steam + PCGamingWiki + Wikidata + open-source search', 
   assert.deepEqual(d.openSource.map(o => [o.repo, o.kind]), [['fans/ember-run-remake', 'remake / clone'], ['tools/ember-run-save-editor', 'modding / tools']]);
   assert.equal(d.references.videos[0], 'https://cdn.example/trailer.mp4');
   assert.match(d.lookupId, /^ember-run-[0-9a-f]{6}$/);
-  assert.ok(d.next[0].startsWith('re_blueprint'));
+  assert.ok(d.next.startsWith('re_blueprint'));
+  assert.deepEqual(d.nextCall, { tool: 're_blueprint', arguments: { lookupId: d.lookupId } });
   assert.ok(d.sources.every(s => s.ok));
 });
 
@@ -187,7 +188,7 @@ test('re_lookup on a public GitHub repo: structure, engine from files, mirror', 
   assert.equal(m.primary.id, 'godot');
   assert.equal(await fs.readFile(path.join(m.path, 'scripts/player.gd'), 'utf8'), 'extends CharacterBody2D\nfunc _physics_process(delta):\n\tpass\n');
   await assert.rejects(fs.access(path.join(m.path, '..', 'evil.gd')));
-  assert.ok(d.next.some(n => n.startsWith('port_plan')));
+  assert.ok(d.nextSteps.some(n => n.startsWith('port_plan')));
 });
 
 test('re_lookup on a web page: Unity WebGL fingerprint, runtime files, hosting', async () => {

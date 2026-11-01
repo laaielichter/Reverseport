@@ -7,7 +7,7 @@ import fsSync from 'node:fs';
 import path from 'node:path';
 import net from 'node:net';
 import { fileURLToPath } from 'node:url';
-import { RPError, sha256, readJson, writeJson, MiB } from './util.mjs';
+import { RPError, sha256, readJson, writeJson, MiB, nextFields } from './util.mjs';
 import { workspaceDir, safeJoin } from './workspace.mjs';
 import { detectEngines, categoryOf, scanProject } from './scan.mjs';
 
@@ -598,12 +598,13 @@ export async function lookupTool({ query, url, steamAppId, appStoreId, github, k
   const id = `${(name ?? 'lookup').toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'lookup'}-${sha256(Buffer.from(JSON.stringify(dossier.input))).slice(0, 6)}`;
   dossier.lookupId = id;
   await writeJson(path.join(await workspaceDir('lookups'), `${id}.json`), dossier);
-  dossier.next = [
+  Object.assign(dossier, nextFields([
     `re_blueprint {lookupId:"${id}"} → precise rebuild spec: systems, what to measure on the original, target engine, milestones`,
     ...(r.github?.mirror ? [`re_scan / re_graph / re_report {path:"${r.github.mirror.path}"}`, `port_plan {source:"${r.github.mirror.path}", to}`] : r.github?.found ? ['re_lookup {github, mirror:true} downloads the source text so re_graph, re_symbols and port_plan can read it'] : []),
     ...(footprints.length ? [`Owning a copy: ${footprints[0].readWith?.[0] ?? 're_scan on the install folder'}`] : []),
     ...(dossier.openSource.some(o => o.kind !== 'related') ? ['openSource lists reimplementations/remakes: check their license before reusing code'] : []),
-  ];
+  ]));
+  dossier.nextCall = { tool: 're_blueprint', arguments: { lookupId: id } };
   return dossier;
 }
 
