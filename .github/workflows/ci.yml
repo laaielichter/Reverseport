@@ -456,13 +456,14 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
-      - run: npm run build:cached
-      - run: npm run typecheck
+      # The engine checks for the packaged Windows native controls during the build, so they come first.
       - uses: actions/download-artifact@v4
         with:
           name: windows-native-controls
           path: native/windows/build/
       - run: npm run verify:windows-native:artifact
+      - run: npm run build:cached
+      - run: npm run typecheck
       - name: Record named Windows host capabilities
         run: node scripts/windows-capabilities.mjs | Out-File -Encoding utf8NoBOM windows-capabilities.json
       - name: Validate Windows host capability report

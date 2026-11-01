@@ -582,7 +582,7 @@ Moved here from the main skill so it stays short; the routes are unchanged.
   consult the NativeAOT workflow in `references/native-and-artifacts.md` for
   optional metadata recovery and its supported host/layout boundary.
 - Fiddler Everywhere traffic or a native `.saz` capture: read the
-  [Fiddler workflow](references/runtime-observation.md#fiddler-everywhere-traffic-debugging).
+  [Fiddler workflow](runtime-observation.md#fiddler-everywhere-traffic-debugging).
   Inspect saved SAZ with `inspect_web_network_capture` and `format: "saz"`;
   connect Everywhere's separate MCP server for live traffic.
 - Retained HAR/SAZ/native mitmproxy/aioquic qlog capture: `inspect_web_network_capture`. Select
