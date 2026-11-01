@@ -1,8 +1,15 @@
-import { z } from "zod";
-import type { AnalysisOperation } from "./AnalysisProvider.js";
+import { nativeInventoryRowsSchemas } from "../domain/native/nativeInventory.js";
+import type {
+  AnalysisExecution,
+  AnalysisOperation,
+} from "./AnalysisProvider.js";
 import { AnalysisOutputError } from "../domain/analysisErrorCore.js";
 import type { AnalysisError } from "../domain/analysisErrorBase.js";
 import type { JsonValue } from "../domain/jsonValue.js";
+import {
+  parseContainingProcedureResolution,
+  type ContainingProcedureResolution,
+} from "../domain/hopperValues.js";
 import { err, ok, type Result } from "../domain/result.js";
 import type {
   EnhancedResult,
@@ -15,6 +22,12 @@ type AnalysisCall = (
   arguments_: Readonly<Record<string, JsonValue>>,
   signal?: AbortSignal,
 ) => Promise<Result<JsonValue, AnalysisError>>;
+
+type ObserveCall = (
+  name: AnalysisOperation,
+  arguments_: Readonly<Record<string, JsonValue>>,
+  signal?: AbortSignal,
+) => Promise<Result<AnalysisExecution, AnalysisError>>;
 
 type LiteralSearchSource = readonly [
   "search_strings" | "search_procedures",
@@ -39,6 +52,7 @@ export interface LiteralTraceInput {
 /** Trace matching strings and procedures through provider xrefs. */
 export const traceLiteralFeature = async (
   call: AnalysisCall,
+  observe: ObserveCall,
   input: LiteralTraceInput,
   signal?: AbortSignal,
 ): EnhancedResult => {
@@ -49,7 +63,7 @@ export const traceLiteralFeature = async (
     signal,
   );
   if (!searched.ok) return searched;
-  const traced = await traceReferences(call, {
+  const traced = await traceReferences(call, observe, {
     matches: searched.value.matches,
     ...(signal === undefined ? {} : { signal }),
   });
@@ -59,8 +73,8 @@ export const traceLiteralFeature = async (
     search_mode: "literal",
     matches: searched.value.matches,
     references: traced.value.references,
-    truncated: false,
-    residual_unknowns: [],
+    truncated: traced.value.residual.length > 0,
+    residual_unknowns: traced.value.residual,
   });
 };
 
@@ -71,7 +85,6 @@ const literalMatches = async (
   signal?: AbortSignal,
 ): Promise<Result<{ matches: TraceMatch[] }, AnalysisError>> => {
   const matches: TraceMatch[] = [];
-  const matched = new Set<string>();
   for (const [tool, type] of sources) {
     const result = await call(
       tool,
@@ -83,9 +96,11 @@ const literalMatches = async (
       signal,
     );
     if (!result.ok) return result;
-    const items = z
-      .array(z.object({ address: z.string(), value: z.string() }))
-      .safeParse(result.value);
+    const items = (
+      type === "string"
+        ? nativeInventoryRowsSchemas.strings
+        : nativeInventoryRowsSchemas.names
+    ).safeParse(result.value);
     if (!items.success)
       return err(
         new AnalysisOutputError(
@@ -93,57 +108,54 @@ const literalMatches = async (
           "provider returned an invalid search result",
         ),
       );
-    addPageMatches({
-      items: items.data.map(({ address, value: name }) => ({
-        address,
-        name,
-      })),
-      type,
-      matches,
-      matched,
-    });
+    for (const item of items.data) {
+      matches.push(
+        type === "string"
+          ? { ...item, type: "string" }
+          : { ...item, type: "procedure" },
+      );
+    }
   }
   return ok({ matches });
 };
 
-const addPageMatches = (input: {
-  readonly items: readonly {
-    readonly address: string;
-    readonly name: string;
-  }[];
-  readonly type: TraceMatch["type"];
-  readonly matches: TraceMatch[];
-  readonly matched: Set<string>;
-}): void => {
-  const { items, type, matches, matched } = input;
-  for (const item of items) {
-    const key = `${type}\u0000${item.address}`;
-    if (matched.has(key)) continue;
-    matches.push({ type, address: item.address, value: item.name });
-    matched.add(key);
-  }
-};
-
 const traceReferences = async (
   call: AnalysisCall,
+  observe: ObserveCall,
   request: ReferenceTraceRequest,
-): Promise<Result<{ references: TraceReference[] }, AnalysisError>> => {
+): Promise<
+  Result<{ references: TraceReference[]; residual: string[] }, AnalysisError>
+> => {
   const references: TraceReference[] = [];
+  const residual: string[] = [];
+  // References identify targets by address, independently of search alternatives.
+  const tracedTargets = new Set<string>();
+  // A source address is resolved once however many matches reference it.
+  const containing = new Map<string, ContainingProcedureResolution>();
   for (const match of request.matches) {
-    const xrefs = await call(
+    if (tracedTargets.has(match.address)) continue;
+    tracedTargets.add(match.address);
+    const observed = await observe(
       "xrefs",
       { address: match.address },
       request.signal,
     );
-    if (!xrefs.ok) return xrefs;
-    if (!Array.isArray(xrefs.value))
+    if (!observed.ok) return observed;
+    // Only an explicit producer report of truncation is a coverage gap; a
+    // provider that reports nothing keeps its previous, unqualified result.
+    if (observed.value.referencesTruncated === true)
+      residual.push(
+        `References to ${match.address} were truncated by the provider; additional references may exist.`,
+      );
+    const sources = observed.value.result;
+    if (!Array.isArray(sources))
       return err(
         new AnalysisOutputError(
           "xrefs",
           "provider returned a non-array result",
         ),
       );
-    for (const source of xrefs.value) {
+    for (const source of sources) {
       if (typeof source !== "string")
         return err(
           new AnalysisOutputError(
@@ -151,18 +163,25 @@ const traceReferences = async (
             "provider returned a non-address value",
           ),
         );
-      const resolved = await call(
-        "resolve_containing_procedure",
-        { address: source },
-        request.signal,
-      );
-      if (!resolved.ok) return resolved;
+      let containingProcedure = containing.get(source);
+      if (containingProcedure === undefined) {
+        const resolved = await call(
+          "resolve_containing_procedure",
+          { address: source },
+          request.signal,
+        );
+        if (!resolved.ok) return resolved;
+        const parsed = parseContainingProcedureResolution(resolved.value);
+        if (!parsed.ok) return parsed;
+        containingProcedure = parsed.value;
+        containing.set(source, containingProcedure);
+      }
       references.push({
         target_address: match.address,
         source_address: source,
-        containing_procedure: resolved.value,
+        containing_procedure: containingProcedure,
       });
     }
   }
-  return ok({ references });
+  return ok({ references, residual });
 };

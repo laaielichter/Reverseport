@@ -21,6 +21,8 @@ export const authorizeCdpTarget = (
   if (target === undefined)
     throw new BrowserObservationError(operation, "target_not_found", {
       detail: `Target ${input.target_id} was not found at the selected endpoint.`,
+      remediationAction:
+        "Refresh target discovery for that endpoint and retry with a returned target ID.",
     });
   const origin = sanitizeBrowserUrl(target.url).origin;
   if (

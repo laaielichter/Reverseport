@@ -1,9 +1,14 @@
 import { z } from "zod";
 
+import { webRuntimeCommandTimeoutSchema } from "../browserDeadline.js";
 import { browserCompletenessSchema } from "../browserCompleteness.js";
 import { browserEndpointSchema } from "../browserObservation.js";
 import { browserVersionSchema } from "../browserObservationSchemas.js";
-import { webTextArtifactSchema } from "../webContentArtifact.js";
+import {
+  cdpDomNodeSchema,
+  cdpScriptSourceSchema,
+  cdpScriptMetadataSchema,
+} from "../cdpObservationSchemas.js";
 import { prefixedDigestSchema } from "../digests.js";
 
 const approvedElectronInput = {
@@ -22,7 +27,8 @@ export type ListElectronTargetsInput = z.infer<
 const inspectElectronPageFacts = {
   ...approvedElectronInput,
   target_id: z.string().trim().min(1),
-  observation_ms: z.number().int().min(0).default(100),
+  observation_ms: z.int().min(0).default(100),
+  command_timeout_ms: webRuntimeCommandTimeoutSchema,
 } as const;
 export const inspectElectronPageInputSchema = z.union([
   z.strictObject({
@@ -56,17 +62,21 @@ export const electronTargetListSchema = z.object({
   browser: browserVersionSchema,
   targets: z.array(electronTargetSchema),
   excluded: z.object({
-    unsupported_url: z.number().int().min(0),
-    non_page: z.number().int().min(0),
+    unsupported_url: z.int().min(0),
+    non_page: z.int().min(0),
   }),
   limitations: z.array(z.string()),
 });
 export type ElectronTargetList = z.infer<typeof electronTargetListSchema>;
 
-const electronSourceSchema = z.discriminatedUnion("included", [
-  z.object({ included: z.literal(false), reason: z.string() }),
-  z.object({ included: z.literal(true), artifact: webTextArtifactSchema }),
-]);
+const electronScriptFrameClaimsSchema = z.object({
+  script_event_frame_id: z.string().exactOptional(),
+  execution_context_frame_id: z.string().exactOptional(),
+});
+/** Actual reported claims remain available when their resolved association is unknown. */
+export type ElectronScriptFrameClaims = z.infer<
+  typeof electronScriptFrameClaimsSchema
+>;
 
 /** Provider-neutral passive Electron file-page structure and script inventory. */
 export const electronPageInspectionSchema = z.object({
@@ -75,7 +85,7 @@ export const electronPageInspectionSchema = z.object({
   capture_window: z.object({
     started_at: z.iso.datetime(),
     ended_at: z.iso.datetime(),
-    observation_ms: z.number().int().min(0),
+    observation_ms: z.int().min(0),
   }),
   completeness: browserCompletenessSchema,
   frames: z.array(
@@ -86,43 +96,22 @@ export const electronPageInspectionSchema = z.object({
     }),
   ),
   dom: z.object({
-    total_nodes: z.number().int().min(0),
-    nodes: z.array(
-      z.object({
-        index: z.number().int().min(0),
-        parent_index: z.number().int().min(-1),
-        node_type: z.number().int().min(0),
-        node_name: z.string(),
-        node_value_length: z.number().int().min(0),
-        attribute_names: z.array(z.string()),
-      }),
-    ),
+    total_nodes: z.int().min(0),
+    nodes: z.array(cdpDomNodeSchema),
   }),
   scripts: z.object({
-    total: z.number().int().min(0),
+    total: z.int().min(0),
     items: z.array(
       z.object({
         script_key: prefixedDigestSchema("electron_script"),
         frame_id: z.string().nullable().default(null),
+        frame_scope: z.enum(["authorized", "unknown"]).exactOptional(),
+        frame_claims: electronScriptFrameClaimsSchema.exactOptional(),
         file_path: z.string(),
-        cdp_hash: z
-          .string()
-          .nullable()
-          .describe("Producer-reported script hash; null when unavailable."),
-        length: z
-          .number()
-          .int()
-          .min(0)
-          .nullable()
-          .describe("Producer-reported script length; null when unavailable."),
-        is_module: z
-          .boolean()
-          .nullable()
-          .describe(
-            "Producer-reported module classification; null when unavailable.",
-          ),
-        language: z.string().nullable(),
-        source: electronSourceSchema,
+        has_source_url: z.boolean().nullable().exactOptional(),
+        reported_url: z.string().exactOptional(),
+        ...cdpScriptMetadataSchema.shape,
+        source: cdpScriptSourceSchema,
       }),
     ),
   }),
@@ -152,3 +141,11 @@ export const electronPageInspectionSchema = z.object({
 export type ElectronPageInspection = z.infer<
   typeof electronPageInspectionSchema
 >;
+
+/** Completed Electron facts retained when later request finalization fails. */
+export interface ElectronPagePartialObservation {
+  readonly kind: "electron-page-observation";
+  readonly inspection: ElectronPageInspection;
+  /** REA's CDP transport closed; target shutdown is never implied. */
+  readonly cleanup: "transport-closed" | "incomplete";
+}

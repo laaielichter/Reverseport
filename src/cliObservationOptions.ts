@@ -1,4 +1,6 @@
+import { javascriptRouteDeliveryOptions } from "./cli/javascriptRouteDelivery.js";
 import { z } from "incur";
+import { webRuntimeCommandTimeoutSchema } from "./domain/browserDeadline.js";
 import { javaScriptAnalysisResourceControlsSchema } from "./domain/javascript/javascriptAnalysisResourceControls.js";
 import { javaScriptSourcePathsSchema } from "./domain/javascript/javascriptSourceSelection.js";
 
@@ -17,7 +19,16 @@ export const browserScopeOptions = {
     .array(z.string().min(1))
     .optional()
     .describe("Optional exact-origin filter"),
+  commandTimeoutMs: webRuntimeCommandTimeoutSchema,
 };
+
+/** Keep an omitted command deadline absent so Evidence records the caller selection only. */
+export const selectedCommandTimeout = (
+  commandTimeoutMs: number | undefined,
+): { readonly command_timeout_ms?: number } =>
+  commandTimeoutMs === undefined
+    ? {}
+    : { command_timeout_ms: commandTimeoutMs };
 
 export const browserPageInspectionOptions = z.object({
   ...browserScopeOptions,
@@ -58,17 +69,31 @@ export const electronPageInspectionOptions = z.object({
     .boolean()
     .default(false)
     .describe("Include JavaScript source text"),
+  commandTimeoutMs: webRuntimeCommandTimeoutSchema,
 });
 
 export const javascriptApplicationOptions = z.object({
+  ...javascriptRouteDeliveryOptions,
   maxSemanticNodes:
     javaScriptAnalysisResourceControlsSchema.shape.max_semantic_nodes,
   maxSemanticNodesPerFile:
     javaScriptAnalysisResourceControlsSchema.shape.max_semantic_nodes_per_file,
+  maxSemanticUnknowns:
+    javaScriptAnalysisResourceControlsSchema.shape.max_semantic_unknowns,
+  maxSemanticUnknownsPerFile:
+    javaScriptAnalysisResourceControlsSchema.shape
+      .max_semantic_unknowns_per_file,
   sourcePath: javaScriptSourcePathsSchema
     .optional()
     .describe(
       "Exact inventoried file path relative to the application root; repeat to select several. No implicit dependencies.",
+    ),
+  sourcePathsJson: z
+    .string()
+    .min(1)
+    .optional()
+    .describe(
+      "Inline JSON array or JSON file path of exact inventoried file paths relative to the application root, selected after any --source-path values. Use a file for selections that exceed the host command-line limit.",
     ),
   maxHeapMb: javaScriptAnalysisResourceControlsSchema.shape.max_heap_mb,
   analysisTimeoutMs:

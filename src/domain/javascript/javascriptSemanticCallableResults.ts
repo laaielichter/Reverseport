@@ -51,3 +51,12 @@ export const semanticCallableResultExpressions = (
   }
   return output;
 };
+
+/** A callable's direct invocation result differs from its body result syntax. */
+export const semanticCallableResultKind = (
+  callable: t.Node,
+): "value" | "promise" | "iterator" | "async-iterator" => {
+  if (!t.isFunction(callable)) return "value";
+  if (callable.generator) return callable.async ? "async-iterator" : "iterator";
+  return callable.async ? "promise" : "value";
+};

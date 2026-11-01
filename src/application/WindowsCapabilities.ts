@@ -70,24 +70,26 @@ export const probeWindowsCapabilities = async (
   };
 };
 
-const systemDependencies = (): WindowsCapabilityDependencies => ({
-  platform: process.platform,
-  architecture: process.arch,
-  probeSymlinkCreation,
-  probeNoFollowOpen: () =>
-    systemNoFollowOpenCapability(process.platform, constants.O_NOFOLLOW),
-  probePrivateAcl: () =>
-    windowsNativeCapabilities(process.platform).private_runtime_dacl,
-  nativeCapabilities: () => windowsNativeCapabilities(process.platform),
-  probeUnixDomainSocket: () =>
-    process.platform === "win32"
-      ? {
-          available: false,
-          reason: "Node path-based IPC uses named pipes on Windows",
-        }
-      : { available: true, reason: null },
-  probePty: probeProcessCaptureCapability,
-});
+const systemDependencies = (): WindowsCapabilityDependencies => {
+  const security = windowsNativeCapabilities(process.platform);
+  return {
+    platform: process.platform,
+    architecture: process.arch,
+    probeSymlinkCreation,
+    probeNoFollowOpen: () =>
+      systemNoFollowOpenCapability(process.platform, constants.O_NOFOLLOW),
+    probePrivateAcl: () => security.private_runtime_dacl,
+    nativeCapabilities: () => security,
+    probeUnixDomainSocket: () =>
+      process.platform === "win32"
+        ? {
+            available: false,
+            reason: "Node path-based IPC uses named pipes on Windows",
+          }
+        : { available: true, reason: null },
+    probePty: probeProcessCaptureCapability,
+  };
+};
 
 /** Report pathname no-follow support without treating it as Windows authority. */
 export const systemNoFollowOpenCapability = (

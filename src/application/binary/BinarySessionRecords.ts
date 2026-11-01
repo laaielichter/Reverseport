@@ -1,4 +1,5 @@
 import type { AnalysisProfileCommitment } from "../../domain/analysisProfile.js";
+import { analysisProfilesEqual } from "../../domain/analysisProfile.js";
 import type { AnalysisSnapshot } from "../../domain/analysisSnapshot.js";
 import type { BinaryTarget } from "../../domain/binaryTargetTypes.js";
 import type { Evidence } from "../../domain/evidence.js";
@@ -19,16 +20,31 @@ import type {
   UnknownStatus,
   UpdateUnknownInput,
 } from "../../domain/residualUnknown.js";
+import type {
+  UnknownPage,
+  UnknownQuery,
+} from "../investigation/InvestigationRecordPort.js";
 import { err, ok, type Result } from "../../domain/result.js";
 import type {
   AnalysisExecution,
   AnalysisOperation,
+  RetainedResourceScope,
 } from "../AnalysisProvider.js";
 import { AnalysisSnapshotCache } from "./AnalysisSnapshotCache.js";
 import { InvestigationRecords } from "../investigation/InvestigationRecords.js";
 import { ArtifactResourceScope } from "../../artifacts/ArtifactResourceScope.js";
 import { ArtifactReaderFailure } from "../../artifacts/ArtifactReader.js";
-import { writeAnalysisSnapshot as writeSnapshotFile } from "./AnalysisSnapshotFiles.js";
+import { bindRegularFileCleanup } from "../RegularFileRead.js";
+import {
+  writeAnalysisSnapshot as writeSnapshotFile,
+  readAnalysisSnapshot as readSnapshotFile,
+} from "./AnalysisSnapshotFiles.js";
+import { ProviderCleanupError } from "../../domain/providerCleanupError.js";
+import { workflowAnalysisProfile } from "../WorkflowAnalysisProfile.js";
+import {
+  hasOnlyProfilelessNativeDispatchEntries,
+  isProfilelessNativeDispatchSnapshot,
+} from "./ProfilelessNativeWorkflowSnapshot.js";
 
 const SNAPSHOT_MUTATION_RECOVERY =
   "Export session observations through export_evidence_bundle if needed. Close the active target without saving a snapshot, then reopen it before importing or saving a snapshot.";
@@ -36,11 +52,14 @@ const SNAPSHOT_MUTATION_RECOVERY =
 export interface ActiveAnalysisBinding {
   readonly target: BinaryTarget;
   readonly profile: AnalysisProfileCommitment | null;
+  /** Current route profile for the single profileless native dispatch workflow. */
+  readonly profilelessWorkflowProfile?: AnalysisProfileCommitment;
 }
 
 /** Validated composed-workflow payload bound to the active target and profile. */
 export interface WorkflowSnapshotRecordInput {
   readonly operation: AnalysisOperation;
+  readonly bindingProfile: AnalysisProfileCommitment;
   readonly parameters: Readonly<Record<string, JsonValue>>;
   readonly execution: Parameters<
     AnalysisSnapshotCache["recordWorkflow"]
@@ -50,7 +69,21 @@ export interface WorkflowSnapshotRecordInput {
 /** Own binary snapshots and coordinate the composed investigation records. */
 export abstract class BinarySessionRecords {
   readonly #records: InvestigationRecords;
-  readonly #writeResources = new ArtifactResourceScope();
+  protected readonly fileResources = new ArtifactResourceScope();
+
+  readonly resourceScope: RetainedResourceScope = {
+    retain: (owner, resource) =>
+      this.fileResources.retain({
+        kind: "lease",
+        resource,
+        lease: { release: () => owner.close() },
+      }),
+    run: (operation) => this.fileResources.run(operation),
+  };
+
+  protected get hasPendingFileResources(): boolean {
+    return this.fileResources.hasPending;
+  }
   readonly #snapshot = new AnalysisSnapshotCache();
   #snapshotInvalidated = false;
   readonly #snapshotListeners = new Set<() => void | Promise<void>>();
@@ -90,9 +123,14 @@ export abstract class BinarySessionRecords {
     return this.#records.exportEvidenceBundle();
   }
 
-  /** Borrow a sealed bundle for complete serialization without cloning retained graphs. */
-  evidenceBundleForSerialization(): EvidenceBundle {
-    return this.#records.evidenceBundleForSerialization();
+  /** Borrow the record owner's immutable bundle for read-only workflows. */
+  immutableEvidenceBundle(): EvidenceBundle {
+    return this.#records.immutableEvidenceBundle();
+  }
+
+  /** Read one snapshot while retaining failed descriptors under this session. */
+  readAnalysisSnapshot(path: string, signal?: AbortSignal) {
+    return readSnapshotFile(path, signal, this.fileResources);
   }
 
   /** Persist one provider-neutral snapshot under this session's resource owner. */
@@ -103,28 +141,27 @@ export abstract class BinarySessionRecords {
   ): Promise<
     Result<{ readonly path: string; readonly bytes: number }, AnalysisError>
   > {
-    return writeSnapshotFile(snapshot, path, overwrite, this.#writeResources);
+    return writeSnapshotFile(snapshot, path, overwrite, this.fileResources);
   }
 
-  /** Retry and release staged snapshot files at the owning session shutdown. */
-  async closeWriteResources(): Promise<Result<null, AnalysisError>> {
+  /** Retry retained target reads and snapshot files at the owning session shutdown. */
+  async closeFileResources(): Promise<Result<null, AnalysisError>> {
     try {
-      await this.#writeResources.retryCleanup();
+      await this.fileResources.retryCleanup();
       return ok(null);
     } catch (cause: unknown) {
       const observation = ArtifactReaderFailure.cleanupObservation(
         cause,
-        "analysis snapshot staging",
+        "analysis session files",
       );
-      return err(
-        new EvidenceFileError("write", "io", {
-          cause,
-          cleanup: {
-            reason: observation.reason,
-            resources: observation.resources,
-          },
-        }),
+      const error = new ProviderCleanupError(
+        "rea",
+        observation.resources,
+        { reason: observation.reason },
+        { cause, operation: "close_binary" },
       );
+      bindRegularFileCleanup(cause, error);
+      return err(error);
     }
   }
 
@@ -133,8 +170,8 @@ export abstract class BinarySessionRecords {
   ): Result<number, EvidenceIntegrityError | AnalysisInputError> {
     const imported = this.#records.mergeEvidenceBundle(bundle);
     if (!imported.ok) return imported;
-    if (imported.value.metadataChanged) this.invalidateSnapshot();
-    else if (imported.value.changed) this.#emitSnapshotChanged();
+    this.#snapshot.refreshEvidenceMetadata(imported.value.replacements);
+    if (imported.value.changed) this.#emitSnapshotChanged();
     return ok(imported.value.recordsAdded);
   }
 
@@ -152,11 +189,28 @@ export abstract class BinarySessionRecords {
         ),
       );
     const target = active?.target;
-    const profile = active?.profile ?? undefined;
+    const profile =
+      active?.profile ?? active?.profilelessWorkflowProfile ?? undefined;
     if (target !== undefined && profile === undefined)
       return err(
         new EvidenceIntegrityError(
           "Analysis snapshots require a concrete provider analysis profile",
+        ),
+      );
+    if (
+      active?.profile === null &&
+      (target === undefined ||
+        profile === undefined ||
+        !this.#snapshot.matches(target, profile) ||
+        this.#snapshot.entries().length !== 0 ||
+        !hasOnlyProfilelessNativeDispatchEntries(
+          this.#snapshot.workflowEntries(),
+          profile,
+        ))
+    )
+      return err(
+        new EvidenceIntegrityError(
+          "Profileless native snapshots may contain only current dispatch workflow observations",
         ),
       );
     return this.#snapshot.export(
@@ -184,20 +238,29 @@ export abstract class BinarySessionRecords {
           },
         ),
       );
-    if (active?.profile === null)
+    const profile = active?.profile ?? active?.profilelessWorkflowProfile;
+    if (
+      active?.profile === null &&
+      (profile === undefined ||
+        !isProfilelessNativeDispatchSnapshot(snapshot, active.target, profile))
+    )
       return err(
         new AnalysisSnapshotMismatchError(
-          "Analysis snapshot profile_mismatch: the active target has no concrete analysis profile",
+          "Analysis snapshot profile_mismatch: the snapshot is not bound to the active native dispatch reader",
         ),
       );
     const imported = this.#snapshot.import(
       snapshot,
       active === undefined
         ? undefined
-        : { target: active.target, profile: active.profile },
+        : profile === undefined
+          ? undefined
+          : { target: active.target, profile },
       (bundle) => {
         const imported = this.#records.mergeEvidenceBundle(bundle);
-        return imported.ok ? ok(imported.value.recordsAdded) : imported;
+        if (!imported.ok) return imported;
+        this.#snapshot.refreshEvidenceMetadata(imported.value.replacements);
+        return ok(imported.value.recordsAdded);
       },
     );
     if (imported.ok) this.#emitSnapshotChanged();
@@ -244,17 +307,33 @@ export abstract class BinarySessionRecords {
     input: WorkflowSnapshotRecordInput,
   ): Result<null, EvidenceIntegrityError> {
     const active = this.activeAnalysisBinding();
-    if (active === undefined || active.profile === null)
+    if (active === undefined)
       return err(
         new EvidenceIntegrityError(
           "Workflow snapshot entries require an active concrete provider profile",
         ),
       );
     if (this.#snapshotInvalidated) return ok(null);
+    const profile = active.profile ?? active.profilelessWorkflowProfile;
+    if (
+      profile === undefined ||
+      !analysisProfilesEqual(profile, input.bindingProfile) ||
+      !analysisProfilesEqual(
+        input.execution.analysisProfile,
+        workflowAnalysisProfile(profile, input.operation),
+      ) ||
+      (active.profile === null &&
+        input.operation !== "inspect_native_dispatch_metadata")
+    )
+      return err(
+        new EvidenceIntegrityError(
+          "Workflow snapshot entry does not match the active reader profile",
+        ),
+      );
     try {
       this.#snapshot.recordWorkflow({
         target: active.target,
-        profile: active.profile,
+        profile,
         ...input,
       });
       this.#emitSnapshotChanged();
@@ -348,6 +427,10 @@ export abstract class BinarySessionRecords {
     } = {},
   ): ResidualUnknown[] {
     return this.#records.listUnknowns(filters);
+  }
+
+  listUnknownsPage(query: UnknownQuery = {}): UnknownPage {
+    return this.#records.listUnknownsPage(query);
   }
 
   verifyUnknownResolution(unknownId: string): Result<

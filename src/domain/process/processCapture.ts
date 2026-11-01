@@ -92,7 +92,7 @@ export type FileState = FileStateIdentity &
 export interface ProcessFilesystemSnapshot {
   readonly files: readonly FileState[];
   readonly truncated: boolean;
-  /** Root aliases whose path enumeration was exhausted, regardless of hash coverage. */
+  /** Physical root enumeration exhausted; unfollowed symlink scopes remain unknown. */
   readonly completeRoots: readonly string[];
   readonly coverage: FilesystemCoverage;
 }
@@ -267,8 +267,8 @@ export interface UnverifiedProcessCapture {
 
 const fileStateShape = {
   path: z.string(),
-  mode: z.number().int().nonnegative(),
-  size: z.number().int().nonnegative(),
+  mode: z.int().nonnegative(),
+  size: z.int().nonnegative(),
 };
 
 /** An unrelated process left untouched because its ownership is unknown. */
@@ -396,30 +396,30 @@ const fileEffectSchema = z.discriminatedUnion("status", [
 const processSettlementSchema = z.discriminatedUnion("state", [
   z.object({
     state: z.literal("quiesced"),
-    elapsed_ms: z.number().int().nonnegative(),
+    elapsed_ms: z.int().nonnegative(),
     cleanup_outcome: z.enum(["not_required", "failed"]),
   }),
   z.object({
     state: z.enum(["alive_at_deadline", "unverifiable"]),
-    elapsed_ms: z.number().int().nonnegative(),
+    elapsed_ms: z.int().nonnegative(),
     cleanup_outcome: z.enum(["cleaned", "failed"]),
   }),
 ]);
 
 const unverifiedCleanupProcessesSchema = z.array(
-  z.strictObject({ pid: z.number().int().positive(), reason: z.string() }),
+  z.strictObject({ pid: z.int().positive(), reason: z.string() }),
 );
 
 const processCaptureFinalizationSchema = z
   .strictObject({
-    requested_ms: z.number().int().safe().positive(),
-    elapsed_ms: z.number().int().nonnegative().nullable(),
-    exit_code: z.number().int().nonnegative().nullable(),
+    requested_ms: z.int().safe().positive(),
+    elapsed_ms: z.int().nonnegative().nullable(),
+    exit_code: z.int().nonnegative().nullable(),
     signals: z
       .array(
         z.strictObject({
           signal: z.enum(["SIGTERM", "SIGKILL"]),
-          sent_at_ms: z.number().int().nonnegative(),
+          sent_at_ms: z.int().nonnegative(),
           delivery: z.enum([
             "signaled",
             "gone",
@@ -478,20 +478,20 @@ const processCaptureShapeSchema = z.strictObject({
   normalization: normalizationSchema,
   frames: z.array(
     z.object({
-      sequence: z.number().int().nonnegative(),
-      at_ms: z.number().int().nonnegative(),
+      sequence: z.int().nonnegative(),
+      at_ms: z.int().nonnegative(),
       data: z.string(),
       raw_data: z.string().optional(),
     }),
   ),
   rendered_frames: z.array(
     z.object({
-      sequence: z.number().int().nonnegative(),
-      at_ms: z.number().int().nonnegative(),
-      columns: z.number().int().positive(),
-      rows: z.number().int().positive(),
-      cursor_x: z.number().int().nonnegative(),
-      cursor_y: z.number().int().nonnegative(),
+      sequence: z.int().nonnegative(),
+      at_ms: z.int().nonnegative(),
+      columns: z.int().positive(),
+      rows: z.int().positive(),
+      cursor_x: z.int().nonnegative(),
+      cursor_y: z.int().nonnegative(),
       active_buffer: z.enum(["normal", "alternate"]),
       lines: z.array(z.string()),
       serialized_state: z.string(),
@@ -499,46 +499,46 @@ const processCaptureShapeSchema = z.strictObject({
   ),
   interaction_events: z.array(
     z.object({
-      sequence: z.number().int().nonnegative(),
-      scheduled_at_ms: z.number().int().nonnegative(),
-      dispatched_at_ms: z.number().int().nonnegative(),
+      sequence: z.int().nonnegative(),
+      scheduled_at_ms: z.int().nonnegative(),
+      dispatched_at_ms: z.int().nonnegative(),
       type: z.enum(["input", "resize", "signal"]),
       data: z.string(),
       outcome: z.enum(["dispatched", "target_exited", "failed"]),
     }),
   ),
   exit: z.object({
-    code: z.number().int().nullable(),
-    signal: z.number().int().nullable(),
+    code: z.int().nullable(),
+    signal: z.int().nullable(),
     reason: z.enum(["exited", "timeout", "idle_timeout"]),
     finalization: processCaptureFinalizationSchema.optional(),
   }),
   settlement: z.discriminatedUnion("state", [
     z.object({
       state: z.literal("quiesced"),
-      elapsed_ms: z.number().int().nonnegative(),
+      elapsed_ms: z.int().nonnegative(),
       cleanup_outcome: z.literal("not_required"),
     }),
     z.object({
       state: z.enum(["alive_at_deadline", "unverifiable"]),
-      elapsed_ms: z.number().int().nonnegative(),
+      elapsed_ms: z.int().nonnegative(),
       cleanup_outcome: z.enum(["cleaned", "failed"]),
     }),
   ]),
   process_samples: z.array(
     z.object({
-      at_ms: z.number().int().nonnegative(),
-      pid: z.number().int().positive(),
-      parent_pid: z.number().int().nonnegative(),
+      at_ms: z.int().nonnegative(),
+      pid: z.int().positive(),
+      parent_pid: z.int().nonnegative(),
       command: z.string(),
-      process_group_id: z.number().int().positive().nullable(),
-      session_id: z.number().int().nonnegative().nullable(),
+      process_group_id: z.int().positive().nullable(),
+      session_id: z.int().nonnegative().nullable(),
     }),
   ),
   filesystem_checkpoints: z.array(
     z.object({
       name: z.enum(["before", "after_settlement"]),
-      at_ms: z.number().int().nonnegative(),
+      at_ms: z.int().nonnegative(),
       files: z.array(fileStateSchema),
       effects: z.array(fileEffectSchema),
       truncated: z.boolean(),
@@ -546,9 +546,9 @@ const processCaptureShapeSchema = z.strictObject({
   ),
   event_journal: z.array(
     z.object({
-      capture_order: z.number().int().nonnegative(),
+      capture_order: z.int().nonnegative(),
       collection: z.enum(PROCESS_CAPTURE_EVENT_COLLECTIONS),
-      index: z.number().int().nonnegative(),
+      index: z.int().nonnegative(),
     }),
   ),
   files_before: z.array(fileStateSchema),
@@ -594,7 +594,7 @@ const partialObservationFieldSchema = <Schema extends z.ZodType>(
   ]);
 
 const incompleteProcessCaptureObservationsSchema = z.strictObject({
-  target_pid: partialObservationFieldSchema(z.number().int().positive()),
+  target_pid: partialObservationFieldSchema(z.int().positive()),
   frames: partialObservationFieldSchema(processCaptureShapeSchema.shape.frames),
   rendered_frames: partialObservationFieldSchema(
     processCaptureShapeSchema.shape.rendered_frames,
@@ -604,8 +604,8 @@ const incompleteProcessCaptureObservationsSchema = z.strictObject({
   ),
   exit: partialObservationFieldSchema(
     z.strictObject({
-      code: z.number().int().nullable(),
-      signal: z.number().int().nullable(),
+      code: z.int().nullable(),
+      signal: z.int().nullable(),
       reason: z.enum(["exited", "timeout", "idle_timeout", "cancelled"]),
       finalization: processCaptureFinalizationSchema.optional(),
     }),
@@ -616,7 +616,7 @@ const incompleteProcessCaptureObservationsSchema = z.strictObject({
   settlement: partialObservationFieldSchema(
     z.strictObject({
       state: z.enum(["quiesced", "alive_at_deadline", "unverifiable"]),
-      elapsed_ms: z.number().int().nonnegative(),
+      elapsed_ms: z.int().nonnegative(),
     }),
   ),
   process_samples: partialObservationFieldSchema(

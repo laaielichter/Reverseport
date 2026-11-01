@@ -1,3 +1,4 @@
+import type { AsarHeaderAdmission } from "../../config/asarHeaderAdmission.js";
 import type { ArtifactResourceScope } from "../ArtifactResourceScope.js";
 
 /** Resolved integrity behavior admitted to the artifact scanner. */
@@ -15,4 +16,6 @@ export interface ArtifactInventoryOptions {
   readonly signal?: AbortSignal | undefined;
   readonly integrity?: ArtifactIntegrityPolicy | undefined;
   readonly environment?: Readonly<NodeJS.ProcessEnv> | undefined;
+  /** ASAR header/index admission resolved from the owner's environment; default when absent. */
+  readonly asarHeaderAdmission?: AsarHeaderAdmission | undefined;
 }

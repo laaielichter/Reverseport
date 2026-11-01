@@ -1,3 +1,4 @@
+import { readMethodDefinitionRow } from "./ManagedMethodDefinitionRows.js";
 import {
   admitManagedProjection,
   managedDecodeBudget,
@@ -11,14 +12,18 @@ import {
 import type { ManagedMetadataLayout } from "./ManagedMetadataLayout.js";
 import {
   metadataRowCursor,
-  metadataCodedToken,
-  metadataCodedTokenInvalidReason,
+  decodeMetadataCodedIndex,
   metadataToken,
   readMetadataString,
 } from "./ManagedMetadataHeaps.js";
-import { managedTableRowCounts } from "./ManagedMetadataInventory.js";
+import { managedPeInspectionEnvelope } from "./ManagedPeInspectionEnvelope.js";
 import type { ManagedMetadataInventory } from "./ManagedMetadataInventory.js";
-import type { ManagedPeLayout } from "./ManagedPeReader.js";
+import {
+  managedCli32BitRequirement,
+  managedCliIsMixedClrNative,
+  type ManagedCliHeader,
+  type ManagedPeLayout,
+} from "./ManagedPeReader.js";
 import { readManagedValue } from "./ManagedReaderFailure.js";
 
 type ModuleRef = ManagedNativeBoundaryInspection["module_refs"][number];
@@ -109,22 +114,12 @@ export const parseMethods = (
   const table = layout.table(6);
   for (let row = 1; row <= (table?.rowCount ?? 0); row += 1) {
     readManagedValue(() => {
-      const cursor = metadataRowCursor(bytes, layout, 6, row);
-      const rva = cursor.readUInt32();
-      const implFlags = cursor.readUInt16();
-      const flags = cursor.readUInt16();
-      const name = readMetadataString(
-        bytes,
-        layout,
-        cursor.readIndex(layout.stringIndexSize),
-        heapExtent,
-      );
-      cursor.readIndex(layout.blobIndexSize);
-      cursor.readIndex(layout.tableIndexSize(8));
-      const token = metadataToken(6, row);
+      const { token, rowOffset, rva, implFlags, flags, nameIndex } =
+        readMethodDefinitionRow(bytes, layout, row);
+      const name = readMetadataString(bytes, layout, nameIndex, heapExtent);
       methods.set(token, {
         token,
-        rowOffset: cursor.start,
+        rowOffset,
         kind: "method",
         name,
         flags,
@@ -164,28 +159,24 @@ export const parseImplMaps = ({
       const memberForwardedRaw = cursor.readIndex(
         layout.codedIndexSize("MemberForwarded"),
       );
-      const memberForwardedReason = metadataCodedTokenInvalidReason(
+      const memberForwarded = decodeMetadataCodedIndex(
         memberForwardedRaw,
         1,
         [4, 6],
         layout.rowCounts,
       );
-      if (memberForwardedReason !== null || memberForwardedRaw === 0)
+      if (memberForwarded.kind !== "valid")
         issues.push({
           code: "invalid-row",
           scope: `metadata.ImplMap:${metadataToken(28, row)}`,
           offset: memberForwardedOffset,
           detail:
-            memberForwardedReason === null
+            memberForwarded.kind === "null"
               ? "ImplMap MemberForwarded coded index 0x0 is null, but the column must reference a Field or MethodDef row"
-              : `ImplMap MemberForwarded coded index 0x${memberForwardedRaw.toString(16)} is invalid: ${memberForwardedReason}`,
+              : `ImplMap MemberForwarded coded index 0x${memberForwardedRaw.toString(16)} is invalid: ${memberForwarded.reason}`,
         });
-      const memberToken = metadataCodedToken(
-        memberForwardedRaw,
-        1,
-        [4, 6],
-        layout.rowCounts,
-      );
+      const memberToken =
+        memberForwarded.kind === "valid" ? memberForwarded.token : null;
       const importName = readMetadataString(
         bytes,
         layout,
@@ -375,36 +366,37 @@ const boundaryKind = (
 };
 
 export const cliNative = (
-  pe: ManagedPeLayout,
+  cli: ManagedCliHeader | null,
 ): ManagedNativeBoundaryInspection["cli_native"] => {
-  if (pe.cli === null) return null;
+  if (cli === null) return null;
   return {
-    il_only: (pe.cli.flags & 0x0000_0001) !== 0,
-    requires_32bit: (pe.cli.flags & 0x0000_0002) !== 0,
-    strong_name_signed: (pe.cli.flags & 0x0000_0008) !== 0,
-    native_entry_point: (pe.cli.flags & 0x0000_0010) !== 0,
-    ready_to_run_signature: pe.cli.readyToRunSignature,
-    managed_native_header_rva: pe.cli.managedNativeHeader.rva,
-    managed_native_header_size: pe.cli.managedNativeHeader.size,
+    il_only: (cli.flags & 0x0000_0001) !== 0,
+    requires_32bit: managedCli32BitRequirement(cli.flags) === "required",
+    strong_name_signed: (cli.flags & 0x0000_0008) !== 0,
+    native_entry_point: (cli.flags & 0x0000_0010) !== 0,
+    ready_to_run_signature: cli.readyToRunSignature,
+    managed_native_header_rva: cli.managedNativeHeader.rva,
+    managed_native_header_size: cli.managedNativeHeader.size,
   };
 };
 
 /** Summarize declaration counts with the native facets of the CLI header. */
 export const nativeBoundarySummary = (
-  native: ManagedNativeBoundaryInspection["cli_native"],
+  cli: ManagedCliHeader | null,
   counts: Pick<
     ManagedNativeBoundaryInspection["summary"],
     "module_ref_count" | "pinvoke_import_count" | "native_implementation_count"
   >,
 ): ManagedNativeBoundaryInspection["summary"] => ({
   ...counts,
-  ready_to_run: native?.ready_to_run_signature ?? null,
+  ready_to_run: cli?.readyToRunSignature ?? null,
   mixed_mode_or_native_header:
-    native === null
+    cli === null
       ? null
-      : native.managed_native_header_rva !== 0 ||
-        native.managed_native_header_size !== 0 ||
-        native.native_entry_point,
+      : managedCliIsMixedClrNative(cli) ||
+        cli.managedNativeHeader.rva !== 0 ||
+        cli.managedNativeHeader.size !== 0 ||
+        (cli.flags & 0x0000_0010) !== 0,
 });
 
 interface BoundaryInspectionContext {
@@ -416,46 +408,35 @@ interface BoundaryInspectionContext {
   readonly moduleRefs: readonly ModuleRef[];
   readonly imports: readonly NativeImport[];
   readonly implementations: readonly NativeImplementation[];
-  readonly native: ManagedNativeBoundaryInspection["cli_native"];
   readonly issues: readonly ManagedParseIssue[];
 }
 
 export const buildNativeBoundaryInspection = ({
   target,
   bytes,
+  pe,
   layout,
   inventory,
   moduleRefs,
   imports,
   implementations,
-  native,
   issues,
 }: BoundaryInspectionContext): ManagedNativeBoundaryInspection =>
   managedNativeBoundaryInspectionSchema.parse(
     admitManagedProjection(
       {
-        artifact: {
-          path: target.path,
-          sha256: target.sha256,
-          byte_length: bytes.length,
-          format: "pe",
-        },
-        module: inventory.module,
-        metadata: {
-          status: issues.length === 0 ? "complete" : "partial",
-          version: layout.version,
-          table_row_counts: managedTableRowCounts(layout),
-        },
-        identity_scope: {
-          token_identity: "build-local",
-          requires_artifact_sha256: target.sha256,
-          requires_mvid: inventory.module?.mvid ?? null,
-        },
-        cli_native: native,
+        ...managedPeInspectionEnvelope(
+          target,
+          bytes.length,
+          layout,
+          inventory.module,
+          issues,
+        ),
+        cli_native: cliNative(pe.cli),
         module_refs: moduleRefs,
         pinvoke_imports: imports,
         native_implementations: implementations,
-        summary: nativeBoundarySummary(native, {
+        summary: nativeBoundarySummary(pe.cli, {
           module_ref_count: moduleRefs.length,
           pinvoke_import_count: imports.length,
           native_implementation_count: implementations.length,

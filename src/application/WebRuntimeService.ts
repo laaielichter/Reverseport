@@ -7,17 +7,22 @@ import {
   AnalysisOutputError,
 } from "../domain/analysisErrorCore.js";
 import { createEvidence, type Evidence } from "../domain/evidence.js";
-import { jsonObjectSchema, jsonValueSchema } from "../domain/jsonValue.js";
 import { analysisInputErrorFromIssues } from "../domain/inputIssueProjection.js";
 import { err, ok, type Result } from "../domain/result.js";
 import {
   observeWebExecutionInputSchema,
   webExecutionSchema,
+  webExecutionObservationSchema,
 } from "../domain/webExecution.js";
 import {
   inspectWebEventListenersInputSchema,
   webEventListenersSchema,
+  webEventListenersObservationSchema,
 } from "../domain/webEventListeners.js";
+import {
+  completeProviderEvidence,
+  keepIncompleteObservation,
+} from "./ProviderOperationExecution.js";
 
 /** Shared public workflows keep instrumentation and listener inspection independently selectable. */
 export class WebRuntimeService {
@@ -37,20 +42,22 @@ export class WebRuntimeService {
     );
     if (!parsed.ok) return parsed;
     const result = await this.provider.observeExecution(parsed.value, options);
-    if (!result.ok) return result;
+    if (!result.ok)
+      return this.retainRuntimePartial(
+        result.error,
+        operation,
+        "Provider retained a non-JSON incomplete execution observation.",
+        (partial) => {
+          if (!("instrumentation" in partial) || !("window" in partial))
+            return undefined;
+          const verified = webExecutionObservationSchema.safeParse(partial);
+          if (!verified.success) return undefined;
+          return this.evidence(operation, parsed.value, verified.data);
+        },
+      );
     const verified = webExecutionSchema.safeParse(result.value);
     if (!verified.success)
       return err(new AnalysisOutputError(operation, verified.error.message));
-    if (
-      verified.data.target.target_id !== parsed.value.target_id ||
-      verified.data.window.requested_ms !== parsed.value.observation_ms
-    )
-      return err(
-        new AnalysisOutputError(
-          operation,
-          "Provider changed the selected target or requested window.",
-        ),
-      );
     return this.evidence(operation, parsed.value, verified.data, options);
   }
 
@@ -71,21 +78,46 @@ export class WebRuntimeService {
       parsed.value,
       options,
     );
-    if (!result.ok) return result;
+    if (!result.ok)
+      return this.retainRuntimePartial(
+        result.error,
+        operation,
+        "Provider retained a non-JSON incomplete event-listener observation.",
+        (partial) => {
+          if (!("selected_node" in partial) || !("listeners" in partial))
+            return undefined;
+          const verified =
+            webEventListenersObservationSchema.safeParse(partial);
+          if (!verified.success) return undefined;
+          return this.evidence(operation, parsed.value, verified.data);
+        },
+      );
     const verified = webEventListenersSchema.safeParse(result.value);
     if (!verified.success)
       return err(new AnalysisOutputError(operation, verified.error.message));
-    if (
-      verified.data.target.target_id !== parsed.value.target_id ||
-      verified.data.selected_node.selector !== parsed.value.selector
-    )
-      return err(
-        new AnalysisOutputError(
-          operation,
-          "Provider changed the selected target or node selector.",
-        ),
-      );
     return this.evidence(operation, parsed.value, verified.data, options);
+  }
+
+  /** Promote a schema-valid partial, or keep a JSON snapshot of an incomplete one. */
+  private retainRuntimePartial(
+    error: AnalysisError,
+    operation: string,
+    nonJsonReason: string,
+    promote: (
+      partial: NonNullable<AnalysisError["partialObservation"]>,
+    ) => Result<Evidence, AnalysisError> | undefined,
+  ): Result<Evidence, AnalysisError> {
+    const partial = error.partialObservation;
+    if (partial !== undefined && !("evidence_id" in partial)) {
+      const evidence = promote(partial);
+      if (evidence !== undefined) {
+        if (evidence.ok) {
+          error.partialObservation = evidence.value;
+          return err(error);
+        }
+      }
+    }
+    return err(keepIncompleteObservation(error, operation, nonJsonReason));
   }
 
   private evidence(
@@ -94,12 +126,27 @@ export class WebRuntimeService {
       | z.infer<typeof observeWebExecutionInputSchema>
       | z.infer<typeof inspectWebEventListenersInputSchema>,
     result:
-      | z.infer<typeof webExecutionSchema>
-      | z.infer<typeof webEventListenersSchema>,
+      | z.infer<typeof webExecutionObservationSchema>
+      | z.infer<typeof webEventListenersObservationSchema>,
     options?: ExecutionOptions,
   ): Result<Evidence, AnalysisError> {
-    if (options?.signal?.aborted)
-      return err(new AnalysisCancelledError(operation));
+    if (
+      result.target.target_id !== input.target_id ||
+      ("observation_ms" in input &&
+        (!("window" in result) ||
+          result.window.requested_ms !== input.observation_ms)) ||
+      ("selector" in input &&
+        (!("selected_node" in result) ||
+          result.selected_node.selector !== input.selector))
+    )
+      return err(
+        new AnalysisOutputError(
+          operation,
+          "observation_ms" in input
+            ? "Provider changed the selected target or requested window."
+            : "Provider changed the selected target or node selector.",
+        ),
+      );
     if (
       input.allowed_origins.length > 0 &&
       !input.allowed_origins.includes(result.target.origin)
@@ -110,16 +157,17 @@ export class WebRuntimeService {
           "Provider returned a document outside the selected origin scope.",
         ),
       );
-    return ok(
+    return completeProviderEvidence(
       createEvidence(undefined, this.provider.identity(), {
         predicateType: `rea.${operation.replaceAll("_", "-")}`,
         operation,
-        parameters: jsonObjectSchema.parse(input),
-        result: jsonValueSchema.parse(result),
+        parameters: input,
+        result,
         confidence: "observed",
         authority: "external-service",
         limitations: result.limitations,
       }),
+      options?.signal,
     );
   }
 }
@@ -131,7 +179,9 @@ const parseInput = <T>(
   options: ExecutionOptions | undefined,
 ): Result<T, AnalysisError> => {
   if (options?.signal?.aborted)
-    return err(new AnalysisCancelledError(operation));
+    return err(
+      new AnalysisCancelledError(operation, { cause: options.signal.reason }),
+    );
   const parsed = schema.safeParse(rawInput);
   return parsed.success
     ? ok(parsed.data)

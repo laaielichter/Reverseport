@@ -1,8 +1,11 @@
-import { writeFile } from "node:fs/promises";
+import { parseMcpToolError } from "../../fixtures/mcpToolError.js";
+import { PRE_66_NULL_COVERAGE_EVIDENCE } from "../../../src/domain/evidenceLegacy.fixture.js";
+import { access, readFile, readdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { expect } from "vitest";
 
+import { jsonValueSchema } from "../../../src/domain/jsonValue.js";
 import { createEvidence } from "../../../src/domain/evidence.js";
 import { createEvidenceBundle } from "../../../src/domain/evidenceBundle.js";
 import {
@@ -11,6 +14,7 @@ import {
 } from "../../../src/domain/residualUnknown.js";
 import { createTestTempDirectory } from "../../fixtures/temporaryDirectory.js";
 import { cliTest } from "../../support/cli/cliFixture.js";
+import { JSON_BYTE_ORDER_MARK_MESSAGE } from "../../../src/application/Utf8JsonInput.js";
 
 const revisionBundle = () => {
   const records = ["open", "investigate"].map((operation) =>
@@ -51,6 +55,77 @@ const revisionBundle = () => {
   );
   return createEvidenceBundle(records, [initial, revised]);
 };
+
+cliTest.for([
+  "evidence-import",
+  "evidence-export",
+  "compare-left",
+  "compare-right",
+])(
+  "explains a bundle BOM with the format owner's recovery through $0",
+  async (operation, { cli }) => {
+    const root = await createTestTempDirectory("rea-bundle-bom-cli-");
+    const path = join(root, "bundle.json");
+    const canonical = join(root, "canonical.json");
+    const output = join(root, "exported.json");
+    const encoded = JSON.stringify(revisionBundle());
+    const bom = `\uFEFF${encoded}`;
+    await writeFile(path, bom);
+    await writeFile(canonical, encoded);
+    const arguments_ =
+      operation === "evidence-import"
+        ? [operation, path]
+        : operation === "evidence-export"
+          ? [operation, path, output]
+          : operation === "compare-left"
+            ? ["compare", path, canonical]
+            : ["compare", canonical, path];
+    const result = await cli.run({
+      arguments: [...arguments_, "--json"],
+      environment: { REA_LOG_LEVEL: "silent" },
+    });
+    expect(result.exitCode).toBe(1);
+    expect(result.json).toMatchObject({
+      code: "evidence_integrity_mismatch",
+      message: JSON_BYTE_ORDER_MARK_MESSAGE,
+      remediation: { action: JSON_BYTE_ORDER_MARK_MESSAGE },
+    });
+    expect(await readFile(path, "utf8")).toBe(bom);
+    await expect(access(output)).rejects.toMatchObject({ code: "ENOENT" });
+  },
+);
+
+cliTest.for([
+  "export_evidence_bundle",
+  "compare_bundles",
+  "get_evidence_bundle",
+])("attributes an early heap refusal to $0", async (operation, { cli }) => {
+  const root = await createTestTempDirectory("rea-bundle-operation-");
+  const path = join(root, "parent.json");
+  const output = join(root, "output.json");
+  await writeFile(path, JSON.stringify(revisionBundle()));
+  const preload =
+    "import v8 from 'node:v8';import {syncBuiltinESMExports} from 'node:module';const read=v8.getHeapStatistics;v8.getHeapStatistics=()=>({...read(),total_available_size:0});syncBuiltinESMExports();";
+  const arguments_ =
+    operation === "export_evidence_bundle"
+      ? ["evidence-export", path, output]
+      : operation === "compare_bundles"
+        ? ["compare", path, path]
+        : ["inspect-evidence-bundle", JSON.stringify({ path })];
+  const result = await cli.run({
+    arguments: [...arguments_, "--json"],
+    environment: {
+      REA_LOG_LEVEL: "silent",
+      NODE_OPTIONS: `--max-old-space-size=2048 --import=data:text/javascript;base64,${Buffer.from(preload).toString("base64")}`,
+    },
+  });
+  expect(result.exitCode).toBe(1);
+  expect(result.json).toMatchObject({
+    code: "resource_constraint",
+    details: { operation },
+  });
+  expect(await readdir(root)).toEqual(["parent.json"]);
+});
 
 cliTest(
   "reports standalone import counts for every unknown revision",
@@ -113,5 +188,128 @@ cliTest(
       });
       expect(result.json).not.toHaveProperty("imported");
     }
+  },
+);
+
+cliTest(
+  "preserves a selected own __proto__ member from complete bundle data",
+  async ({ cli }) => {
+    const root = await createTestTempDirectory("rea-evidence-filter-proto-");
+    const path = join(root, "bundle.json");
+    const result = jsonValueSchema.parse(
+      JSON.parse('{"__proto__":{"answer":7},"normal":{"answer":7}}'),
+    );
+    const record = createEvidence(
+      undefined,
+      { id: "fixture", name: "Fixture", version: "1" },
+      { operation: "ordinary-json", parameters: {}, result },
+    );
+    await writeFile(path, JSON.stringify(createEvidenceBundle([record])));
+
+    const output = await cli.run({
+      arguments: [
+        "inspect-evidence-bundle",
+        JSON.stringify({ path, detail: "complete" }),
+        "--json",
+        "--filter-output",
+        "records[0,1].normalized_result.__proto__.answer",
+      ],
+    });
+
+    expect(output.exitCode).toBe(0);
+    const records = (
+      output.json as {
+        records: Array<{ normalized_result: unknown }>;
+      }
+    ).records;
+    const normalizedResult = records[0]?.normalized_result;
+    expect(typeof normalizedResult).toBe("object");
+    expect(normalizedResult).not.toBeNull();
+    expect(Object.hasOwn(normalizedResult as object, "__proto__")).toBe(true);
+    expect((normalizedResult as Record<string, unknown>)["__proto__"]).toEqual({
+      answer: 7,
+    });
+  },
+);
+
+cliTest(
+  "preserves cell text when formatting retained Evidence as Markdown",
+  async ({ cli }) => {
+    const root = await createTestTempDirectory("rea-evidence-markdown-cells-");
+    const path = join(root, "bundle.json");
+    const result = {
+      text: "left|right\\tail\nnext",
+      type: "List<string>",
+      literal: "&copy; <br>",
+    };
+    const record = createEvidence(
+      undefined,
+      { id: "fixture", name: "Fixture", version: "1" },
+      {
+        operation: "ordinary-json",
+        parameters: {},
+        result,
+      },
+    );
+    await writeFile(path, JSON.stringify(createEvidenceBundle([record])));
+    const base = [
+      "inspect-evidence-bundle",
+      JSON.stringify({ path, detail: "complete" }),
+      "--filter-output",
+      "records.0.normalized_result",
+    ];
+    const json = await cli.run({ arguments: [...base, "--json"] });
+    expect(json.exitCode, json.stderr).toBe(0);
+    expect(json.stdout).toContain(JSON.stringify(result.text));
+    expect(json.stdout).toContain(JSON.stringify(result.type));
+    expect(json.stdout).toContain(JSON.stringify(result.literal));
+    const markdown = await cli.run({ arguments: [...base, "--format", "md"] });
+    expect(markdown.exitCode, markdown.stderr).toBe(0);
+    expect(markdown.stdout).toContain("left\\|right\\\\tail<br>next");
+    expect(markdown.stdout).toContain("List&lt;string&gt;");
+    expect(markdown.stdout).toContain("&amp;copy; &lt;br&gt;");
+  },
+);
+
+cliTest(
+  "diagnoses an obsolete explicit-null Evidence commitment without claiming the file was modified",
+  async ({ cli }) => {
+    const root = await createTestTempDirectory("rea-legacy-coverage-identity-");
+    const path = join(root, "legacy.json");
+    const record = PRE_66_NULL_COVERAGE_EVIDENCE;
+    const bundle = {
+      artifacts: [],
+      providers: [record.provider],
+      environments: [],
+      scenarios: [],
+      captures: [],
+      unknowns: [],
+      records: [record],
+    };
+    await writeFile(path, JSON.stringify(bundle));
+    const imported = await cli.run({
+      arguments: ["evidence-import", path, "--json"],
+    });
+    expect(imported.exitCode).toBe(1);
+    expect(imported.json).toMatchObject({
+      code: "evidence_integrity_mismatch",
+      retryable: false,
+      message: expect.stringContaining(
+        "earlier relationship_coverage identity commitment",
+      ),
+    });
+    const call = await cli.sharedMcpCall?.();
+    if (call === undefined) throw new Error("Expected shared MCP session");
+    const response = await call("import_evidence_bundle", { path });
+    expect(response.isError).toBe(true);
+    expect(parseMcpToolError(response)).toMatchObject({
+      error: {
+        code: "evidence_integrity_mismatch",
+        retryable: false,
+        message: expect.stringContaining(
+          "earlier relationship_coverage identity commitment",
+        ),
+      },
+    });
   },
 );

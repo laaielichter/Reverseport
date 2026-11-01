@@ -19,6 +19,12 @@ export const nulFreeStringSchema = z
 /** A selected local filesystem path: nonempty and free of NUL bytes. */
 export const localPathStringSchema = nulFreeStringSchema.min(1);
 
+/** A caller-selected path that is absolute on the host running REA. */
+export const absoluteLocalPathStringSchema = localPathStringSchema.regex(
+  process.platform === "win32" ? /^(?:[\\/]|[A-Za-z]:[\\/])/u : /^\//u,
+  "must be an absolute local filesystem path",
+);
+
 /** Test lexical containment on the host platform; callers must resolve symlinks first. */
 export const isPathWithinRoot = (root: string, path: string): boolean => {
   const value = relative(root, path);

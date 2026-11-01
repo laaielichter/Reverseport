@@ -1,15 +1,34 @@
 import { z } from "zod";
 import { address, document } from "./toolContractHelpers.js";
+import {
+  bytePatternFields,
+  validateBytePattern,
+} from "../domain/native/bytePattern.js";
 
 /** Hopper memory and file-mapping contracts. */
 export const HOPPER_MEMORY_TOOL_DEFINITIONS = [
+  {
+    name: "search_bytes",
+    description:
+      "Find masked byte signatures in initialized analyzed memory. Hex byte pairs and ?? wildcards are supported; an optional equal-length hex mask selects bits. Bounds are inclusive. Matches are ordered by provider address and never span blocks. Coverage describes this page; reuse the same query with next_cursor to continue. Uninitialized blocks are listed separately. Ghidra only; Hopper is unavailable.",
+    inputSchema: z
+      .strictObject({
+        ...bytePatternFields,
+        document,
+        start: address.optional(),
+        end: address.optional(),
+        limit: z.int().min(1).max(1000).default(100),
+        cursor: z.string().min(1).optional(),
+      })
+      .superRefine(validateBytePattern),
+  },
   {
     name: "read_bytes",
     description:
       "Read analyzed bytes from one provider-normalized virtual address. The hexadecimal payload reports the exact returned length; incomplete reads remain explicit and unsupported provider APIs return typed capability unavailability.",
     inputSchema: z.object({
       address,
-      length: z.number().int().min(1).default(256),
+      length: z.int().min(1).default(256),
       document,
     }),
   },

@@ -55,4 +55,12 @@ describe("parseAdbVersionOutput", () => {
       installedPath: null,
     });
   });
+
+  it("does not accept arbitrary successful output as an adb version", () => {
+    expect(
+      parseAdbVersionOutput(
+        "Android Debug Bridge version tomorrow\nVersion unknown\n",
+      ),
+    ).toMatchObject({ version: null });
+  });
 });

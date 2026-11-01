@@ -12,7 +12,7 @@ const reference = z.strictObject({
   jump: z.boolean(),
   indirect: z.boolean(),
   computed: z.boolean(),
-  operand_index: z.number().int(),
+  operand_index: z.int(),
   source_address: z.string().min(1).nullable().optional(),
   data: z.boolean().nullable().optional(),
   read: z.boolean().nullable().optional(),
@@ -71,20 +71,20 @@ export const nativeInstructionSchema = z.strictObject({
       "Observed per-address decoder context. Null means no value was available; omission means the provider or older capture does not expose this facet. The separate mode field retains the program language variant.",
     ),
   bytes: z.string().nullable(),
-  length: z.number().int().positive().nullable(),
+  length: z.int().positive().nullable(),
   mnemonic: z.string().nullable(),
   raw_disassembly: z.string().nullable(),
   operands: z.array(
     z.strictObject({
-      index: z.number().int().nonnegative(),
+      index: z.int().nonnegative(),
       raw: z.string(),
-      provider_type: z.number().int(),
+      provider_type: z.int(),
       components: z.array(
         z.strictObject({
           kind: z.enum(["register", "immediate", "address", "unknown"]),
           text: z.string(),
           value: z.string().nullable(),
-          bit_width: z.number().int().nonnegative().nullable(),
+          bit_width: z.int().nonnegative().nullable(),
         }),
       ),
       memory_addressing: z.literal("unavailable"),

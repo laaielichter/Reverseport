@@ -1,4 +1,3 @@
-import { analysisErrorProjectionSchema } from "../contracts/errorSchemas.js";
 import type { AnalysisError } from "../domain/analysisErrorBase.js";
 import { projectAnalysisError } from "../domain/analysisErrorProjection.js";
 import { jsonValueSchema, type JsonValue } from "../domain/jsonValue.js";
@@ -31,33 +30,28 @@ export const withSessionCleanup = async <Value>(
   return closed.ok ? value : onCleanupFailure(value, closed.error);
 };
 
-/** Keep the primary CLI failure or completed Evidence alongside cleanup failure. */
+/** Project typed one-shot outcomes only after execution and cleanup settle. */
 export const directAnalysisCleanupFailure = (
-  output: JsonValue,
+  result: Result<JsonValue, AnalysisError>,
   error: AnalysisError,
 ): JsonValue => {
   const cleanup = projectAnalysisError(error);
-  if (typeof output === "object" && output !== null && !Array.isArray(output)) {
-    const { error: label, ...projection } = output;
-    const primary = analysisErrorProjectionSchema.safeParse(projection);
-    if (typeof label === "string" && primary.success)
-      return {
-        error: label,
-        ...primary.data,
-        code: "cleanup_incomplete",
-        retryable: false,
-        details: {
-          ...primary.data.details,
-          cleanup: "incomplete",
-          resources: error.cleanupResources.slice(),
-          execution_failure:
-            primary.data.details !== undefined &&
-            "execution_failure" in primary.data.details
-              ? (primary.data.details.execution_failure ?? primary.data.code)
-              : primary.data.code,
-          cleanup_error: cleanup,
-        },
-      };
+  if (!result.ok) {
+    const primary = projectAnalysisError(result.error);
+    return {
+      error: "Analysis failed",
+      ...primary,
+      code: "cleanup_incomplete",
+      retryable: false,
+      remediation: cleanup.remediation,
+      details: {
+        resources: error.cleanupResources.slice(),
+        ...primary.details,
+        cleanup: "incomplete",
+        execution_failure: primary.details?.execution_failure ?? primary.code,
+        cleanup_error: cleanup,
+      },
+    };
   }
   return {
     error: "Analysis failed",
@@ -67,7 +61,7 @@ export const directAnalysisCleanupFailure = (
     details: {
       ...cleanup.details,
       cleanup: "incomplete",
-      partial_observation: output,
+      partial_observation: result.value,
     },
   };
 };
@@ -86,6 +80,7 @@ export const managedAnalysisCleanupFailure = (
       "close_binary",
       {
         cause: error,
+        remediationAction: cleanup.remediation.action,
         cleanup: { reason: cleanup.message, resources: error.cleanupResources },
         diagnostics: {
           cleanup_error: cleanup,

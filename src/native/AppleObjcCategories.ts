@@ -23,7 +23,6 @@ export const decodeObjcCategories = (input: {
   readonly sections: readonly Section[];
   readonly read: ObjcDispatchReaders;
   readonly result: ObjcSwiftMetadata;
-  readonly failures: string[];
   readonly issues: DecodeIssue[];
   readonly admit: () => boolean;
   /** Decode a method list into implementations attributed to the category. */
@@ -32,12 +31,13 @@ export const decodeObjcCategories = (input: {
     className: string,
     methodType: "instance" | "class",
     category: string,
+    onTruncated?: () => void,
   ) => string[];
-  readonly protocols: (list: bigint) => string[];
+  readonly protocols: (list: bigint, onTruncated?: () => void) => string[];
   /** Name of a class defined in this image, from its class_ro_t. */
   readonly localClassName: (address: bigint) => string;
 }): number => {
-  const { read, result, failures } = input;
+  const { read, result } = input;
   let examined = 0;
   for (const section of input.sections.filter(
     ({ name }) => name === "__objc_catlist",
@@ -51,11 +51,64 @@ export const decodeObjcCategories = (input: {
       try {
         const category = read.pointer(field);
         const name = read.string(read.pointer(category));
+        if (name.length === 0)
+          throw new TypeError("Objective-C category has an empty name");
         const external = boundClassName(read, category + 8n);
         const local = read.pointer(category + 8n);
-        const className =
-          external ?? (local === 0n ? null : input.localClassName(local));
+        let className = external ?? null;
+        if (external === undefined && local !== 0n)
+          try {
+            className = input.localClassName(local);
+          } catch (cause: unknown) {
+            // The category's own name and methods do not depend on its owner;
+            // keep them and report the unreadable class reference.
+            input.issues.push(
+              issue(
+                "objc_properties_categories",
+                "category_class_unresolved",
+                `Category ${name} class reference 0x${local.toString(16)}: ${cause instanceof Error ? cause.message : String(cause)}`,
+                `0x${(category + 8n).toString(16)}`,
+              ),
+            );
+          }
         const owner = className ?? `(${name})`;
+        let budgetTruncated = false;
+        const onTruncated = () => {
+          budgetTruncated = true;
+        };
+        const instanceMethods = input.methods(
+          read.pointer(category + 16n),
+          owner,
+          "instance",
+          name,
+          onTruncated,
+        );
+        const classMethods = input.methods(
+          read.pointer(category + 24n),
+          owner,
+          "class",
+          name,
+          onTruncated,
+        );
+        const protocols = input.protocols(
+          read.pointer(category + 32n),
+          onTruncated,
+        );
+        const properties = readObjcPropertiesOf(
+          read,
+          read.pointer(category + 40n),
+          {
+            owner: `category ${name}`,
+            admit: input.admit,
+            issues: input.issues,
+            location: `0x${read.pointer(category + 40n).toString(16)}`,
+            onTruncated,
+          },
+        );
+        const decodeReasons = [
+          ...(className === null ? ["category_class_unresolved"] : []),
+          ...(budgetTruncated ? ["max_records_reached"] : []),
+        ];
         result.objc_categories.push({
           name,
           class_name: className,
@@ -65,35 +118,19 @@ export const decodeObjcCategories = (input: {
               : className === null
                 ? "unresolved"
                 : "local",
-          instance_methods: input.methods(
-            read.pointer(category + 16n),
-            owner,
-            "instance",
-            name,
-          ),
-          class_methods: input.methods(
-            read.pointer(category + 24n),
-            owner,
-            "class",
-            name,
-          ),
-          protocols: input.protocols(read.pointer(category + 32n)),
-          properties: readObjcPropertiesOf(read, read.pointer(category + 40n), {
-            owner: `category ${name}`,
-            admit: input.admit,
-            issues: input.issues,
-            location: `0x${read.pointer(category + 40n).toString(16)}`,
-          }),
+          instance_methods: instanceMethods,
+          class_methods: classMethods,
+          protocols,
+          properties,
           location: read.location(category),
           decode:
-            className === null
-              ? { status: "partial", reason: "category_class_unresolved" }
-              : { status: "decoded", reason: null },
+            decodeReasons.length === 0
+              ? { status: "decoded", reason: null }
+              : { status: "partial", reason: decodeReasons.join("; ") },
           evidence: read.evidence(category, "Objective-C category_t record"),
         });
       } catch (cause: unknown) {
         const message = cause instanceof Error ? cause.message : String(cause);
-        failures.push(`Category at 0x${field.toString(16)}: ${message}`);
         input.issues.push(
           issue(
             "objc_properties_categories",

@@ -31,6 +31,12 @@ const dialogDetectionFixturePath = fileURLToPath(
 const cleanupTimeoutFixturePath = fileURLToPath(
   new URL("../../../fixtures/hopperCleanupTimeout.py", import.meta.url),
 );
+const ownerLifetimeFixturePath = fileURLToPath(
+  new URL("../../../fixtures/hopperOwnerLifetime.py", import.meta.url),
+);
+const displaySelectionFixturePath = fileURLToPath(
+  new URL("../../../fixtures/hopperDisplaySelection.py", import.meta.url),
+);
 
 type DiagnosticOverrides = Partial<
   Omit<HopperStartupDiagnostic, "failure_code" | "status">
@@ -76,7 +82,7 @@ const processResult = (
   exitCode: value.status === "ready" ? 0 : failureExit(value.failure_code),
   stderr: `${LINUX_PRIVATE_DISPLAY_DIAGNOSTIC_PREFIX}${JSON.stringify(value)}\n`,
   stderrBytes: 0,
-  cleanupIncomplete: false,
+  cleanup: { status: "released" },
   ...overrides,
 });
 
@@ -107,6 +113,23 @@ describe("Hopper demo dialog detection", () => {
 });
 
 describe("Hopper process cleanup", () => {
+  it.skipIf(process.platform !== "linux").each(["startup", "ready"])(
+    "reaps only its own children when the owner pipe closes during %s",
+    (phase) => {
+      const result = spawnSync(
+        "/usr/bin/python3",
+        [ownerLifetimeFixturePath, helperPath, phase],
+        { encoding: "utf8", timeout: 10_000 },
+      );
+      expect(result.status, result.stderr).toBe(0);
+      expect(JSON.parse(result.stdout)).toEqual({
+        phase,
+        children_cleaned: true,
+        sentinel_alive: true,
+      });
+    },
+  );
+
   it.skipIf(process.platform !== "linux")(
     "kills a child that ignores SIGTERM after the bounded timeout",
     () => {
@@ -116,6 +139,43 @@ describe("Hopper process cleanup", () => {
         { encoding: "utf8", timeout: 5_000 },
       );
       expect(result.status, result.stderr).toBe(0);
+    },
+  );
+});
+
+describe("Hopper demo explicit display number", () => {
+  it.skipIf(process.platform !== "linux")(
+    "honors an explicit display zero instead of choosing a random display",
+    () => {
+      const result = spawnSync(
+        "/usr/bin/python3",
+        [displaySelectionFixturePath, helperPath],
+        { encoding: "utf8", timeout: 5_000 },
+      );
+      expect(result.status, result.stderr).toBe(0);
+      const explicit = (display: string) => ({
+        authorized: [`:${display}`],
+        checked: [`/tmp/.X11-unix/X${display}`, `/tmp/.X${display}-lock`],
+        random_calls: 0,
+        reason: "xauth_failed",
+      });
+      expect(JSON.parse(result.stdout)).toEqual({
+        explicit_zero: explicit("0"),
+        explicit_zero_random_occupied: explicit("0"),
+        explicit_zero_occupied: {
+          authorized: [],
+          checked: ["/tmp/.X11-unix/X0"],
+          random_calls: 0,
+          reason: "address_collision",
+        },
+        explicit_one: explicit("1"),
+        omitted: {
+          authorized: [":123"],
+          checked: ["/tmp/.X11-unix/X123", "/tmp/.X123-lock"],
+          random_calls: 1,
+          reason: "xauth_failed",
+        },
+      });
     },
   );
 });
@@ -275,8 +335,25 @@ describe("private display probe output settlement", () => {
         exitCode: 0,
         stderr: "firstlast",
         stderrBytes: Buffer.byteLength("firstlast"),
-        cleanupIncomplete: false,
+        cleanup: { status: "released" },
       });
     },
   );
+});
+
+it("passes the private X authority cookie through xauth stdin", () => {
+  const fixture = fileURLToPath(
+    new URL("../../../fixtures/hopperXauthority.py", import.meta.url),
+  );
+  const process = spawnSync("python3", ["-I", "-S", fixture, helperPath], {
+    encoding: "utf8",
+    timeout: 5_000,
+  });
+  expect(process.status, process.stderr).toBe(0);
+  expect(JSON.parse(process.stdout)).toMatchObject({
+    arguments: ["fixture-xauth", "-q", "-f", expect.any(String), "source", "-"],
+    stdin: `add :123 . ${"0123456789abcdef".repeat(2)}\n`,
+    cookie_in_argv: false,
+    mode: 0o600,
+  });
 });

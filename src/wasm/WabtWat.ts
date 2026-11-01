@@ -1,52 +1,18 @@
-/** Decode a producer WAT string to frame objdump's raw display text. */
-const watString = (form: string, start: number) => {
-  let end = start;
-  while (end < form.length && form[end] !== '"') {
-    if (form[end] === "\\") end++;
-    end++;
-  }
-  if (end === form.length)
-    throw new Error("Incomplete WABT custom-section name.");
-  const name = form.slice(start, end);
-  // Escapes shrink; literal UTF-8 has the same byte extent as its source.
-  const bytes = Buffer.alloc(Buffer.byteLength(name, "utf8"));
-  let length = 0;
-  for (let index = 0; index < name.length;) {
-    if (name[index] !== "\\") {
-      const next = name.indexOf("\\", index);
-      const end = next < 0 ? name.length : next;
-      length += bytes.write(name.slice(index, end), length, "utf8");
-      index = end;
-      continue;
-    }
-    const hex = name.slice(index + 1, index + 3);
-    if (/^[\da-f]{2}$/iu.test(hex)) {
-      bytes[length++] = Number.parseInt(hex, 16);
-      index += 3;
-    } else {
-      const escape = name[index + 1];
-      const value =
-        escape === "t"
-          ? 9
-          : escape === "n"
-            ? 10
-            : escape === "r"
-              ? 13
-              : escape === '"'
-                ? 34
-                : escape === "\\"
-                  ? 92
-                  : undefined;
-      if (value === undefined) throw new Error("Unsupported WABT name escape.");
-      bytes[length++] = value;
-      index += 2;
-    }
-  }
-  return { bytes: bytes.subarray(0, length), end: end + 1 };
-};
+import { parseWabtInterface } from "./WabtInterface.js";
+import { watString, watStringEnd } from "./WabtString.js";
+import { err, ok, type Result } from "../domain/result.js";
+
+interface WabtNameMetadataFailure {
+  readonly _tag: "WabtNameMetadataFailure";
+  readonly reason: string;
+  /** Names WABT already observed before rejecting the remaining metadata. */
+  readonly partial: readonly string[];
+}
 
 /** Read only module-name metadata from WABT's preserved name-section payload. */
-const moduleNames = (bytes: Uint8Array): string[] => {
+const moduleNames = (
+  bytes: Uint8Array,
+): Result<readonly string[], WabtNameMetadataFailure> => {
   const names: string[] = [];
   let offset = 0;
   const uint32 = (end: number): number => {
@@ -60,51 +26,73 @@ const moduleNames = (bytes: Uint8Array): string[] => {
     }
     throw new Error("Incomplete WABT name-section metadata.");
   };
-  while (offset < bytes.length) {
-    const type = uint32(bytes.length);
-    const size = uint32(bytes.length);
-    const end = offset + size;
-    if (end > bytes.length)
-      throw new Error("Incomplete WABT name-section metadata.");
-    if (type === 0 && size !== 0) {
-      const length = uint32(end);
-      if (offset + length !== end)
-        throw new Error("Incomplete WABT module-name metadata.");
-      names.push(
-        new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(
-          bytes.subarray(offset, end),
-        ),
-      );
+  try {
+    let previousType = -1;
+    while (offset < bytes.length) {
+      const type = uint32(bytes.length);
+      if (type <= previousType)
+        throw new Error("Duplicate or out-of-order WABT name subsection.");
+      previousType = type;
+      const size = uint32(bytes.length);
+      const end = offset + size;
+      if (end > bytes.length)
+        throw new Error("Incomplete WABT name-section metadata.");
+      if (type === 0 && size !== 0) {
+        const length = uint32(end);
+        const nameEnd = offset + length;
+        if (nameEnd > end)
+          throw new Error("Incomplete WABT module-name metadata.");
+        names.push(
+          new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(
+            bytes.subarray(offset, nameEnd),
+          ),
+        );
+        // WABT calls OnModuleName before rejecting trailing subsection bytes.
+        if (nameEnd !== end)
+          throw new Error("Unfinished WABT module-name subsection.");
+      }
+      offset = end;
     }
-    offset = end;
+  } catch (cause) {
+    if (!(cause instanceof Error)) throw cause;
+    return err({
+      _tag: "WabtNameMetadataFailure",
+      reason: cause.message,
+      partial: names,
+    });
   }
-  return names;
+  return ok(names);
 };
 
 /** Extract exact top-level WABT WAT forms; no raw WASM decoding or import/export name unescaping. */
 export const parseWabtWat = (text: string) => {
   if (!/^\(module(?:\s|\))/u.test(text))
     throw new Error("Unsupported WABT WAT module prefix.");
+  const forms: string[] = [];
   const imports: string[] = [];
   const exports: string[] = [];
   const customSectionNames: string[] = [];
   const debugModuleNames: string[] = [];
+  let debugNameMetadata: "not-present" | "complete" | "uninterpretable" =
+    "not-present";
   let depth = 0;
   let start = 0;
-  let quoted = false;
   let commentDepth = 0;
   let lineComment = false;
   let closed = false;
+  const boundaries = /[()";]/gu;
   for (let index = 0; index < text.length; index++) {
+    // Instructions and whitespace inside a form cannot change its framing.
+    if (depth > 0 && !lineComment && commentDepth === 0) {
+      boundaries.lastIndex = index;
+      const boundary = boundaries.exec(text);
+      if (boundary === null) break;
+      index = boundary.index;
+    }
     const char = text[index];
     const next = text[index + 1];
     if (lineComment) {
       if (char === "\n") lineComment = false;
-      continue;
-    }
-    if (quoted) {
-      if (char === "\\") index++;
-      else if (char === '"') quoted = false;
       continue;
     }
     if (commentDepth > 0) {
@@ -130,7 +118,7 @@ export const parseWabtWat = (text: string) => {
     if (char === '"') {
       if (depth === 0)
         throw new Error("Unexpected string outside WABT WAT module.");
-      quoted = true;
+      index = watStringEnd(text, index + 1) - 1;
       continue;
     }
     if (char === "(") {
@@ -140,6 +128,12 @@ export const parseWabtWat = (text: string) => {
     } else if (char === ")") {
       if (depth === 2) {
         const form = text.slice(start, index + 1);
+        if (
+          /^\((?:type|rec|import|export|func|table|memory|global|tag)\s/u.test(
+            form,
+          )
+        )
+          forms.push(form);
         if (/^\(import\s/u.test(form)) imports.push(form);
         else if (/^\(export\s/u.test(form)) exports.push(form);
         else if (/^\(@custom\s/u.test(form)) {
@@ -161,7 +155,17 @@ export const parseWabtWat = (text: string) => {
               form,
               nameString.end + payloadPrefix[0].length,
             );
-            debugModuleNames.push(...moduleNames(payload.bytes));
+            const names = moduleNames(payload.bytes);
+            // Framing needs every observed display, even when optional
+            // metadata coverage is incomplete in this or an earlier section.
+            debugModuleNames.push(
+              ...(names.ok ? names.value : names.error.partial),
+            );
+            if (!names.ok) {
+              debugNameMetadata = "uninterpretable";
+            } else if (debugNameMetadata !== "uninterpretable") {
+              debugNameMetadata = "complete";
+            }
           }
         }
       }
@@ -170,7 +174,14 @@ export const parseWabtWat = (text: string) => {
     } else if (depth === 0 && char !== undefined && !/\s/u.test(char))
       throw new Error("Unexpected text outside WABT WAT module.");
   }
-  if (depth !== 0 || quoted || commentDepth !== 0)
+  if (depth !== 0 || commentDepth !== 0)
     throw new Error("Incomplete WABT WAT output.");
-  return { imports, exports, customSectionNames, debugModuleNames };
+  return {
+    imports,
+    exports,
+    customSectionNames,
+    debugModuleNames,
+    debugNameMetadata,
+    interface: parseWabtInterface(forms),
+  };
 };

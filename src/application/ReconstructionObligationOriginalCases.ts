@@ -36,6 +36,14 @@ export const originalCaseDiagnostics = (
 ): Diagnostic[] => {
   const diagnostics: Diagnostic[] = [];
   const originalCases = originalCasesFor(candidate, binding);
+  // Retain optional case rows, but never leave one of their Evidence links
+  // unresolved merely because its kind is not required for closure.
+  for (const { kind, evidence_id: evidenceId } of originalCases)
+    if (!evidenceById.has(evidenceId))
+      diagnostics.push({
+        code: "missing-original-case",
+        detail: `Original ${kind} case references Evidence ${evidenceId}, which is absent from the bundle.`,
+      });
   for (const caseKind of candidate.required_case_kinds) {
     const cases = originalCases.filter(({ kind }) => kind === caseKind);
     if (cases.length === 0) {

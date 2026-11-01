@@ -20,6 +20,7 @@ export interface WebSourceLocationArtifacts extends SelectedWebScriptArtifacts {
 
 /** Replaceable artifact acquisition boundary for a caller-selected pairing. */
 export interface WebSourceLocationArtifactPort {
+  close?(): Promise<void>;
   load(
     input: WebSourceLocationInput,
     options?: ExecutionOptions,
@@ -35,6 +36,7 @@ export interface WebSourceMapPort {
       readonly path: string;
       readonly url: string;
       readonly position: WebSourceLocationInput["generated_position"];
+      readonly decodeTimeoutMs?: number;
     },
     options?: ExecutionOptions,
   ): Promise<Result<WebSourceMapReport, AnalysisError>>;

@@ -1,4 +1,4 @@
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
 import * as t from "@babel/types";
 import { parseJavaScriptSource } from "./javascriptSourceParser.js";
 import { indexJavaScriptBindingsSteps } from "./javascriptSemanticAnalysis.js";
@@ -171,6 +171,34 @@ it("invalidates a bootstrap module slot mutated through an alias", () => {
 });
 
 it.each([
+  [
+    "destructuring assignment",
+    `[table[1]] = [function(module) { module.exports = require("other"); }];`,
+  ],
+  ["for-of head", `for (table[1] of replacements) {}`],
+  [
+    "wrapped assignment",
+    `(table as never)[1] = function(module) { module.exports = require("other"); };`,
+  ],
+])(
+  "invalidates a bootstrap module slot overwritten through %s",
+  (_name, write) => {
+    const values = inspectedValues(`(() => {
+    const modules = {
+      1(module) { module.exports = require("electron"); },
+      2(module, exports, load) { inspect(load(1)); }
+    };
+    const table = modules;
+    function load(id) { const m = {exports:{}}; modules[id](m,m.exports,load); return m.exports; }
+    ${write}
+    load(2);
+  })();`);
+    expect(values).toHaveLength(1);
+    expect(values[0]).toEqual(expect.objectContaining({ kind: "unknown" }));
+  },
+);
+
+it.each([
   `const electron=require("electron"); const ipc=electron.ipcMain; ipc.handle=()=>null; inspect(electron.ipcMain.handle);`,
   `require("electron").ipcMain.handle=()=>null; inspect(require("electron").ipcMain.handle);`,
   `const electron=require("electron"); ({ipcMain:electron.ipcMain}=replacement); inspect(electron.ipcMain);`,
@@ -288,6 +316,126 @@ it("does not treat statements after a returned module factory as initialized", (
   expect(result).toMatchObject({ kind: "unknown" });
 });
 
+it("retains the guard on a factory's completed fallthrough activation", () => {
+  const value = inspectOne(`(() => {
+    const modules = {
+      5(module, exports) {
+        { if (flag) return; }
+        const electron = require("electron");
+        exports.read = () => electron;
+      },
+      9(module, exports, load) { inspect(load(5).read()); }
+    };
+    function load(id) { const m={exports:{}}; modules[id](m,m.exports,load); return m.exports; }
+    load(9);
+  })();`);
+  const electron = symbolicVariants(value).filter(
+    (variant) => variant.kind === "external",
+  );
+  expect(electron).toHaveLength(1);
+  expect(electron[0]).toMatchObject({
+    path: ["electron"],
+    conditions: expect.arrayContaining([
+      {
+        node: expect.objectContaining({ type: "Identifier", name: "flag" }),
+        positive: false,
+      },
+    ]),
+  });
+  expect(
+    symbolicVariants(value).some((variant) => variant.kind === "unknown"),
+  ).toBe(true);
+});
+
+it("shares completed factory control flow across repeated loads within one analysis", () => {
+  const { parsed, resolver } = resolverFor(`(() => {
+    const modules = {
+      5(module, exports) { if (flag) return; exports.value = 42; },
+      9(module, exports, load) { ${"inspect(load(5));".repeat(64)} }
+    };
+    function load(id) { const m={exports:{}}; modules[id](m,m.exports,load); return m.exports; }
+    load(9);
+  })();`);
+  const evaluated = vi.spyOn(resolver, "evaluate");
+  const results: SymbolicValue[] = [];
+  traverseJavaScriptAst(parsed.program, {
+    enter: (node) => {
+      if (
+        t.isCallExpression(node) &&
+        t.isIdentifier(node.callee, { name: "inspect" })
+      )
+        results.push(resolver.evaluate(node.arguments[0]));
+    },
+  });
+  expect(results).toHaveLength(64);
+  expect(
+    results.every((result) =>
+      symbolicVariants(result).every(
+        (variant, index) => variant === symbolicVariants(results[0]!)[index],
+      ),
+    ),
+  ).toBe(true);
+  expect(
+    evaluated.mock.calls.filter(([node]) =>
+      t.isIdentifier(node, { name: "flag" }),
+    ),
+  ).toHaveLength(1);
+  expect(resolver.truncated).toBe(false);
+});
+
+it("bounds predicate expansion across many conditional factory exits", () => {
+  const { resolver, values } = inspectFixture(`(() => {
+    const modules = {
+      5(module, exports) { ${"if (flag) return;".repeat(1_600)} exports.value = 42; },
+      9(module, exports, load) { inspect(load(5)); }
+    };
+    function load(id) { const m={exports:{}}; modules[id](m,m.exports,load); return m.exports; }
+    load(9);
+  })();`);
+  expect(resolver.truncated).toBe(true);
+  expect(values.flatMap(symbolicVariants)).toContainEqual(
+    expect.objectContaining({
+      kind: "unknown",
+      reason: expect.stringContaining("resource limit"),
+    }),
+  );
+});
+
+it("does not borrow an unrelated activation's namespace read boundary", () => {
+  const { parsed, resolver, values } = inspectFixture(`(() => {
+    const modules = {5(module,exports){exports.stop=true;inspect(exports);if(exports.stop)return;}};
+    function load(id){const m={exports:{}};modules[id](m,m.exports,load);return m.exports;}
+    load(5);
+  })();`);
+  const namespace = values[0];
+  if (namespace?.kind !== "namespace")
+    throw new Error("namespace fixture missing");
+  let read: t.MemberExpression | undefined;
+  traverseJavaScriptAst(parsed.program, {
+    enter: (node) => {
+      if (t.isIfStatement(node) && t.isMemberExpression(node.test))
+        read = node.test;
+    },
+  });
+  if (read === undefined) throw new Error("namespace read fixture missing");
+  expect(
+    resolver.property(namespace, "stop", {
+      node: read,
+      environment: namespace.environment,
+    }),
+  ).toMatchObject({ kind: "literal", value: true });
+  expect(
+    resolver.property(namespace, "stop", {
+      node: read,
+      environment: { ...namespace.environment, activation: {} },
+    }),
+  ).toMatchObject({
+    kind: "unknown",
+    reason: "module export read boundary is unavailable",
+  });
+  expect(resolver.truncated).toBe(false);
+});
+
 it("treats known symbolic records and loaders as truthy", () => {
   expect(symbolicTruth({ kind: "record", values: new Map() })).toBe(true);
   expect(symbolicTruth({ kind: "loader", modules: new Map() })).toBe(true);
@@ -359,6 +507,62 @@ it("composes fallthrough guards across successive conditional returns", () => {
     false,
     false,
   ]);
+});
+
+it.each([
+  ["while", 'inspect((() => { while (flag) { return "loop"; } })());'],
+  ["for", 'inspect((() => { for (;;) { return "forever"; } })());'],
+  ["try", 'inspect((() => { try { return "try"; } finally {} })());'],
+  [
+    "switch",
+    'inspect((() => { switch (x) { default: return "switch"; } })());',
+  ],
+])(
+  "keeps unsupported %s return control flow explicitly unknown",
+  (_name, source) => {
+    const value = inspectOne(source);
+    expect(
+      symbolicVariants(value).some((variant) => variant.kind === "unknown"),
+    ).toBe(true);
+    expect(value).not.toEqual({ kind: "literal", value: undefined });
+  },
+);
+
+it("preserves later returns with unresolved conditions after unsupported return flow", () => {
+  const variants = symbolicVariants(
+    inspectOne(`inspect((() => {
+      while (flag) { return "inside"; }
+      return "after";
+    })());`),
+  );
+
+  expect(variants.some((variant) => variant.kind === "unknown")).toBe(true);
+  expect(variants).toContainEqual(
+    expect.objectContaining({
+      kind: "literal",
+      value: "after",
+      conditionUnresolved: true,
+    }),
+  );
+});
+
+it("does not treat loops without owned returns as unknown return flow", () => {
+  expect(
+    inspectOne(`inspect((() => {
+      while (flag) { work(); }
+      return "after";
+    })());`),
+  ).toEqual({ kind: "literal", value: "after" });
+});
+
+it("does not treat nested-function returns as wrapper return flow", () => {
+  expect(
+    inspectOne(`inspect((() => {
+      try { function nested() { return "inner"; } }
+      catch {}
+      return "outer";
+    })());`),
+  ).toEqual({ kind: "literal", value: "outer" });
 });
 
 it("marks return guards unresolved when a nested join cannot be represented", () => {
@@ -438,3 +642,118 @@ it("propagates branch guards through object properties and function calls", () =
     ]);
   }
 });
+
+it("completes a loaded module past a very large array without stack overflow", () => {
+  const parsed = parseJavaScriptSource(`(() => {
+    const modules = {
+      4(module) {
+        module.exports = { table: [0] };
+        if (module) { return; }
+        return;
+      },
+      8(module, exports, load) { const dep = load(4); inspect(dep); }
+    };
+    function load(id) { const m = {exports:{}}; modules[id](m,m.exports,load); return m.exports; }
+    load(8);
+  })();`);
+  if (parsed === null) throw new Error("symbolic source fixture did not parse");
+  const arrays: t.ArrayExpression[] = [];
+  const bareReturns: t.ReturnStatement[] = [];
+  let inspectCall: t.CallExpression | undefined;
+  traverseJavaScriptAst(parsed.program, {
+    enter: (node) => {
+      if (t.isArrayExpression(node)) arrays.push(node);
+      if (t.isReturnStatement(node) && node.argument == null)
+        bareReturns.push(node);
+      if (
+        t.isCallExpression(node) &&
+        t.isIdentifier(node.callee, { name: "inspect" })
+      )
+        inspectCall = node;
+    },
+  });
+  for (const array of arrays)
+    array.elements = Array.from({ length: 1_000_000 }, () =>
+      t.numericLiteral(0),
+    );
+  const earliestReturn = bareReturns.toSorted(
+    (left, right) => (left.start ?? 0) - (right.start ?? 0),
+  )[0];
+  const inspected = inspectCall?.arguments[0];
+  if (earliestReturn === undefined || inspected === undefined)
+    throw new Error("symbolic source fixture is missing its probes");
+
+  const state = completeSemanticSteps(
+    indexJavaScriptBindingsSteps(parsed.program),
+  );
+  const resolver = new JavaScriptSymbolicBindings(state, parsed.program);
+  const namespace = symbolicVariants(resolver.evaluate(inspected)).find(
+    (variant) => variant.kind === "namespace",
+  );
+  if (namespace?.kind !== "namespace")
+    throw new Error("loaded module namespace missing");
+  expect(namespace.environment.completedAt).toBe(earliestReturn);
+});
+
+it("keeps async call objects truthy and unwraps only awaited results", () => {
+  const values = inspectedValues(`async function flag(){return false;}
+    inspect(flag()); inspect(!flag()); inspect(flag() ?? true);
+    inspect(await flag()); inspect(flag() || false);`);
+  expect(values[0]).toMatchObject({
+    kind: "promise",
+    value: { kind: "literal", value: false },
+  });
+  expect(values[1]).toMatchObject({ kind: "literal", value: false });
+  expect(values[2]?.kind).toBe("promise");
+  expect(values[3]).toMatchObject({ kind: "literal", value: false });
+  expect(values[4]?.kind).toBe("promise");
+});
+
+it("does not execute generator bodies to resolve initial calls", () => {
+  const { resolver, values } = inspectFixture(`function* flag(){return false;}
+    async function* asyncFlag(){return false;}
+    inspect(flag()); inspect(!flag()); inspect(asyncFlag()); inspect(flag() ?? false);`);
+  expect(values.map((value) => value.kind)).toEqual([
+    "iterator",
+    "literal",
+    "iterator",
+    "iterator",
+  ]);
+  expect(values[1]).toMatchObject({ kind: "literal", value: false });
+  expect(resolver.unresolved).toBe(false);
+});
+
+it("preserves captured initialization through async and forwarding returns", () => {
+  const { resolver, values } = inspectFixture(`function outer(){
+    const electron=require("electron");
+    async function capture(){return ()=>electron.ipcMain;}
+    return capture();
+  }
+  async function forward(){return outer();}
+  inspect(await forward());`);
+  const fn = values[0];
+  expect(fn?.kind).toBe("function");
+  if (fn?.kind !== "function") throw new Error("awaited closure missing");
+  expect(resolver.evaluate(fn.node.body, resolver.bind(fn, []))).toMatchObject({
+    kind: "external",
+    path: ["electron", "ipcMain"],
+  });
+  expect(fn.origins.length).toBeGreaterThan(0);
+});
+
+it.each([
+  "function* value(){return false;}",
+  "async function value(){return false;}",
+])(
+  "keeps opaque call-result member access explicitly unresolved: %s",
+  (declaration) => {
+    const { resolver, values } = inspectFixture(
+      `${declaration}inspect(value().next);`,
+    );
+    expect(values[0]).toMatchObject({
+      kind: "unknown",
+      reason: expect.stringContaining("members are not modeled"),
+    });
+    expect(resolver.unresolved).toBe(true);
+  },
+);

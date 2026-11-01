@@ -64,6 +64,7 @@ export const JAVASCRIPT_APPLICATION_RELATIONS = [
   "invokes",
   "handles",
   "calls",
+  "accesses",
   "persists_to",
   "observed_as",
   "changed_from",

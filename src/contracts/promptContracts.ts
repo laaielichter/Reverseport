@@ -203,7 +203,7 @@ export const PROMPT_CONTRACTS = [
       {
         tools: ["open_binary", "analyze_function", "compare_functions"],
         instruction:
-          "When code-level localization is needed, analyze corresponding functions on both targets and compare their Evidence.",
+          "When code-level localization is needed, analyze corresponding functions on both targets and compare their complete dossiers: pass each summary's parent_evidence_id as a retained-evidence reference, or request detail complete.",
       },
       {
         tools: ["compare_process_captures", "find_changed_behavior"],
@@ -273,7 +273,7 @@ export const PROMPT_CONTRACTS = [
       target_path: optional(
         "Absolute target path; omit when the intended target is already open",
       ),
-      document: optional("Open Hopper document to inspect", "document"),
+      document: optional("Active target's provider document name", "document"),
       procedure: optional(
         "Known crash-adjacent procedure name or address",
         "procedure",
@@ -297,7 +297,7 @@ export const PROMPT_CONTRACTS = [
           "analyze_function",
         ],
         instruction:
-          "Resolve crash text or addresses to function dossiers; do not infer a source location from symbol similarity alone.",
+          "Resolve crash text or addresses to function dossiers, requesting detail complete when build_call_path will consume them; do not infer a source location from symbol similarity alone.",
       },
       {
         tools: ["xrefs", "procedure_callers", "build_call_path"],
@@ -365,7 +365,7 @@ export const PROMPT_CONTRACTS = [
     description:
       "Choose a command, inputs, observations, and stopping conditions for a process capture that answers the behavioral question.",
     objective:
-      "Run a caller-selected process experiment that can answer the stated behavioral question.",
+      "Design a caller-selected process experiment before execution, with observations and stopping conditions that can answer the stated behavioral question.",
     arguments: {
       behavior_question: required(
         "Behavioral question the capture must answer and stopping condition",
@@ -385,12 +385,12 @@ export const PROMPT_CONTRACTS = [
       {
         tools: ["capture_process_scenario"],
         instruction:
-          "Run the caller-provided scenario. Explain command lookup, effective working directory, inherited environment, optional filesystem observations, and that the target runs with the current user's permissions.",
+          "Prepare the scenario without running it. Specify the selected command, inputs, effective working directory, expected observations, timeout, and cleanup. Explain command lookup, inherited environment, optional filesystem observations, and that a later capture runs with the current user's permissions. A selected executable and working directory do not authorize execution.",
       },
       {
         tools: ["compare_process_captures"],
         instruction:
-          "When a prior compatible capture exists, compare complete process capture observations under recorded normalization and freshness requirements.",
+          "When prior capture Evidence exists, identify a compatible baseline and the expected differences or failure signals. Plan comparison under recorded normalization and freshness requirements after the separately requested capture.",
       },
       {
         tools: ["record_unknown"],

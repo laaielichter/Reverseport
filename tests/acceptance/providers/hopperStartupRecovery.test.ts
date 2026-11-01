@@ -10,7 +10,7 @@ import { z } from "zod";
 
 import { parseMcpToolError } from "../../fixtures/mcpToolError.js";
 import { workspaceCliTest } from "../../support/cli/workspaceCliFixture.js";
-import { acquireHopperTargetLease } from "../../../src/hopper/HopperTargetLease.js";
+import { acquireHopperTargetLease } from "../../../src/process/HopperLease.js";
 
 const statusSchema = z.object({ result: z.object({ open: z.boolean() }) });
 const test = workspaceCliTest.skipIf(process.platform !== "darwin");
@@ -50,7 +50,42 @@ test(
       });
       const mcp = new Client({ name: "hopper-literal-boundary", version: "1" });
       let runtime: string | undefined;
-      onTestFinished(async () => {
+      try {
+        await mcp.connect(transport);
+        const call = (name: string, arguments_: Record<string, string> = {}) =>
+          mcp.callTool({ name, arguments: arguments_ });
+        expect((await call("open_binary", { path: target })).isError).not.toBe(
+          true,
+        );
+        const first = parseMcpToolError(await call("current_document"));
+        runtime = dirname(await readFile(receipt, "utf8"));
+        expect(first.error).toMatchObject({
+          code: "cleanup_incomplete",
+          details: {
+            diagnostics: {
+              primary_error: {
+                code: "provider_unavailable",
+                details: {
+                  launcher: {
+                    exit_code: 2,
+                    stderr: {
+                      text: expect.stringContaining(
+                        "Not authorized to send Apple events",
+                      ),
+                    },
+                  },
+                },
+              },
+            },
+          },
+        });
+        await access(`${receipt}.document-created`);
+        await access(runtime);
+        expect(parseMcpToolError(await call("list_procedures"))).toEqual(first);
+        expect(parseMcpToolError(await call("close_binary")).error.code).toBe(
+          "cleanup_incomplete",
+        );
+      } finally {
         // SDK close can return immediately after SIGKILL. Wait for its actual
         // child-close event before recovering this process's retained lease.
         let serverExited: Promise<void> | undefined;
@@ -77,41 +112,7 @@ test(
         });
         if (!acquired.acquired) throw new Error("Fixture lease remained live");
         await acquired.lease.release();
-      });
-      await mcp.connect(transport);
-      const call = (name: string, arguments_: Record<string, string> = {}) =>
-        mcp.callTool({ name, arguments: arguments_ });
-      expect((await call("open_binary", { path: target })).isError).not.toBe(
-        true,
-      );
-      const first = parseMcpToolError(await call("current_document"));
-      runtime = dirname(await readFile(receipt, "utf8"));
-      expect(first.error).toMatchObject({
-        code: "cleanup_incomplete",
-        details: {
-          diagnostics: {
-            primary_error: {
-              code: "provider_unavailable",
-              details: {
-                launcher: {
-                  exit_code: 2,
-                  stderr: {
-                    text: expect.stringContaining(
-                      "Not authorized to send Apple events",
-                    ),
-                  },
-                },
-              },
-            },
-          },
-        },
-      });
-      await access(`${receipt}.document-created`);
-      await access(runtime);
-      expect(parseMcpToolError(await call("list_procedures"))).toEqual(first);
-      expect(parseMcpToolError(await call("close_binary")).error.code).toBe(
-        "cleanup_incomplete",
-      );
+      }
     }
   },
 );
@@ -201,13 +202,13 @@ test("recovers a denied Hopper launch through the same stdio MCP session and CLI
   ).toBe(false);
 });
 
-test(
-  "preserves a timed-out handoff and closes only a late bridge with matching run identity",
+test.for(["handoff", "not-found"] as const)(
+  "preserves an unconfirmed %s handoff and closes only a late bridge with matching run identity",
   { timeout: 60_000 },
-  async ({ workspace }) => {
+  async (launchMode, { workspace }) => {
     const target = workspace.path("target");
     await copyFile("/usr/bin/true", target);
-    const mode = await workspace.write("mode", "handoff");
+    const mode = await workspace.write("mode", launchMode);
     const receipt = workspace.path("bootstrap-path");
     const transport = new StdioClientTransport({
       command: process.execPath,
@@ -257,17 +258,35 @@ test(
       details: {
         diagnostics: {
           primary_error: {
-            code: "provider_timeout",
-            details: { timeout_ms: 2000, launcher: { exit_code: 0 } },
+            code:
+              launchMode === "handoff"
+                ? "provider_timeout"
+                : "provider_unavailable",
+            details:
+              launchMode === "handoff"
+                ? { timeout_ms: 2000, launcher: { exit_code: 0 } }
+                : { stage: "launch", launcher: { exit_code: 3 } },
           },
         },
       },
     });
+    if (launchMode === "not-found") {
+      await access(`${receipt}.document-created`);
+      expect(initial.error.details).toMatchObject({
+        diagnostics: {
+          primary_error: { message: expect.stringContaining("Spotlight") },
+        },
+      });
+    }
     expect(parseMcpToolError(await call("list_procedures"))).toEqual(initial);
     const status = z.object({
       result: z.object({
         provider_operation_health: z.object({
-          state: z.literal("not_started"),
+          // A timeout observes incomplete startup; a failed launcher without
+          // confirmed ownership leaves the provider's state unknown.
+          state: z.literal(
+            launchMode === "handoff" ? "not_started" : "unknown",
+          ),
           stage: z.literal("launch"),
         }),
       }),
@@ -289,7 +308,7 @@ test(
     const token = setting("REA_TOKEN");
     const runId = setting("REA_RUN_ID");
     runtime = dirname(socket);
-    const lateBridge = async (identity: string, credential = token) => {
+    const lateBridge = (identity: string, credential = token) => {
       const child = spawn(
         process.execPath,
         [
@@ -301,14 +320,14 @@ test(
         { stdio: "ignore" },
       );
       children.push(child);
-      await vi.waitFor(() => access(socket));
       return child;
     };
     for (const [identity, credential] of [
       ["different-run", token],
       [runId, "different-token"],
     ] as const) {
-      const wrong = await lateBridge(identity, credential);
+      const wrong = lateBridge(identity, credential);
+      await vi.waitFor(() => access(socket));
       expect(parseMcpToolError(await call("close_binary")).error.code).toBe(
         "cleanup_incomplete",
       );
@@ -319,7 +338,9 @@ test(
     }
     const closing = call("close_binary");
     await delay(150);
-    const owned = await lateBridge(runId);
+    // A verified close may remove the socket before the fixture can poll it.
+    // The successful close and child exit establish the owned bridge outcome.
+    const owned = lateBridge(runId);
     expect((await closing).isError).not.toBe(true);
     await vi.waitFor(() => expect(owned.exitCode).toBe(0));
     await expect(access(runtime)).rejects.toMatchObject({ code: "ENOENT" });

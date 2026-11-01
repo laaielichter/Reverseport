@@ -1,9 +1,11 @@
+import { createToolResultDelivery } from "../../../src/server/toolResult.js";
 import { parseMcpToolError } from "../../fixtures/mcpToolError.js";
 import { Client, InMemoryTransport } from "@modelcontextprotocol/client";
 import type { CallToolResult } from "@modelcontextprotocol/server";
 import { afterEach, expect, it } from "vitest";
 
 import { createTestBinarySession } from "../../fixtures/binarySession.js";
+import { toolContract } from "../../../src/contracts/toolContracts.js";
 import type {
   AnalysisClient,
   AnalysisProvider,
@@ -16,7 +18,7 @@ import { createServer } from "../../../src/server/createServer.js";
 import { createEvidence, parseEvidence } from "../../../src/domain/evidence.js";
 import { parseEvidenceBundle } from "../../../src/domain/evidenceBundle.js";
 import { EMPTY_PROCESS_CAPTURE_EXAMPLE } from "../../../src/domain/process/processCaptureExample.js";
-import { jsonValueSchema } from "../../../src/domain/jsonValue.js";
+
 import { PROCESS_PROVIDER } from "../../../src/domain/process/processEvidenceProvider.js";
 
 import { processCaptureSchema } from "../../../src/domain/process/processCapture.js";
@@ -151,7 +153,7 @@ it("records capture disagreement as a contradicted unknown", async () => {
       predicateType: "rea.process-capture",
       operation: "capture_process_scenario",
       parameters: {},
-      result: jsonValueSchema.parse(capture),
+      result: capture,
       confidence: "observed",
       authority: "controlled-replay",
     });
@@ -248,4 +250,344 @@ it("records capture disagreement as a contradicted unknown", async () => {
       structured(await client.callTool({ name: "get_evidence_bundle" })).result,
     ),
   ).toEqual(beforeRepeat);
+});
+
+it("pages filtered unknown heads through the public MCP contract", async () => {
+  const session = createTestBinarySession(providerWithCapabilities([]));
+  const server = createServer({ kind: "session", session });
+  const client = new Client({ name: "unknown-pagination", version: "1" });
+  const [clientTransport, serverTransport] =
+    InMemoryTransport.createLinkedPair();
+  resources.push(client, server);
+  await server.connect(serverTransport);
+  await client.connect(clientTransport);
+
+  const created = [
+    ["matching c", "high", "pagination"],
+    ["matching a", "high", "pagination"],
+    ["matching b", "high", "pagination"],
+    ["filtered severity", "medium", "pagination"],
+    ["filtered domain", "high", "other"],
+  ] as const;
+  for (const [question, severity, domain] of created) {
+    const result = session.recordUnknown({
+      question,
+      severity,
+      domain,
+      required_authority: "analyst-inference",
+      required_confidence: "observed",
+      required_environment: null,
+      recommended_probes: [],
+      relationships: [],
+      supporting_evidence_ids: [],
+      contradicting_evidence_ids: [],
+    });
+    if (!result.ok) throw result.error;
+  }
+
+  const defaultPage = structured(
+    await client.callTool({ name: "list_unknowns", arguments: {} }),
+  ).result as {
+    items: { unknown_id: string }[];
+    total: number;
+    offset: number;
+    next_offset: number | null;
+  };
+  expect(defaultPage.items.map(({ unknown_id }) => unknown_id)).toEqual(
+    defaultPage.items.map(({ unknown_id }) => unknown_id).sort(),
+  );
+  expect(defaultPage).toMatchObject({ total: 5, offset: 0, next_offset: null });
+
+  const detached = session.listUnknownsPage({ limit: 1 });
+  const detachedHead = detached.items[0];
+  if (detachedHead === undefined) throw new Error("Expected one unknown head");
+  const originalQuestion = detachedHead.question;
+  Reflect.set(detachedHead, "question", "changed outside the ledger");
+  expect(
+    session
+      .listUnknowns()
+      .find(({ unknown_id }) => unknown_id === detachedHead.unknown_id)
+      ?.question,
+  ).toBe(originalQuestion);
+
+  const offsetWithoutLimit = structured(
+    await client.callTool({
+      name: "list_unknowns",
+      arguments: { domain: "pagination", offset: 1 },
+    }),
+  ).result as typeof defaultPage;
+  expect(offsetWithoutLimit).toMatchObject({
+    total: 4,
+    offset: 1,
+    next_offset: null,
+  });
+  expect(offsetWithoutLimit.items).toHaveLength(3);
+
+  const noMatches = structured(
+    await client.callTool({
+      name: "list_unknowns",
+      arguments: { domain: "no-such-domain", limit: 2 },
+    }),
+  ).result as typeof defaultPage;
+  expect(noMatches).toMatchObject({
+    items: [],
+    total: 0,
+    offset: 0,
+    next_offset: null,
+  });
+
+  const beyondEnd = structured(
+    await client.callTool({
+      name: "list_unknowns",
+      arguments: { domain: "pagination", offset: 100, limit: 2 },
+    }),
+  ).result as typeof defaultPage;
+  expect(beyondEnd).toMatchObject({
+    total: 4,
+    offset: 100,
+    next_offset: null,
+  });
+  expect(beyondEnd.items).toEqual([]);
+
+  const maximumSafePage = structured(
+    await client.callTool({
+      name: "list_unknowns",
+      arguments: {
+        offset: Number.MAX_SAFE_INTEGER,
+        limit: Number.MAX_SAFE_INTEGER,
+      },
+    }),
+  ).result as typeof defaultPage;
+  expect(maximumSafePage).toMatchObject({
+    total: 5,
+    offset: Number.MAX_SAFE_INTEGER,
+    next_offset: null,
+  });
+  expect(maximumSafePage.items).toEqual([]);
+
+  const request = {
+    name: "list_unknowns",
+    arguments: { domain: "pagination", severity: "high", limit: 2 },
+  } as const;
+  const first = structured(await client.callTool(request))
+    .result as typeof defaultPage;
+  expect(first).toMatchObject({ total: 3, offset: 0, next_offset: 2 });
+  expect(first.items).toHaveLength(2);
+  const secondResponse = await client.callTool({
+    ...request,
+    arguments: { ...request.arguments, offset: first.next_offset ?? 0 },
+  });
+  const second = structured(secondResponse).result as typeof defaultPage;
+  expect(second).toMatchObject({ total: 3, offset: 2, next_offset: null });
+  expect(second.items).toHaveLength(1);
+  expect(
+    [...first.items, ...second.items].map(({ unknown_id }) => unknown_id),
+  ).toEqual(
+    session
+      .listUnknowns({ domain: "pagination", severity: "high" })
+      .map(({ unknown_id }) => unknown_id),
+  );
+  expect(
+    toolContract("list_unknowns").outputSchema.safeParse(
+      secondResponse.structuredContent,
+    ).success,
+  ).toBe(true);
+
+  for (const arguments_ of [
+    { limit: 0 },
+    { offset: -1 },
+    { offset: Number.MAX_SAFE_INTEGER + 1 },
+    { unexpected: true },
+  ]) {
+    expect(
+      (await client.callTool({ name: "list_unknowns", arguments: arguments_ }))
+        .isError,
+    ).toBe(true);
+  }
+});
+
+it("reports contradictory unknown input as a correctable request", async () => {
+  const session = createTestBinarySession(providerWithCapabilities([]));
+  const server = createServer({ kind: "session", session });
+  const client = new Client({ name: "unknown-input", version: "1" });
+  const [clientTransport, serverTransport] =
+    InMemoryTransport.createLinkedPair();
+  resources.push(client, server);
+  await server.connect(serverTransport);
+  await client.connect(clientTransport);
+  const fields = {
+    severity: "medium",
+    required_authority: "analyst-inference",
+    required_confidence: "observed",
+    required_environment: null,
+    recommended_probes: [],
+    relationships: [],
+    supporting_evidence_ids: [],
+    contradicting_evidence_ids: [],
+  };
+  const created = structured(
+    await client.callTool({
+      name: "record_unknown",
+      arguments: {
+        ...fields,
+        question: "Does the result apply?",
+        domain: "input",
+      },
+    }),
+  ).result as {
+    unknown_id: string;
+    revision: number;
+    mutation_evidence_ids: string[];
+  };
+  const duplicate = parseMcpToolError(
+    await client.callTool({
+      name: "record_unknown",
+      arguments: {
+        ...fields,
+        question: "Does the result apply?",
+        domain: "input",
+      },
+    }),
+  ).error;
+  expect(duplicate).toMatchObject({
+    code: "invalid_request",
+    category: "invalid_input",
+    retryable: false,
+    details: { reason: "already-exists" },
+    remediation: {
+      action: expect.stringContaining("do not repeat record_unknown"),
+    },
+  });
+  const evidenceId = created.mutation_evidence_ids[0];
+
+  const overlap = parseMcpToolError(
+    await client.callTool({
+      name: "record_unknown",
+      arguments: {
+        ...fields,
+        question: "Can one observation both support and contradict?",
+        domain: "input",
+        supporting_evidence_ids: [evidenceId],
+        contradicting_evidence_ids: [evidenceId],
+      },
+    }),
+  ).error;
+  expect(overlap).toMatchObject({
+    code: "invalid_request",
+    category: "invalid_input",
+    retryable: false,
+    details: {
+      issues: [
+        expect.objectContaining({
+          message: "Evidence cannot simultaneously support and contradict",
+        }),
+      ],
+    },
+  });
+
+  const update = {
+    ...fields,
+    unknown_id: created.unknown_id,
+    expected_revision: created.revision,
+  };
+  const unresolved = parseMcpToolError(
+    await client.callTool({
+      name: "update_unknown",
+      arguments: { ...update, status: "resolved", resolution: null },
+    }),
+  ).error;
+  expect(unresolved).toMatchObject({
+    code: "invalid_request",
+    category: "invalid_input",
+    retryable: false,
+    details: {
+      issues: [expect.objectContaining({ path: ["resolution"] })],
+    },
+  });
+  expect(session.listUnknowns()).toMatchObject([{ revision: 1 }]);
+
+  const stale = parseMcpToolError(
+    await client.callTool({
+      name: "update_unknown",
+      arguments: {
+        ...update,
+        expected_revision: 2,
+        status: "open",
+        resolution: null,
+      },
+    }),
+  ).error;
+  expect(stale).toMatchObject({ code: "revision_conflict" });
+});
+
+it("returns exact committed unknown receipts when creation and update replies overflow", async () => {
+  const session = createTestBinarySession(providerWithCapabilities([]));
+  const server = createServer(
+    { kind: "session", session },
+    { delivery: createToolResultDelivery(8 * 1024) },
+  );
+  const client = new Client({ name: "unknown-overflow-receipt", version: "1" });
+  const [ct, st] = InMemoryTransport.createLinkedPair();
+  resources.push(client, server);
+  await server.connect(st);
+  await client.connect(ct);
+  const fields = {
+    severity: "medium",
+    supporting_evidence_ids: [],
+    contradicting_evidence_ids: [],
+    required_authority: null,
+    required_confidence: "observed",
+    required_environment: null,
+    recommended_probes: [],
+    relationships: [],
+  };
+  const created = await client.callTool({
+    name: "record_unknown",
+    arguments: { ...fields, question: "x".repeat(10_000), domain: "overflow" },
+  });
+  expect(created.isError).toBe(true);
+  const first = session.listUnknowns()[0]!;
+  const checkReceipt = (response: CallToolResult, unknown: typeof first) => {
+    expect(parseMcpToolError(response)).toMatchObject({
+      error: {
+        code: "resource_constraint",
+        details: {
+          reported_limits: {
+            committed_unknown: {
+              unknown_id: unknown.unknown_id,
+              revision: unknown.revision,
+              mutation_evidence_ids: unknown.mutation_evidence_ids,
+            },
+            evidence_reference: {
+              kind: "retained-evidence",
+              evidence_id: unknown.mutation_evidence_ids[0],
+            },
+          },
+        },
+        remediation: {
+          action: expect.stringContaining(
+            "Do not repeat the completed mutation",
+          ),
+        },
+      },
+    });
+    for (const id of unknown.mutation_evidence_ids)
+      expect(session.evidenceById(id)).toBeDefined();
+  };
+  checkReceipt(created, first);
+  const updated = await client.callTool({
+    name: "update_unknown",
+    arguments: {
+      ...fields,
+      unknown_id: first.unknown_id,
+      expected_revision: first.revision,
+      status: "investigating",
+      resolution: null,
+    },
+  });
+  expect(updated.isError).toBe(true);
+  const latest = session.listUnknowns()[0]!;
+  expect(latest.revision).toBe(2);
+  checkReceipt(updated, latest);
+  expect(session.exportEvidenceBundle().unknowns).toHaveLength(2);
 });

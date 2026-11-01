@@ -4,7 +4,7 @@
 > coding agents take apart apps, games, binaries and websites — with evidence — and rebuild or port them.
 
 Install for agents: `npx reverseport setup` (Claude Code, Codex, Cursor, Gemini CLI, GitHub Copilot, OpenCode, more).
-Claude Code plugin (instead of setup there): `/plugin marketplace add laaielichter/reverseport`, then `/plugin install reverseport@reverseport`. Node.js 22.19+. Runs locally. MIT.
+Claude Code plugin (instead of setup there): `/plugin marketplace add laaielichter/reverseport`, then `/plugin install reverseport@reverseport`. Node.js 22.23.4+ (or 24.22.1+). Runs locally. MIT.
 Sister plugins in the same marketplace: `stashpad@reverseport` (reviewable agent memory; `re_case remember` writes to it) and `agentdisk@reverseport` (agent disk report and undoable cleanup; needs the `agentdisk` binary; `reverseport port doctor` uses it when installed).
 
 Not MCP? `reverseport serve` → `/api/agent/tools?format=openai-strict|responses|anthropic|gemini`, `/api/openapi.json`,

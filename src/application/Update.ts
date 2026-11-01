@@ -3,7 +3,6 @@ import { gt, valid } from "semver";
 import { PRODUCT_IDENTITY } from "../identity.js";
 import type { Result } from "../domain/result.js";
 import type { IntegrationMaintenance } from "./UpdateMaintenance.js";
-export { isUpdateFailure } from "./UpdateFailure.js";
 
 /** Global npm installation that owns the running package and its entry point. */
 export interface NpmInstallation {

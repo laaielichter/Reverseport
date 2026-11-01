@@ -78,6 +78,51 @@ const update = (
   });
 
 describe("residual unknown registry reads and identity", () => {
+  it("seals mutation Evidence without freezing caller-owned inputs", () => {
+    const store = ledger();
+    const recordMutation = mutation("mutable-record-mutation");
+    const recorded = store.recordUnknown(
+      input("Does record mutation evidence stay stable?"),
+      recordMutation,
+    );
+    if (!recorded.ok) throw recorded.error;
+
+    const updateMutation = mutation("mutable-update-mutation");
+    const updated = store.updateUnknown(update(recorded.value), updateMutation);
+    if (!updated.ok) throw updated.error;
+    const atomicEvidence = evidence("mutable-atomic-evidence");
+    const atomicMutation = mutation("mutable-atomic-mutation");
+    const atomicallyRecorded = store.recordWithUnknown(
+      atomicEvidence,
+      input("Does atomic evidence stay stable?"),
+      atomicMutation,
+    );
+    if (!atomicallyRecorded.ok) throw atomicallyRecorded.error;
+
+    for (const callerEvidence of [
+      recordMutation,
+      updateMutation,
+      atomicEvidence,
+      atomicMutation,
+    ]) {
+      expect(Object.isFrozen(callerEvidence)).toBe(false);
+      const retained = store.forAnalysis(callerEvidence.evidence_id);
+      if (retained === undefined) throw new Error("Missing retained Evidence");
+      const originalResult = structuredClone(retained.normalized_result);
+      expect(Object.isFrozen(retained)).toBe(true);
+      Reflect.set(callerEvidence, "operation", "caller mutation");
+      expect(
+        Reflect.set(
+          callerEvidence.normalized_result as object,
+          "label",
+          "caller nested mutation",
+        ),
+      ).toBe(true);
+      expect(retained.operation).not.toBe("caller mutation");
+      expect(retained.normalized_result).toEqual(originalResult);
+    }
+  });
+
   it("merges record-only bundles without changing retained unknown history", () => {
     const store = ledger();
     const created = store.recordUnknown(
@@ -95,7 +140,7 @@ describe("residual unknown registry reads and identity", () => {
         recordsAdded: 1,
         unknownsAdded: 0,
         changed: true,
-        metadataChanged: false,
+        replacements: [],
       },
     });
     expect(store.export().unknowns).toEqual(originalUnknowns);
@@ -105,7 +150,7 @@ describe("residual unknown registry reads and identity", () => {
         recordsAdded: 0,
         unknownsAdded: 0,
         changed: false,
-        metadataChanged: false,
+        replacements: [],
       },
     });
   });
@@ -144,7 +189,7 @@ describe("residual unknown dependency histories", () => {
         recordsAdded: 10_000,
         unknownsAdded: 10_000,
         changed: true,
-        metadataChanged: false,
+        replacements: [],
       },
     });
     expect(store.export()).toEqual(bundle);

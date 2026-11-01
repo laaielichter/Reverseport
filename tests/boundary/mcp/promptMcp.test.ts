@@ -1,13 +1,18 @@
-import { ok as resultOk } from "../../../src/domain/result.js";
+import { ok as resultOk, err, ok } from "../../../src/domain/result.js";
 import { readFile, rm, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 
-import { Client, InMemoryTransport } from "@modelcontextprotocol/client";
+import {
+  Client,
+  InMemoryTransport,
+  StreamableHTTPClientTransport,
+} from "@modelcontextprotocol/client";
 import {
   STDIO_DEFAULT_MAX_BUFFER_SIZE,
   type McpServer,
+  type JSONRPCMessage,
 } from "@modelcontextprotocol/server";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createTestTempDirectory } from "../../fixtures/temporaryDirectory.js";
 
@@ -26,7 +31,6 @@ import { AnalysisProviderRegistry } from "../../../src/application/binary/Analys
 import { composeBinarySession } from "../../../src/application/binary/BinarySessionComposition.js";
 import { createAnalysisProfile } from "../../../src/domain/analysisProfile.js";
 import { AnalysisCancelledError } from "../../../src/domain/analysisErrorCore.js";
-import { err, ok } from "../../../src/domain/result.js";
 import {
   createCacheProvider,
   createTestBinarySession,
@@ -37,8 +41,9 @@ import { createEvidence } from "../../../src/domain/evidence.js";
 import { createServer } from "../../../src/server/createServer.js";
 import { registerGuidedPrompts } from "../../../src/server/registerPrompts.js";
 import { EvidenceMcpServer } from "../../../src/server/EvidenceMcpServer.js";
-import { ToolResultDelivery } from "../../../src/server/toolResult.js";
+import { createToolResultDelivery } from "../../../src/server/toolResult.js";
 import { observed } from "../../fixtures/analysisExecution.js";
+import { serveStreamableHttp } from "../../../src/server/http/serveStreamableHttp.js";
 
 const resources: Array<{ close(): Promise<unknown> }> = [];
 const temporaryDirectories: string[] = [];
@@ -55,6 +60,80 @@ afterEach(async () => {
 });
 
 describe("guided prompts over MCP", () => {
+  registerPromptDiscoveryParameterContract();
+  registerPromptRenderingContracts();
+  registerPromptInputContracts();
+});
+
+function registerPromptDiscoveryParameterContract(): void {
+  it("classifies malformed discovery parameters separately from handler failures", async () => {
+    const session = fixtureSession();
+    const server = createServer({ kind: "session", session });
+    const [peer, transport] = InMemoryTransport.createLinkedPair();
+    resources.push(server, peer, session);
+    await server.connect(transport);
+    await peer.start();
+    let id = 0;
+    const request = (method: string, params: Record<string, unknown>) =>
+      new Promise<JSONRPCMessage>((resolve, reject) => {
+        id += 1;
+        const requestId = id;
+        peer.onmessage = (message) => {
+          if ("id" in message && message.id === requestId) resolve(message);
+        };
+        void peer
+          .send({ jsonrpc: "2.0", id: requestId, method, params })
+          .catch(reject);
+      });
+    await request("initialize", {
+      protocolVersion: "2025-06-18",
+      capabilities: {},
+      clientInfo: { name: "raw-parameter-test", version: "1" },
+    });
+    await peer.send({ jsonrpc: "2.0", method: "notifications/initialized" });
+    for (const [method, params] of [
+      [
+        "prompts/get",
+        { name: "investigate_feature", arguments: { feature: 5 } },
+      ],
+      ["prompts/get", { name: "investigate_feature", arguments: null }],
+      ["prompts/list", { cursor: 5 }],
+      [
+        "completion/complete",
+        {
+          ref: { type: "ref/tool", name: "binary_session" },
+          argument: { name: "foo", value: "" },
+        },
+      ],
+      ["tools/list", { cursor: 5 }],
+    ] as const) {
+      expect(await request(method, params)).toMatchObject({
+        error: { code: -32602, message: expect.stringContaining("params") },
+      });
+    }
+    expect(
+      await request("prompts/get", {
+        name: "investigate_feature",
+        arguments: { feature: "offline search" },
+      }),
+    ).toHaveProperty("result.messages");
+    expect(await request("prompts/list", {})).toHaveProperty("result.prompts");
+    expect(
+      await request("completion/complete", {
+        ref: { type: "ref/prompt", name: "investigate_feature" },
+        argument: { name: "provider", value: "" },
+      }),
+    ).toHaveProperty("result.completion");
+    server.server.setRequestHandler("prompts/list", async () => {
+      throw new Error("injected internal failure");
+    });
+    expect(await request("prompts/list", {})).toMatchObject({
+      error: { code: -32603, message: "injected internal failure" },
+    });
+  });
+}
+
+function registerPromptRenderingContracts(): void {
   it("lists and renders all workflows without changing the tool inventory", async () => {
     const session = fixtureSession();
     const client = await connect(createServer({ kind: "session", session }));
@@ -138,6 +217,32 @@ describe("guided prompts over MCP", () => {
     expect(executions).toBe(0);
   });
 
+  it("prepares a process experiment without directing execution", async () => {
+    let executions = 0;
+    const session = fixtureSession(() => {
+      executions += 1;
+    });
+    const client = await connect(createServer({ kind: "session", session }));
+    resources.push(session);
+    const result = await client.getPrompt({
+      name: "prepare_bounded_process_capture",
+      arguments: MINIMUM_PROMPT_ARGUMENTS.prepare_bounded_process_capture,
+    });
+    const content = result.messages[0]?.content;
+    if (content?.type !== "text") throw new Error("missing prompt text");
+    expect(content.text).toContain("Prepare the scenario without running it");
+    expect(content.text).toContain(
+      "expected observations, timeout, and cleanup",
+    );
+    expect(content.text).toContain("do not authorize execution");
+    expect(content.text).toContain("not a required sequence");
+    expect(content.text).toContain("never as authorization");
+    expect(content.text).not.toContain("Run the caller-provided scenario");
+    expect(executions).toBe(0);
+  });
+}
+
+function registerPromptInputContracts(): void {
   it("rejects invalid prompt requests and safely handles non-completable arguments", async () => {
     let executions = 0;
     const session = fixtureSession(() => {
@@ -188,7 +293,7 @@ describe("guided prompts over MCP", () => {
     });
     expect(executions).toBe(0);
   });
-});
+}
 
 it("preserves caller-selected paths and verbatim crash signals", async () => {
   const directory = await createTestTempDirectory("rea-prompt-exact-context-");
@@ -268,7 +373,7 @@ describe("guided prompt completion registry", () => {
 
   it("emits prompts/list_changed and exposes the updated prompt", async () => {
     const session = createTestBinarySession(createCacheProvider([]));
-    const delivery = new ToolResultDelivery(STDIO_DEFAULT_MAX_BUFFER_SIZE);
+    const delivery = createToolResultDelivery(STDIO_DEFAULT_MAX_BUFFER_SIZE);
     const server = new EvidenceMcpServer(
       { name: "prompt-registry-test", version: "1" },
       {},
@@ -380,6 +485,97 @@ it("guided prompt completion avoids cold startup and cancels warm lookup on clos
   expect((await pending).completion.values).toEqual([]);
 }, 10_000);
 
+it.each(["replacement", "shutdown"])(
+  "waits for cancelled completion cleanup before HTTP %s",
+  async (ending) => {
+    let release!: () => void;
+    let entered!: () => void;
+    let cancelled!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const started = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const aborted = new Promise<void>((resolve) => {
+      cancelled = resolve;
+    });
+    const server = new EvidenceMcpServer(
+      { name: "http-completion-drain", version: "1" },
+      {},
+      undefined,
+      createToolResultDelivery(STDIO_DEFAULT_MAX_BUFFER_SIZE),
+    );
+    const connections = vi.spyOn(server, "connect");
+    let calls = 0;
+    registerGuidedPrompts(server, {
+      async execute(_operation, _parameters, options) {
+        if (++calls > 1) return observed(["fresh-document"]);
+        entered();
+        try {
+          await new Promise<void>((resolve) => {
+            options?.signal?.addEventListener(
+              "abort",
+              () => {
+                cancelled();
+                resolve();
+              },
+              { once: true },
+            );
+          });
+        } finally {
+          await gate;
+        }
+        return observed(["old-document"]);
+      },
+    });
+    const served = await serveStreamableHttp({
+      host: "127.0.0.1",
+      port: 0,
+      createMcpServer: () => server,
+    });
+    resources.push(served);
+    const connectHttp = async () => {
+      const client = new Client({ name: "completion-http", version: "1" });
+      resources.push(client);
+      await client.connect(
+        new StreamableHTTPClientTransport(new URL(served.url)),
+      );
+      return client;
+    };
+    const first = await connectHttp();
+    let next: Client | undefined;
+    let finishing: Promise<void> | undefined;
+    try {
+      void complete(first, "document", "").catch(() => undefined);
+      await started;
+      let finished = false;
+      finishing = (
+        ending === "shutdown"
+          ? served.close()
+          : connectHttp().then((value) => {
+              next = value;
+            })
+      ).then(() => {
+        finished = true;
+      });
+      await aborted;
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      expect(connections).toHaveBeenCalledTimes(1);
+      expect(finished).toBe(false);
+      release();
+      await finishing;
+      if (next !== undefined)
+        expect(await complete(next, "document", "fresh")).toEqual([
+          "fresh-document",
+        ]);
+    } finally {
+      release();
+      await finishing?.catch(() => undefined);
+    }
+  },
+);
+
 describe("guided prompt completion lifecycle", () => {
   it("survives a cancelled completion and ignores its late result", async () => {
     let calls = 0;
@@ -391,7 +587,7 @@ describe("guided prompt completion lifecycle", () => {
     const gate = new Promise<void>((resolve) => {
       release = resolve;
     });
-    const delivery = new ToolResultDelivery(STDIO_DEFAULT_MAX_BUFFER_SIZE);
+    const delivery = createToolResultDelivery(STDIO_DEFAULT_MAX_BUFFER_SIZE);
     const server = new EvidenceMcpServer(
       { name: "prompt-cancellation-test", version: "1" },
       {},

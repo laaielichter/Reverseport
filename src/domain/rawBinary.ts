@@ -1,6 +1,10 @@
 import { z } from "zod";
 
-import type { BinaryArchitecture } from "./binaryTargetTypes.js";
+import type {
+  BinaryArchitecture,
+  HeaderArchitecture,
+  RawOnlyArchitecture,
+} from "./binaryTargetTypes.js";
 import type { ExecutableFormatHint } from "./dosCom.js";
 import { err, ok, type Result } from "./result.js";
 
@@ -10,6 +14,8 @@ export const BINARY_ARCHITECTURES = [
   "x86_64",
   "arm",
   "arm64",
+  "6502",
+  "m68k",
 ] as const satisfies readonly BinaryArchitecture[];
 
 /** Provider-neutral CPU family for a caller-supplied raw-binary load. */
@@ -55,7 +61,7 @@ export const validateRawBinaryLength = (
 
 /** Admitted headerless load identity used by target resolution and profiles. */
 export interface RawBinaryAdmission {
-  readonly architecture: Exclude<BinaryArchitecture, "mips">;
+  readonly architecture: HeaderArchitecture | RawOnlyArchitecture;
   readonly entryPoint: string;
   readonly entryPointSource: string;
 }
@@ -71,9 +77,13 @@ export interface RawBinaryAdmissionRejection {
 }
 
 const addressWidth = (architecture: BinaryArchitecture): bigint =>
-  architecture === "x86" || architecture === "arm"
-    ? 0xffffffffn
-    : 0xffffffffffffffffn;
+  architecture === "6502"
+    ? 0xffffn
+    : architecture === "x86" ||
+        architecture === "arm" ||
+        architecture === "m68k"
+      ? 0xffffffffn
+      : 0xffffffffffffffffn;
 
 /** Validate architecture, entry, and that the mapped image fits the CPU width. */
 export const admitRawBinary = (input: {
@@ -85,7 +95,7 @@ export const admitRawBinary = (input: {
   if (!architecture.success)
     return err({
       reason:
-        "raw-binary format requires architecture (x86, x86_64, arm, or arm64)",
+        "raw-binary format requires architecture (x86, x86_64, arm, arm64, 6502, or m68k)",
       constraint: "load_selection_rejected",
     });
   if (typeof input.entryPoint !== "string")
@@ -106,6 +116,12 @@ export const admitRawBinary = (input: {
   )
     return err({
       reason: `raw-binary ${architecture.data} entry_point ${entry.value.canonical} must be 4-byte aligned`,
+      constraint: "load_selection_rejected",
+    });
+  // 68000-family instruction words are fetched from even addresses.
+  if (architecture.data === "m68k" && entry.value.value % 2n !== 0n)
+    return err({
+      reason: `raw-binary m68k entry_point ${entry.value.canonical} must be 2-byte aligned`,
       constraint: "load_selection_rejected",
     });
   const length = validateRawBinaryLength(input.fileBytes);
@@ -136,6 +152,12 @@ export const rawBinarySelectionError = (input: {
 }): string | undefined => {
   const hasArchitecture = input.architecture !== undefined;
   const hasEntry = input.entryPoint !== undefined;
+  if (input.format === "gamecube-dol") {
+    // The DOL header fixes architecture; entry_point is checked against it at admission.
+    return hasArchitecture
+      ? "format=gamecube-dol takes its architecture from the DOL header; omit architecture"
+      : undefined;
+  }
   if (input.format === "raw-binary") {
     if (!hasArchitecture || !hasEntry)
       return "format=raw-binary requires architecture and entry_point";

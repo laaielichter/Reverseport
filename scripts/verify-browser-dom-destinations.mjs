@@ -6,15 +6,20 @@ import { join } from "node:path";
 import { chromium } from "playwright-core";
 import { startBrowserVerifierSite } from "./fixtures/browser-verifier-site.mjs";
 import { verifyBrowserDomDestinations } from "./lib/browser-dom-destinations-e2e.mjs";
+import { withVerifierCleanup } from "./lib/verifier-cleanup.mjs";
+import { requireOrdinaryWindowsVerifierCaller } from "./lib/windows-ordinary-user-verifier.mjs";
 
 const executable = process.env.REA_BROWSER_EXECUTABLE;
 if (!executable)
   throw new Error("verify:browser:dom requires REA_BROWSER_EXECUTABLE");
-const profile = await mkdtemp(join(tmpdir(), "rea-browser-dom-"));
-const site = await startBrowserVerifierSite();
+await requireOrdinaryWindowsVerifierCaller();
+let profile;
+let site;
 let context;
 let report;
-try {
+await withVerifierCleanup(async () => {
+  profile = await mkdtemp(join(tmpdir(), "rea-browser-dom-"));
+  site = await startBrowserVerifierSite();
   context = await chromium.launchPersistentContext(profile, {
     executablePath: executable,
     headless: true,
@@ -50,9 +55,12 @@ try {
     native_oracle: true,
     verified: true,
   };
-} finally {
-  await context?.close();
-  await site.close();
-  await rm(profile, { recursive: true, force: true });
-}
+}, [
+  () => context?.close(),
+  () => site?.close(),
+  async () => {
+    if (profile !== undefined)
+      await rm(profile, { recursive: true, force: true });
+  },
+]);
 process.stdout.write(`${JSON.stringify(report)}\n`);

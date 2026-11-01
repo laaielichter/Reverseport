@@ -19,6 +19,8 @@ import type {
   EvidenceWriter,
   EvidenceUnknownWriter,
   UnknownRegistryPort,
+  UnknownPage,
+  UnknownQuery,
 } from "./InvestigationRecordPort.js";
 
 /** One investigation's validated record owner, independent of binary execution. */
@@ -58,9 +60,9 @@ export class InvestigationRecords
     return this.#evidence.export();
   }
 
-  /** Borrow a sealed bundle snapshot for complete JSON serialization. */
-  evidenceBundleForSerialization(): EvidenceBundle {
-    return this.#evidence.forSerialization();
+  /** Borrow an authenticated immutable bundle snapshot without copying its records. */
+  immutableEvidenceBundle(): EvidenceBundle {
+    return this.#evidence.immutableBundle();
   }
 
   /** Atomically merge a bundle and report changes for the owner's post-commit observers. */
@@ -122,6 +124,10 @@ export class InvestigationRecords
     } = {},
   ): ResidualUnknown[] {
     return this.#evidence.listUnknowns(filters);
+  }
+
+  listUnknownsPage(query: UnknownQuery = {}): UnknownPage {
+    return this.#evidence.listUnknownsPage(query);
   }
 
   /** Verify registry consistency without asserting the answer is true. */

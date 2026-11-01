@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -175,6 +176,59 @@ describe("Android application projection", () => {
   });
 });
 
+it("projects APK v1 metadata candidates at any META-INF depth", async () => {
+  const root = await createTestTempDirectory("rea-android-v1-metadata-");
+  const path = join(root, "NestedSigning.apk");
+  const writer = new ZipWriter(new Uint8ArrayWriter());
+  const names = [
+    "META-INF/CERT.SF",
+    "META-INF/CERT.EC",
+    "META-INF/keys/CERT.SF",
+    "META-INF/keys/CERT.EC",
+    "META-INF/keys/readme.txt",
+    "META-INF/keys/MANIFEST.MF",
+    "assets/not-signing.SF",
+    "meta-inf/lower.SF",
+  ];
+  for (const entry of names)
+    await writer.add(entry, new TextReader(`content:${entry}`));
+  await writeFile(path, await writer.close());
+
+  const inventory = parseEvidence(
+    await runProviderAnalysis(path, "inventory_artifact", {}),
+  );
+  const projection = androidApplicationProjectionResultSchema.parse(
+    requireSuccessfulProjection(
+      projectAndroidApplicationEvidence({ inventory_evidence: [inventory] }),
+    ).normalized_result,
+  );
+
+  expect(projection.components.signing.map(({ path }) => path).sort()).toEqual([
+    "META-INF/CERT.EC",
+    "META-INF/CERT.SF",
+    "META-INF/keys/CERT.EC",
+    "META-INF/keys/CERT.SF",
+  ]);
+  for (const name of [
+    "META-INF/CERT.SF",
+    "META-INF/CERT.EC",
+    "META-INF/keys/CERT.SF",
+    "META-INF/keys/CERT.EC",
+  ]) {
+    const component = projection.components.signing.find(
+      ({ path }) => path === name,
+    );
+    expect(component).toMatchObject({
+      path: name,
+      artifact_id: expect.stringMatching(/^art_/u),
+      sha256: createHash("sha256").update(`content:${name}`).digest("hex"),
+    });
+  }
+  expect(projection.limitations).toContain(
+    "Manifest, resource, signing, and bytecode semantics require a dedicated Android provider; this projection reports exact inventory paths and hashes only.",
+  );
+});
+
 describe("APK family without a root manifest", () => {
   const missingManifest =
     "No root AndroidManifest.xml occurrence was observed. The APK family comes from the .apk suffix of a ZIP archive, so these bytes may not be an APK.";
@@ -205,6 +259,42 @@ describe("APK family without a root manifest", () => {
   });
 });
 
+it("retains encrypted native library paths as unknown component evidence", async () => {
+  const root = await createTestTempDirectory("rea-android-encrypted-");
+  const path = join(root, "Encrypted.apk");
+  const writer = new ZipWriter(new Uint8ArrayWriter());
+  await writer.add(
+    "lib/arm64-v8a/libentry.so",
+    new TextReader("encrypted native library"),
+    { password: "fixture-only" },
+  );
+  await writeFile(path, await writer.close());
+  const inventory = parseEvidence(
+    await runProviderAnalysis(path, "inventory_artifact", {}),
+  );
+  const projection = androidApplicationProjectionResultSchema.parse(
+    requireSuccessfulProjection(
+      projectAndroidApplicationEvidence({ inventory_evidence: [inventory] }),
+    ).normalized_result,
+  );
+
+  expect(projection.unavailable_components).toContainEqual(
+    expect.objectContaining({
+      path: "lib/arm64-v8a/libentry.so",
+      artifact_id: null,
+      sha256: null,
+      encrypted: true,
+    }),
+  );
+  expect(projection.coverage).toMatchObject({
+    status: "partial",
+    inventory_complete: true,
+  });
+  expect(projection.limitations).toContainEqual(
+    expect.stringContaining("component absence is unknown"),
+  );
+});
+
 describe("case-distinct APK resource names", () => {
   it("inventories and projects an APK whose resource names differ only in case", async () => {
     const root = await createTestTempDirectory("rea-android-case-");
@@ -227,6 +317,9 @@ describe("case-distinct APK resource names", () => {
     const inventory = parseEvidence(
       await runProviderAnalysis(path, "inventory_artifact", {}),
     );
+    expect(inventory.normalized_result).toMatchObject({
+      coverage: { scope: "container-entries", status: "complete" },
+    });
     const result = projectAndroidApplicationEvidence({
       inventory_evidence: [inventory],
     });
@@ -234,6 +327,13 @@ describe("case-distinct APK resource names", () => {
       requireSuccessfulProjection(result).normalized_result,
     );
     expect(projection.root_format).toBe("apk");
+    expect(projection.coverage).toEqual({
+      status: "complete-within-inventory",
+      inventory_complete: true,
+    });
+    expect(projection.limitations.join(" ")).toContain(
+      "case-insensitive destination",
+    );
     expect(projection.components.manifests).toHaveLength(1);
     expect(projection.components.dex).toHaveLength(1);
     expect(JSON.stringify(inventory)).toContain("res/2F.xml");
@@ -267,7 +367,7 @@ describe("Android bridge candidate coverage", () => {
 
     if (!result.ok) throw result.error;
     const projection = androidApplicationProjectionResultSchema.parse(
-      result.value.normalized_result,
+      result.value.evidence.normalized_result,
     );
     expect(projection.components.dex).toHaveLength(1_001);
     expect(projection.bridge_candidates).toHaveLength(1_001);
@@ -300,7 +400,7 @@ describe("Android bridge candidate coverage", () => {
     });
     if (!result.ok) throw result.error;
     const projection = androidApplicationProjectionResultSchema.parse(
-      result.value.normalized_result,
+      result.value.evidence.normalized_result,
     );
 
     expect(projection.components.dex).toHaveLength(129);
@@ -327,4 +427,63 @@ describe("Android bridge candidate coverage", () => {
       `Bridge candidate pairs exceeded the projection safety budget; ${projection.bridge_candidate_coverage.omitted_candidates} hypotheses are omitted. Component arrays still include every component from the supplied inventory pages.`,
     );
   });
+});
+
+it("does not infer a runtime from library-named directories or their text descendants", async () => {
+  const root = await createTestTempDirectory("rea-android-runtime-directory-");
+  const path = join(root, "Fixture.apk");
+  const writer = new ZipWriter(new Uint8ArrayWriter());
+  await writer.add("AndroidManifest.xml", new TextReader("fixture"));
+  for (const name of ["libflutter.so", "libunity.so", "libreactnative.so"]) {
+    await writer.add(`assets/${name}/`, undefined, { directory: true });
+    await writer.add(`assets/${name}/NOTICE.txt`, new TextReader("inert text"));
+  }
+  await writeFile(path, await writer.close());
+  const inventory = parseEvidence(
+    await runProviderAnalysis(path, "inventory_artifact", {}),
+  );
+  const graph = androidApplicationProjectionResultSchema.parse(
+    requireSuccessfulProjection(
+      projectAndroidApplicationEvidence({ inventory_evidence: [inventory] }),
+    ).normalized_result,
+  );
+  expect(graph.components.native_libraries).toEqual([]);
+  expect(graph.runtime_families).toEqual([]);
+  expect(graph.coverage.status).toBe("complete-within-inventory");
+});
+
+it("retains an encrypted root manifest occurrence without claiming absence", async () => {
+  const root = await createTestTempDirectory("rea-android-locked-manifest-");
+  const path = join(root, "Locked.apk");
+  const writer = new ZipWriter(new Uint8ArrayWriter());
+  await writer.add("AndroidManifest.xml", new TextReader("manifest"), {
+    password: "fixture-only",
+  });
+  await writeFile(path, await writer.close());
+  const inventory = parseEvidence(
+    await runProviderAnalysis(path, "inventory_artifact", {}),
+  );
+  const graph = androidApplicationProjectionResultSchema.parse(
+    requireSuccessfulProjection(
+      projectAndroidApplicationEvidence({ inventory_evidence: [inventory] }),
+    ).normalized_result,
+  );
+  expect(graph.components.manifests).toEqual([]);
+  expect(graph.unavailable_components).toContainEqual(
+    expect.objectContaining({
+      path: "AndroidManifest.xml",
+      encrypted: true,
+      artifact_id: null,
+      sha256: null,
+    }),
+  );
+  expect(graph.coverage.status).toBe("partial");
+  expect(
+    graph.limitations.some((text) =>
+      text.startsWith("No root AndroidManifest.xml"),
+    ),
+  ).toBe(false);
+  expect(graph.limitations).toContainEqual(
+    expect.stringContaining("component absence is unknown"),
+  );
 });

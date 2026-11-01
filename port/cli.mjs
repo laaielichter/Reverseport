@@ -73,10 +73,12 @@ export async function doctor() {
   const ws = workspaceRoot();
   let writable = true;
   try { await fs.mkdir(ws, { recursive: true }); await fs.writeFile(path.join(ws, '.doctor'), 'ok'); await fs.rm(path.join(ws, '.doctor')); } catch { writable = false; }
-  const [maj, min] = process.versions.node.split('.').map(Number);
-  const nodeOk = (maj === 22 && min >= 19) || (maj === 24 && min >= 11) || maj >= 26 || maj === 25 || maj === 23;
+  // The package's engines range (the deep-analysis engine needs it); ReversePort's own tools also run on any Node 22+.
+  const [maj, min, patch] = process.versions.node.split('.').map(Number);
+  const atLeast = (m, p) => min > m || (min === m && patch >= p);
+  const nodeOk = (maj === 22 && atLeast(23, 4)) || (maj === 24 && atLeast(22, 1)) || (maj === 26 && atLeast(12, 1)) || maj > 26;
   const disk = await diskReport(ws);
-  return { ok: nodeOk && writable, version: VERSION, node: process.versions.node, nodeOk, nodeRequired: '>=22.19 (22.x), >=24.11 (24.x) or newer', workspace: ws, workspaceWritable: writable, workspaceBytes: disk.bytes, workspaceFolders: disk.folders.slice(0, 12), agentdisk: disk.agentdisk, tools: tools.length, platform: `${os.platform()} ${os.arch()}` };
+  return { ok: nodeOk && writable, version: VERSION, node: process.versions.node, nodeOk, nodeRequired: '22.23.4+ (22.x), 24.22.1+ (24.x) or 26.12.1+ (Node 23 and 25 are not supported)', workspace: ws, workspaceWritable: writable, workspaceBytes: disk.bytes, workspaceFolders: disk.folders.slice(0, 12), agentdisk: disk.agentdisk, tools: tools.length, platform: `${os.platform()} ${os.arch()}` };
 }
 
 function help() {

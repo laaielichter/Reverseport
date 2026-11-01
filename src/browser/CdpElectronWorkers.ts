@@ -1,18 +1,17 @@
+import type { AsarHeaderAdmission } from "../config/asarHeaderAdmission.js";
 import type {
   ElectronPageInspection,
   InspectElectronPageInput,
 } from "../domain/javascript/electronObservation.js";
 import type { CdpConnection } from "./CdpConnection.js";
 import { CdpCaptureCompleteness } from "./CdpCaptureCompleteness.js";
-import {
-  recordValue,
-  recordsValue,
-  cdpStringValue,
-} from "./CdpCaptureValues.js";
+import { recordValue, cdpStringValue } from "./CdpCaptureValues.js";
 import type { CdpEndpointTarget } from "./CdpEndpoint.js";
 import { optionalCdpCommand } from "./CdpOptionalCommand.js";
 import { authorizedElectronFile } from "./ElectronFileScope.js";
 import { compareUnicodeCodePoints } from "../domain/unicodeCodePointOrder.js";
+import { AnalysisCancelledError } from "../domain/analysisErrorCore.js";
+import { workerTargetOwnership } from "./CdpWorkerTargetOwnership.js";
 
 /** Inventory local worker targets without attaching to them. */
 export const captureElectronWorkers = async (input: {
@@ -23,6 +22,7 @@ export const captureElectronWorkers = async (input: {
   readonly frameIds: ReadonlySet<string>;
   readonly completeness: CdpCaptureCompleteness;
   readonly limitations: string[];
+  readonly asarHeaderAdmission: AsarHeaderAdmission;
 }): Promise<ElectronPageInspection["workers"]> => {
   const result = await optionalCdpCommand(
     {
@@ -39,19 +39,45 @@ export const captureElectronWorkers = async (input: {
     return [];
   }
   const workers: ElectronPageInspection["workers"] = [];
-  for (const target of recordsValue(recordValue(result)?.targetInfos)) {
-    const type = cdpStringValue(target.type) ?? "";
-    if (!type.includes("worker")) continue;
-    const openerTargetId = boundedTargetField(target.openerId);
-    const parentFrameId = boundedTargetField(target.parentFrameId);
-    if (
-      openerTargetId !== input.target.id &&
-      (parentFrameId === null || !input.frameIds.has(parentFrameId))
-    ) {
-      input.completeness.exclude("workers", "out_of_target_scope");
+  // A missing target list or a non-record entry is unreadable, not empty.
+  const targetInfos = recordValue(result)?.targetInfos;
+  if (!Array.isArray(targetInfos)) {
+    input.completeness.exclude("workers", "invalid_protocol_value", null);
+    return [];
+  }
+  for (const entry of targetInfos) {
+    throwIfElectronWorkerCaptureCancelled(input.signal);
+    const target = recordValue(entry);
+    if (target === undefined) {
+      input.completeness.exclude("workers", "invalid_protocol_value");
       continue;
     }
-    const path = await authorizedElectronFile(cdpStringValue(target.url) ?? "");
+    const type = cdpStringValue(target.type) ?? "";
+    if (!type.includes("worker")) continue;
+    const ownership = workerTargetOwnership(
+      target,
+      input.target.id,
+      input.frameIds,
+    );
+    if (!ownership.ok) {
+      input.completeness.exclude("workers", "invalid_protocol_value");
+      continue;
+    }
+    if (ownership.value.scope !== "selected") {
+      input.completeness.exclude(
+        "workers",
+        ownership.value.scope === "unknown"
+          ? "unattributed_target"
+          : "out_of_target_scope",
+      );
+      continue;
+    }
+    const path = await authorizedElectronFile(
+      cdpStringValue(target.url) ?? "",
+      input.signal,
+      "inspect_electron_page",
+      input.asarHeaderAdmission,
+    );
     if (path === undefined) {
       input.completeness.exclude("workers", "out_of_target_scope");
       continue;
@@ -70,13 +96,20 @@ export const captureElectronWorkers = async (input: {
       type,
       file_path: path,
       attached: target.attached,
-      opener_target_id: openerTargetId,
-      parent_frame_id: parentFrameId,
+      opener_target_id: ownership.value.openerTargetId,
+      parent_frame_id: ownership.value.parentFrameId,
     });
   }
   return workers.sort((left, right) =>
     compareUnicodeCodePoints(left.target_id, right.target_id),
   );
+};
+
+const throwIfElectronWorkerCaptureCancelled = (signal?: AbortSignal): void => {
+  if (signal?.aborted === true)
+    throw new AnalysisCancelledError("inspect_electron_page", {
+      cause: signal.reason,
+    });
 };
 
 const boundedTargetField = (value: unknown): string | null => {

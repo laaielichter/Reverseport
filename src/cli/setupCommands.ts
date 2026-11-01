@@ -1,3 +1,4 @@
+import { withCommandCancellation } from "./commandCancellation.js";
 import { z } from "incur";
 
 import type { DoctorScope } from "../application/Doctor.js";
@@ -11,6 +12,7 @@ import { homeDirectoryFromEnvironment } from "../config/homeDirectory.js";
 import { isUpdateFailure } from "../application/UpdateFailure.js";
 import {
   confirmInteractiveSetup,
+  renderSetupDryRun,
   renderInteractiveSetupResult,
   renderSetupProgress,
 } from "./interactiveSetup.js";
@@ -22,12 +24,7 @@ import type { CliInstance } from "./types.js";
 import { SUPPORTED_CLIENT_DEFINITIONS } from "../application/SupportedClients.js";
 
 const supportedClientIds = SUPPORTED_CLIENT_DEFINITIONS.map(({ name }) => name);
-const supportedClientSchema = z
-  .string()
-  .refine(
-    (candidate) => supportedClientIds.some((name) => name === candidate),
-    "Unsupported agent integration",
-  );
+const supportedClientSchema = z.enum(supportedClientIds);
 const skillClientSchema = z.union([z.literal("shared"), supportedClientSchema]);
 
 /** Register setup, doctor, uninstall, and update CLI commands. */
@@ -119,18 +116,20 @@ const registerDoctorCommand = (
         .describe("Require the installed REA skill identity to be aligned"),
     }),
     run: ({ options }) =>
-      logCliCommand(logger, "doctor", async () => {
-        const [{ runDoctorOwned }, { createSystemDoctorHost }] =
-          await Promise.all([
-            import("../application/Doctor.js"),
-            import("../doctorRuntime.js"),
-          ]);
-        return runDoctorOwned(
-          options.target,
-          createSystemDoctorHost(environment),
-          doctorScope(options),
-        );
-      }),
+      withCommandCancellation((signal) =>
+        logCliCommand(logger, "doctor", async () => {
+          const [{ runDoctorOwned }, { createSystemDoctorHost }] =
+            await Promise.all([
+              import("../application/Doctor.js"),
+              import("../doctorRuntime.js"),
+            ]);
+          return runDoctorOwned(
+            options.target,
+            createSystemDoctorHost(environment, signal),
+            doctorScope(options),
+          );
+        }),
+      ),
   });
 };
 
@@ -225,6 +224,14 @@ const runSetupCommand = async (
       : undefined,
   );
   if (interactive) renderInteractiveSetupResult(result, environment);
+  else if (
+    options.dryRun &&
+    !input.formatExplicit &&
+    hasInteractiveTerminal()
+  ) {
+    if (result.status === "planned") renderSetupDryRun(result.plannedActions);
+    else renderInteractiveSetupResult(result, environment);
+  }
   return result;
 };
 
@@ -243,7 +250,6 @@ const setupRunOptions = (
     options.skillClient.length > 0;
   const hasSelectedClients =
     hasExplicitScope &&
-    !options.allDetected &&
     (options.client.length > 0 || options.skillClient.length > 0);
   return {
     approved: options.yes && !options.dryRun,
@@ -260,7 +266,7 @@ const setupRunOptions = (
       ? { installSkill: options.skill ?? agentIntegrationSelected }
       : {}),
     ...(interactive ? { onProgress: renderSetupProgress } : {}),
-    ...(hasSelectedClients
+    ...(hasSelectedClients && !options.allDetected
       ? {
           readinessScope: {
             clients: options.client,
@@ -282,6 +288,9 @@ const setupIsInteractive = (
   !options.yes &&
   !options.dryRun &&
   !formatExplicit &&
+  hasInteractiveTerminal();
+
+const hasInteractiveTerminal = (): boolean =>
   process.stdin.isTTY === true &&
   process.stdout.isTTY === true &&
   process.stderr.isTTY === true;

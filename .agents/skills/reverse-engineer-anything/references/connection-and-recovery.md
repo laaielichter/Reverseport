@@ -7,21 +7,26 @@ operation and the next useful step; after repair, continue the investigation.
 Commands below use an installed `reverseport`. If none is available, use the package
 invocation in `SKILL.md` when acquiring ReversePort is authorized. Follow the connected
 server's schemas and the installed CLI's help rather than assuming repository
-main and an older release expose the same arguments.
+main and an older release expose the same arguments. Tool-name prefixes belong
+to the client: find the canonical ReversePort operation in its actual tool listing and
+server association before concluding that it is absent. A shared prefix alone
+does not establish which server an approval wildcard covers. See
+[client tool names and discovery](https://github.com/laaielichter/reverseport/blob/main/docs/client-configuration.md#client-tool-names-and-discovery).
 
 ## Choose the remedy from the observed failure
 
-| Observation                                                                    | Meaning and next step                                                                                                                                                                                                                                                                                                 |
-| ------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| No ReversePort tools in the active session                                     | Inspect registration with `reverseport doctor --client <client-id> --json` (IDs below). A skill installation alone does not register MCP.                                                                                                                                                                             |
-| Missing, malformed or stale registration                                       | Prepare a scoped setup plan; apply only authorized changes with backups.                                                                                                                                                                                                                                              |
-| Aligned registration, but no connected tools                                   | Restart/reconnect the client. Doctor checks registration; it cannot establish the current agent's connection. Inspect the client's launch error if reconnection fails.                                                                                                                                                |
-| `MCP tool call requires approval, but approval policy is never`                | Codex rejected the call before ReversePort executed it. Do not install an engine or repeat setup to solve this client-policy decision. See the approval section below.                                                                                                                                                |
-| ReversePort returns `provider_unavailable` or an unavailable tool entry        | Read that operation's provider diagnostics or `binary_session.result.tool_availability`. Expand each group's tool names and inherit the shared client requirements unless overridden. Use the operation's availability, reason, and remediation; a complete tool catalog does not imply every operation is available. |
-| Only `re_*`, `port_*` and `share_feedback` are listed, or `ENGINE_UNAVAILABLE` | The deep-analysis engine is not built or is turned off; the error message says which. ReversePort's own tools keep working, so continue with them. Ask the user before installing: `npx -y reverseport@latest setup`, or `npm ci && npm run build` in a checkout, then restart the client.                            |
-| `The deep-analysis engine stopped (…)` or `exited during this call`            | Call the engine tool again once: the server restarts the engine. If it keeps stopping, run `reverseport doctor` and report what it shows.                                                                                                                                                                             |
-| A tool you expect is not in the list                                           | The default list is short on purpose. `engine_tools {query}` finds it; `engine_call {tool, arguments}` calls it. `REVERSEPORT_TOOLS=all` lists every tool.                                                                                                                                                            |
-| `reverseport` is missing in a child shell, or Node is incompatible             | Inspect the actual shell PATH and launcher/runtime. A prefix installation may be absent from a login shell's PATH; this does not establish a broken MCP registration.                                                                                                                                                 |
+| Observation                                                                    | Meaning and next step                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| ------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| No ReversePort tools in the active session                                     | Inspect registration with `reverseport doctor --client <client-id> --json` (IDs below). A skill installation alone does not register MCP.                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| Missing, malformed or stale registration                                       | Prepare a scoped setup plan; apply only authorized changes with backups.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| Aligned registration, but no connected tools                                   | Restart/reconnect the client. Doctor checks registration; it cannot establish the current agent's connection. Inspect the client's launch error if reconnection fails.                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| MCP connection dropped or ReversePort could not start                          | If the connection drops, retry that call once only when it is safe to repeat or known not to have started. If it may already have changed the target, or the same failure returns, tell the user ReversePort's connection failed and ask them to restart the MCP client. If ReversePort could not start its connection, retry once, then tell the user and ask them to restart the MCP client. Do not retry a startup failure that returns the same unchanged result. Run `reverseport doctor` when ReversePort could not start or tools stay missing after restart. Doctor cannot restore a live connection by itself. |
+| `MCP tool call requires approval, but approval policy is never`                | Codex rejected the call before ReversePort executed it. Do not install an engine or repeat setup to solve this client-policy decision. See the approval section below.                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| ReversePort returns `provider_unavailable` or an unavailable tool entry        | Read that operation's provider diagnostics or `binary_session.result.tool_availability`. Expand each group's tool names and inherit the shared client requirements unless overridden. Use the operation's availability, reason, and remediation; a complete tool catalog does not imply every operation is available.                                                                                                                                                                                                                                                                                                   |
+| Only `re_*`, `port_*` and `share_feedback` are listed, or `ENGINE_UNAVAILABLE` | The deep-analysis engine is not built or is turned off; the error message says which. ReversePort's own tools keep working, so continue with them. Ask the user before installing: `npx -y reverseport@latest setup`, or `npm ci && npm run build` in a checkout, then restart the client.                                                                                                                                                                                                                                                                                                                              |
+| `The deep-analysis engine stopped (…)` or `exited during this call`            | Call the engine tool again once: the server restarts the engine. If it keeps stopping, run `reverseport doctor` and report what it shows.                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| A tool you expect is not in the list                                           | The default list is short on purpose. `engine_tools {query}` finds it; `engine_call {tool, arguments}` calls it. `REVERSEPORT_TOOLS=all` lists every tool.                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| `reverseport` is missing in a child shell, or Node is incompatible             | Inspect the actual shell PATH and launcher/runtime. A prefix installation may be absent from a login shell's PATH; this does not establish a broken MCP registration.                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 
 If the client cannot launch its shell/sandbox helper or read the installed skill,
 inspect its launch diagnostic. For example, Codex can refuse helper aliases when
@@ -37,6 +42,83 @@ answers part of the question, and name the unavailable evidence separately.
 Do not substitute another target. Label observations from ordinary shell tools
 as such; only actual ReversePort output supplies ReversePort Evidence.
 
+## Distinguish client and server deadlines
+
+A host message such as `timed out awaiting tools/call` with no ReversePort result means
+the client's deadline expired before a result arrived. It does not establish
+that ReversePort finished, canceled successfully, or released all resources. Do not
+repeat the unchanged analysis. Inspect available session/provider state and
+retained Evidence only when useful; an idle `binary_session` is not proof that
+every target-free operation stopped. Never invent a missing Evidence reference.
+
+Allow the host tool deadline to cover execution, cancellation/cleanup, and
+response delivery. In Codex, the setting is
+`mcp_servers.<server-id>.tool_timeout_sec` in **seconds**, not
+`startup_timeout_sec`. Select a value for the actual operation budget and
+headroom, not a universal timeout. See the
+[official MCP configuration reference](https://learn.chatgpt.com/docs/extend/mcp?surface=cli).
+Apply configuration changes only within the authorized scope, preserving
+unrelated entries and backups; reconnect/restart as required by the host.
+When configuration is not editable, report the setting needed or use an
+authorized CLI fallback. Do not silently broaden permissions or switch targets.
+
+A returned ReversePort `provider_timeout` instead means the **server/provider** reached
+its deadline. Follow its `remediation.action`, reuse accessible partial Evidence,
+and resolve reported incomplete cleanup before retrying. Change a request
+field or a `REA_*` setting only when the returned remediation explicitly
+recommends that change. Restart ReversePort when that text says the value is read at
+startup. A mention that a control does not raise the deadline is not a
+recommendation to change it. Do not invent a setting the remediation does not
+name. Raising only the client deadline does not change
+this server budget. For static JavaScript,
+`analysis_timeout_ms` (CLI `reverseport analyze-javascript-application <path>
+--analysis-timeout-ms <milliseconds>`) controls each source's
+startup, analysis and transfer deadline in **milliseconds**. Increase that
+budget or reduce semantic work / select exact inventoried `source_paths` when
+the task permits. Omit `source_paths` for all sources; `[]` is invalid.
+`detail: "summary"` reduces delivery, not analysis work. A per-source budget
+does not bound the elapsed time for an entire multi-source application.
+Partial-Evidence inspection can avoid recomputation; an unavailable reader is
+not itself a reason to block a corrected static-analysis retry.
+The shorthand `reverseport analyze <path>` does not expose this timeout flag; use the
+explicit JavaScript command when changing that budget.
+
+For invalid arguments, use the connected tool's current input schema, or the
+installed CLI's command help. Refresh the catalog if stale; do not guess fields
+from an older skill or return the entire catalog to repair one field. Correct
+all reported fields before retrying.
+
+## Recovery ladder
+
+Follow the returned remediation. Change a request field or a `REA_*` setting
+only when that text explicitly recommends the change. Restart ReversePort when it says
+the value is read at startup. A mention that a control does not raise a limit
+is not a recommendation to change it. Do not invent a setting. Host memory and
+`NODE_OPTIONS` do not raise a ReversePort admission unless that remediation says so.
+
+- MCP connection dropped: retry that call once only when it is safe to repeat
+  or known not to have started. If it may already have changed the target, or
+  it fails again, tell the user ReversePort's connection failed and ask them to restart
+  the MCP client. Do not run `reverseport doctor` for the drop itself.
+- ReversePort could not start its connection: retry once, then tell the user and ask
+  them to restart the MCP client. Run `reverseport doctor` when ReversePort could not start or
+  tools stay missing after that restart. Do not retry a startup failure that
+  returns the same unchanged result.
+- `cleanup_incomplete`, or retained cleanup owners in the error details: retry
+  that exact cleanup owner. Do not start new work that needs those resources
+  until that owner confirms release. Repeating the original call is not that
+  retry.
+- Capacity, when the result is `resource_constraint` and `retryable` is true:
+  wait for the active admission to finish, then retry within the reported
+  limits. Do not restart ReversePort to free the slot.
+- `configuration_invalid`: correct the named setting in the environment that
+  starts ReversePort (the shell or the MCP registration), then restart ReversePort. Run
+  `reverseport doctor` to see the `runtime-configuration:` check. Re-run `reverseport setup`
+  for that client when the registration must carry the new setting, then
+  reconnect.
+- `invalid_request`: correct the reported fields from the current schema. Do
+  not repeat the unchanged call.
+
 ## Repair registration when needed
 
 For any client (example: Codex; use your client's ID):
@@ -48,8 +130,8 @@ reverseport setup --client codex --dry-run --json
 
 Use the current supported client's ID: `claude_code`, `claude_desktop`, `codex`,
 `cursor`, `gemini_cli`, `windsurf`, `devin`, `opencode`, `antigravity`,
-`copilot_cli`, `commandcode`, `qwen_code`, `vscode`, `grok_build`, `omp`, `pi`,
-`hermes`, `dsh`, or `grok_bot`. If unknown, inspect `doctor --json` before choosing a
+`copilot_cli`, `commandcode`, `qwen_code`, `vscode`, `trae`, `grok_build`, `omp`, `pi`,
+`hermes`, `qoder`, `droid`, `zcode`, `dsh`, `freebuff`, or `grok_bot`. If unknown, inspect `doctor --json` before choosing a
 scope. `grok_bot` uses a chat registration step rather than local `mcp.json`.
 For unsupported clients, use version-pinned manual stdio registration or CLI.
 
@@ -95,6 +177,17 @@ writing. Managed policy can constrain client settings. Consult the
 [Codex configuration reference](https://learn.chatgpt.com/docs/config-file/config-reference)
 for the installed client's supported settings. This is an optional recovery
 choice, not a prerequisite for every ReversePort task.
+
+## Repair an editable ReversePort limit
+
+If `details.limit` names an editable setting and its bounds, call
+`update_analysis_settings` directly with a `changes` entry containing `setting`,
+`action: "set"` and `value`. `inspect_analysis_settings` is optional when those
+facts are already present. Retry the same input after work and cleanup settle.
+Runtime defaults affect new work only; explicit per-call arguments take
+precedence and must be corrected directly when selected. Reset restores launch
+values. Updates survive target close/open but disappear on ReversePort restart. They do
+not edit host deadlines, response buffers, registrations or fixed limits.
 
 ## Continue through an installed CLI
 

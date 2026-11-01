@@ -1,14 +1,11 @@
-import { Cli, z } from "incur";
+import { z } from "incur";
 
 import type { CliInstance } from "./types.js";
+import { visitRegisteredCommands } from "./visitRegisteredCommands.js";
 
-type CommandMap = NonNullable<ReturnType<typeof Cli.toCommands.get>>;
 type CommandInputs = Partial<Record<(typeof INPUT_GROUPS)[number], unknown>>;
 
 const INPUT_GROUPS = ["args", "env", "options"] as const;
-
-// Incur types its router key without vars, env, or globals; accept any CLI.
-const registeredCommands: WeakMap<object, CommandMap> = Cli.toCommands;
 
 /**
  * Advertise parser-filled defaults as omittable CLI inputs.
@@ -20,18 +17,7 @@ const registeredCommands: WeakMap<object, CommandMap> = Cli.toCommands;
  * value stay unchanged.
  */
 export const presentOmittableDefaults = (cli: CliInstance): void => {
-  const commands = registeredCommands.get(cli);
-  if (commands !== undefined) presentCommands(commands);
-};
-
-const presentCommands = (commands: CommandMap): void => {
-  for (const entry of commands.values()) {
-    if ("_group" in entry) {
-      presentCommands(entry.commands);
-      if (entry.root !== undefined) presentInputs(entry.root);
-    } else if (!("_alias" in entry) && !("_fetch" in entry))
-      presentInputs(entry);
-  }
+  visitRegisteredCommands(cli, (command) => presentInputs(command));
 };
 
 const presentInputs = (command: CommandInputs): void => {

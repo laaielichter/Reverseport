@@ -27,18 +27,66 @@ if (
   process.exit(64);
 }
 
+const OOME_LINE =
+  "ERROR Abort due to Headless analyzer error: Java heap space (HeadlessAnalyzer) java.lang.OutOfMemoryError: Java heap space\n";
+// Exceeds the 8 MiB diagnostic retention budget in many small chunks.
+const floodStdout = async () => {
+  const line = "INFO  fixture analyzer progress line\n";
+  const block = line.repeat(Math.ceil((64 * 1024) / line.length));
+  for (let written = 0; written < 10.5 * 1024 * 1024;) {
+    if (!process.stdout.write(block))
+      await new Promise((resolve) => process.stdout.once("drain", resolve));
+    written += block.length;
+  }
+};
+
+// The retention boundary ends exactly at the class-name prefix of a different identifier.
+const cutIdentifierAtBudget = async () => {
+  const marker = "java.lang.OutOfMemoryError";
+  let remaining = 8 * 1024 * 1024 - marker.length;
+  const block = Buffer.alloc(64 * 1024, 0x70);
+  while (remaining > 0) {
+    const part = block.subarray(0, Math.min(remaining, block.length));
+    if (!process.stdout.write(part))
+      await new Promise((resolve) => process.stdout.once("drain", resolve));
+    remaining -= part.length;
+  }
+  await new Promise((resolve, reject) =>
+    process.stdout.write(`${marker}Custom\n`, (error) =>
+      error ? reject(error) : resolve(),
+    ),
+  );
+  process.exit(74);
+};
+
+const writeThen = (stream, text, then) =>
+  stream.write(text, () => setTimeout(then, 10));
+
+let endpointPublication;
 if (mode === "exit") process.exit(73);
-if (mode === "silent") setInterval(() => undefined, 1_000);
+if (mode === "flood_silent") {
+  await floodStdout();
+  setInterval(() => undefined, 1_000);
+} else if (mode === "silent") setInterval(() => undefined, 1_000);
 else {
   await rm(endpointPath, { force: true });
   const sockets = new Set();
+  let rejectedConnections = 0;
   const server = createServer((socket) => {
+    if (
+      mode === "reject_all_connections" ||
+      (mode === "reject_first_connection" && rejectedConnections++ === 0)
+    ) {
+      socket.destroy();
+      return;
+    }
     sockets.add(socket);
     socket.once("close", () => sockets.delete(socket));
     socket.setEncoding("utf8");
     const state = {
       buffer: { value: "" },
       pings: { value: 0 },
+      emittedOome: false,
       mode,
       token,
       runId,
@@ -55,7 +103,14 @@ else {
   });
   if (transport === "unix-socket") server.listen(endpointPath);
   else {
-    server.listen(0, "127.0.0.1", async () => {
+    endpointPublication = (async () => {
+      await new Promise((resolve, reject) => {
+        server.once("error", reject);
+        server.listen(0, "127.0.0.1", () => {
+          server.off("error", reject);
+          resolve();
+        });
+      });
       const address = server.address();
       if (address === null || typeof address === "string") process.exit(65);
       const pending = `${endpointPath}.pending`;
@@ -68,7 +123,7 @@ else {
         { flag: "wx" },
       );
       await rename(pending, endpointPath);
-    });
+    })();
   }
 }
 
@@ -95,9 +150,52 @@ const onSocketData = (socket, server, chunk, state) => {
   }
 };
 
+/** Tool-request failures that follow process output, as the Ghidra JVM prints them. */
+const handleOutputFailure = (socket, state) => {
+  const oome = () =>
+    writeThen(process.stderr, OOME_LINE, () => process.exit(1));
+  if (state.mode === "prefix_cut_identifier_exit_tools")
+    void cutIdentifierAtBudget();
+  else if (state.mode === "oom_exit_tools") oome();
+  else if (state.mode === "sigkill_tools")
+    writeThen(process.stdout, "WARN Decompiling 14005c790, pcode error\n", () =>
+      process.kill(process.pid, "SIGKILL"),
+    );
+  else if (state.mode === "flood_then_oom_exit_tools")
+    void floodStdout().then(oome);
+  else if (state.mode === "flood_then_exit_tools")
+    void floodStdout().then(() => process.exit(74));
+  else if (state.mode === "flood_then_malformed")
+    void floodStdout().then(() => socket.write("{invalid\n"));
+  else return false;
+  return true;
+};
+
 const handleRequest = (socket, server, request, state) => {
   if (request.method === "ping") {
     handlePing(socket, request, state);
+    return;
+  }
+  if (
+    state.mode === "old_oom_then_malformed" &&
+    request.method === "list_documents" &&
+    !state.emittedOome
+  ) {
+    state.emittedOome = true;
+    process.stderr.write(
+      "ERROR Abort due to Headless analyzer error: Java heap space (HeadlessAnalyzer) java.lang.OutOfMemoryError:\n",
+      () => setTimeout(() => handleRequest(socket, server, request, state), 10),
+    );
+    return;
+  }
+  if (
+    state.mode === "old_oom_then_malformed" &&
+    request.method === "list_procedures" &&
+    state.emittedOome
+  ) {
+    process.stderr.write("Current operation diagnostic: 雪\n", () =>
+      setTimeout(() => socket.write("{invalid\n"), 10),
+    );
     return;
   }
   if (state.mode === "remote_error" && request.method === "list_procedures") {
@@ -115,13 +213,21 @@ const handleRequest = (socket, server, request, state) => {
   }
   if (state.mode === "exit_tools" && request.method !== "shutdown")
     process.exit(74);
+  if (
+    state.mode === "sigkill_after_first_tool" &&
+    request.method !== "shutdown" &&
+    (state.toolRequests = (state.toolRequests ?? 0) + 1) > 1
+  )
+    process.kill(process.pid, "SIGKILL");
+  if (request.method !== "shutdown" && handleOutputFailure(socket, state))
+    return;
   if (state.mode === "hang_tools" && request.method !== "shutdown") return;
   const inventory =
     request.method === "list_strings" && state.mode === "fragmented"
       ? [stringItem("0x2000", "fixture 雪🦊")]
       : request.method === "list_strings" && state.mode === "oversized_result"
         ? [stringItem("0x2000", "x".repeat(64 * 1024 * 1024 + 1))]
-        : inventoryResultFor(request.method);
+        : inventoryResultFor(request.method, request.params);
   if (inventory !== undefined) {
     const response = `${JSON.stringify({ id: request.id, ok: true, result: inventory })}\n`;
     if (state.mode === "fragmented") {
@@ -224,10 +330,12 @@ const sessionInfo = ({
   analysis_complete: !timedOut,
   analysis_timed_out: timedOut,
   capabilities: [
+    "read_binary_inventory_summary",
     "ping",
     "shutdown",
     "inspect_native_load_image",
     "read_bytes",
+    "search_bytes",
     "address_to_file_offset",
     "address_name",
     "list_documents",
@@ -273,8 +381,49 @@ const sessionInfo = ({
   },
 });
 
-const inventoryResultFor = (method) => {
+const inventoryResultFor = (method, params) => {
   switch (method) {
+    case "read_binary_inventory_summary":
+      return {
+        document: "fixture",
+        segments: inventoryResultFor("list_segments", {}),
+        procedure_count: inventoryResultFor("list_procedures", {}).length,
+        string_count: inventoryResultFor("list_strings", {}).length,
+      };
+    case "search_bytes": {
+      const continued = params.cursor === "fixture-second-page";
+      const paged = params.limit === 1 && !continued;
+      const addresses = continued
+        ? ["0x1005"]
+        : paged
+          ? ["0x1000"]
+          : ["0x1000", "0x1005"];
+      return {
+        matches: addresses.map((address) => ({
+          address,
+          segment: ".text",
+          file_offset: address === "0x1000" ? 0 : 5,
+          procedure: { address: "0x1000", name: "fixture_main" },
+        })),
+        searched: {
+          blocks: [
+            {
+              segment: ".text",
+              start: continued ? "0x1005" : "0x1000",
+              end: "0x1009",
+              bytes: continued ? 5 : 10,
+            },
+          ],
+          bytes: continued ? 5 : 10,
+          skipped_uninitialized: [
+            { segment: ".bss", start: "0x2000", end: "0x200f", bytes: 16 },
+          ],
+          skipped_not_loaded: [],
+        },
+        complete: !paged,
+        next_cursor: paged ? "fixture-second-page" : null,
+      };
+    }
     case "address_name":
       return "fixture_main";
     case "list_documents":
@@ -368,3 +517,5 @@ const stringSearchItem = () => ({
   address: "0x2000",
   value: "fixture value",
 });
+
+await endpointPublication;

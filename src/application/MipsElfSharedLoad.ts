@@ -103,7 +103,7 @@ export const readMipsElfSharedLoad = async (
   // Bound temporary storage, not admitted artifact size. ELF32 records are
   // exact eight-byte structures; every declared record is examined or refused.
   const chunkBytes = 64 * 1024;
-  const relevant = new Set([2, 7, 8, 9, 17, 18, 19, 20, 23]);
+  const relevant = new Set([2, 7, 8, 9, 17, 18, 19, 20, 23, 35, 36, 37]);
   const tags = new Map<number, number>();
   let terminated = false;
   for (
@@ -130,6 +130,10 @@ export const readMipsElfSharedLoad = async (
     }
   }
   if (!terminated) return err("MIPS dynamic table has no DT_NULL terminator");
+  if ([35, 36, 37].some((tag) => tags.has(tag)))
+    return err(
+      "MIPS shared RELR relocation declarations require separate verification",
+    );
   if ([2, 7, 8, 9, 23].some((tag) => (tags.get(tag) ?? 0) !== 0))
     return err(
       "MIPS shared RELA or PLT relocation declarations require separate verification",

@@ -11,10 +11,10 @@ import {
   javascriptRecoveryInputSchema,
   javascriptRecoveryResultSchema,
 } from "../../domain/javascript/javascriptRecovery.js";
-import { jsonObjectSchema, jsonValueSchema } from "../../domain/jsonValue.js";
 import { analysisInputErrorFromIssues } from "../../domain/inputIssueProjection.js";
-import { err, ok, type Result } from "../../domain/result.js";
+import { err, type Result } from "../../domain/result.js";
 import type { ExecutionOptions } from "../AnalysisProvider.js";
+import { completeProviderEvidence } from "../ProviderOperationExecution.js";
 import type { JavaScriptRecoveryPort } from "./JavaScriptRecoveryPort.js";
 
 const OPERATION = "recover_javascript_sources";
@@ -33,7 +33,9 @@ export class JavaScriptRecoveryService {
     options?: ExecutionOptions,
   ): Promise<Result<Evidence, AnalysisError>> {
     if (options?.signal?.aborted === true)
-      return err(new AnalysisCancelledError(OPERATION));
+      return err(
+        new AnalysisCancelledError(OPERATION, { cause: options.signal.reason }),
+      );
     const parsed = javascriptRecoveryInputSchema.safeParse(input);
     if (!parsed.success)
       return err(
@@ -82,7 +84,7 @@ export class JavaScriptRecoveryService {
     const result = javascriptRecoveryResultSchema.safeParse(
       execution.value.result,
     );
-    if (!result.success || execution.value.subject === null)
+    if (!result.success || execution.value.subject == null)
       return err(
         new AnalysisOutputError(
           OPERATION,
@@ -107,17 +109,20 @@ export class JavaScriptRecoveryService {
           "Recovery source or engine identity disagrees with its Evidence binding",
         ),
       );
-    return ok(
-      createEvidence(execution.value.subject, execution.value.provider, {
+    const evidence = createEvidence(
+      execution.value.subject,
+      execution.value.provider,
+      {
         operation: OPERATION,
-        parameters: jsonObjectSchema.parse(parsed.data),
-        result: jsonValueSchema.parse(result.data),
+        parameters: parsed.data,
+        result: result.data,
         rawResult: execution.value.rawResult,
         locations: execution.value.locations,
         limitations: execution.value.limitations,
         confidence: "derived",
         authority: "shipped-artifact",
-      }),
+      },
     );
+    return completeProviderEvidence(evidence, options?.signal);
   }
 }

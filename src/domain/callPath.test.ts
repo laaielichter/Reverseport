@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
+import { AnalysisInputError } from "./analysisErrorCore.js";
 import { buildCallPath } from "./callPath.js";
+import { combineFunctionRelationshipCoverage } from "./functionCallCoverage.js";
 import { callPathResultSchema, type CallPathInput } from "./callPathSchemas.js";
 import { createEvidence, type Evidence } from "./evidence.js";
 import type { JsonValue } from "./jsonValue.js";
@@ -14,6 +16,7 @@ const observe = (
     readonly evidenceLimitations?: readonly string[];
     readonly dossierLimitations?: readonly string[];
     readonly relationshipCoverage?: RelationshipCoverage;
+    readonly calleeUnavailable?: string;
   } = {},
 ): Evidence => {
   const value = {
@@ -51,6 +54,13 @@ const observe = (
     native_value_flow: null,
     basic_blocks: [],
     limitations: [...(options.dossierLimitations ?? [])],
+    ...(options.calleeUnavailable === undefined
+      ? {}
+      : {
+          facet_availability: {
+            callees: { available: false, reason: options.calleeUnavailable },
+          },
+        }),
   } satisfies JsonValue;
   return createEvidence(
     { path: "/tmp/a", sha256: "a".repeat(64), format: "mach-o" },
@@ -260,7 +270,7 @@ describe("call path topology and capacity", () => {
       search_scope: { exhaustive: true },
     });
     expect(result.limitations).toContain(goalLimitation);
-    expect(result.explored.nodes).toBe(2);
+    expect(result.explored).toEqual({ nodes: 2, edges: 1, depth_reached: 1 });
     expect(result.limitations).not.toContain(
       "No analyze_function Evidence covers reachable function 0x5000",
     );
@@ -328,6 +338,158 @@ describe("call path topology and capacity", () => {
   });
 });
 
+describe("directional call relationship coverage", () => {
+  it.each([
+    {
+      directions: ["callers"] as ["callers"],
+      status: "not_found",
+      exhaustive: true,
+    },
+    {
+      directions: ["callees"] as ["callees"],
+      status: "unknown",
+      exhaustive: false,
+    },
+    {
+      directions: ["callers", "callees"] as ["callers", "callees"],
+      status: "unknown",
+      exhaustive: false,
+    },
+  ])(
+    "uses $directions coverage for the forward search",
+    ({ directions, status, exhaustive }) => {
+      const limitation = "The inventory omitted a reference.";
+      const relationshipCoverage: RelationshipCoverage = {
+        status: "partial",
+        limitations: [limitation],
+        limited_directions: directions,
+      };
+      const result = run([
+        observe("0x1000", ["0x2000"], "rea-workflow", { relationshipCoverage }),
+        observe("0x2000", [], "rea-workflow", { relationshipCoverage }),
+      ]);
+      expect(result).toMatchObject({ status, search_scope: { exhaustive } });
+      expect(result.limitations).toContain(limitation);
+    },
+  );
+});
+
+describe("call path search extent", () => {
+  type Graph = Readonly<Record<string, readonly string[]>>;
+  const search = (graph: Graph, goal: string, start = "0x1000") =>
+    run(
+      Object.entries(graph).map(([address, callees]) =>
+        observe(address, callees),
+      ),
+      { start: { address: start }, goal: { address: goal } },
+    );
+  const withoutGoalDossier = (graph: Graph, goal: string): Graph =>
+    Object.fromEntries(
+      Object.entries(graph).filter(([address]) => address !== goal),
+    );
+
+  // Each case states what the forward search discovers and expands. A terminal
+  // goal is discovered but never expanded, so its callees are not explored.
+  it.each([
+    {
+      label: "goal at depth one with an outgoing edge",
+      graph: { "0x1000": ["0x4000"], "0x4000": ["0x5000"] },
+      goal: "0x4000",
+      status: "found",
+      explored: { nodes: 2, edges: 1, depth_reached: 1 },
+    },
+    {
+      label: "zero hops from a start with callees",
+      graph: { "0x1000": ["0x2000"] },
+      goal: "0x1000",
+      status: "found",
+      explored: { nodes: 1, edges: 0, depth_reached: 0 },
+    },
+    {
+      label: "zero hops from a self-recursive start",
+      graph: { "0x1000": ["0x1000"] },
+      goal: "0x1000",
+      status: "found",
+      explored: { nodes: 1, edges: 0, depth_reached: 0 },
+    },
+    {
+      label: "self-recursive goal",
+      graph: { "0x1000": ["0x4000"], "0x4000": ["0x4000"] },
+      goal: "0x4000",
+      status: "found",
+      explored: { nodes: 2, edges: 1, depth_reached: 1 },
+    },
+    {
+      label: "deep goal calling back into and beyond the closure",
+      graph: {
+        "0x1000": ["0x2000", "0x3000"],
+        "0x2000": ["0x4000"],
+        "0x3000": [],
+        "0x4000": ["0x1000", "0x6000"],
+      },
+      goal: "0x4000",
+      status: "found",
+      explored: { nodes: 4, edges: 3, depth_reached: 2 },
+    },
+    {
+      label: "goal with several expanded callers",
+      graph: {
+        "0x1000": ["0x2000", "0x3000"],
+        "0x2000": ["0x4000"],
+        "0x3000": ["0x4000"],
+        "0x4000": ["0x5000"],
+      },
+      goal: "0x4000",
+      status: "found",
+      explored: { nodes: 4, edges: 4, depth_reached: 2 },
+    },
+    {
+      label: "expanded cycle without the goal",
+      graph: { "0x1000": ["0x2000"], "0x2000": ["0x1000", "0x2000"] },
+      goal: "0x4000",
+      status: "not_found",
+      explored: { nodes: 2, edges: 3, depth_reached: 1 },
+    },
+    {
+      label: "unreachable goal with its own dossier",
+      graph: { "0x1000": ["0x2000"], "0x2000": [], "0x4000": ["0x5000"] },
+      goal: "0x4000",
+      status: "not_found",
+      explored: { nodes: 2, edges: 1, depth_reached: 1 },
+    },
+    {
+      label: "reachable function without Evidence",
+      graph: { "0x1000": ["0x2000"] },
+      goal: "0x4000",
+      status: "unknown",
+      explored: { nodes: 2, edges: 1, depth_reached: 1 },
+    },
+  ])(
+    "counts only expanded edges: $label",
+    ({ graph, goal, status, explored }) => {
+      expect(search(graph, goal)).toMatchObject({ status, explored });
+    },
+  );
+
+  it("keeps explored extent independent of the terminal goal's dossier", () => {
+    for (const graph of [
+      { "0x1000": ["0x4000"], "0x4000": ["0x5000", "0x6000"] },
+      { "0x1000": ["0x4000"], "0x4000": ["0x4000", "0x1000"] },
+      {
+        "0x1000": ["0x2000", "0x3000"],
+        "0x2000": ["0x4000"],
+        "0x3000": ["0x4000"],
+        "0x4000": ["0x2000", "0x7000", "0x8000"],
+      },
+    ]) {
+      const supplied = search(graph, "0x4000");
+      const omitted = search(withoutGoalDossier(graph, "0x4000"), "0x4000");
+      expect(supplied.status).toBe("found");
+      expect(supplied.explored).toEqual(omitted.explored);
+    }
+  });
+});
+
 describe("explicit call relationship coverage", () => {
   it("accumulates 150,000 partial reasons without argument-stack exhaustion", () => {
     const result = run([
@@ -391,9 +553,63 @@ describe("explicit call relationship coverage", () => {
     expect(result).toMatchObject({
       status: "found",
       search_scope: { exhaustive: true },
-      explored: { nodes: 2 },
+      explored: { nodes: 2, edges: 1, depth_reached: 1 },
     });
     expect(result.limitations).toEqual([reason]);
+  });
+
+  it("establishes not_found when only caller coverage is unknown", () => {
+    const reason =
+      "Callers: Upstream xrefs do not establish direct caller relationships.";
+    const result = run([
+      observe("0x1000", ["0x2000"], "rea-workflow", {
+        relationshipCoverage: { status: "unknown", reason },
+      }),
+      observe("0x2000", [], "rea-workflow", {
+        relationshipCoverage: { status: "unknown", reason },
+      }),
+    ]);
+    expect(result).toMatchObject({
+      status: "not_found",
+      search_scope: { exhaustive: true },
+    });
+    expect(result.limitations).toContain(reason);
+  });
+
+  it("stays unknown when callee coverage is unknown", () => {
+    const reason =
+      "Callees: Upstream callees capped results at 500; additional callees remain unknown.";
+    const result = run([
+      observe("0x1000", ["0x2000"], "rea-workflow", {
+        relationshipCoverage: { status: "unknown", reason },
+      }),
+      observe("0x2000", [], "rea-workflow", {
+        relationshipCoverage: { status: "unknown", reason },
+      }),
+    ]);
+    expect(result).toMatchObject({
+      status: "unknown",
+      search_scope: { exhaustive: false },
+    });
+    expect(result.limitations).toContain(reason);
+  });
+
+  it("stays unknown when both caller and callee coverage are unknown", () => {
+    const reason =
+      "Callers: Upstream xrefs do not establish direct caller relationships. Callees: Upstream callees are not observed.";
+    const result = run([
+      observe("0x1000", ["0x2000"], "rea-workflow", {
+        relationshipCoverage: { status: "unknown", reason },
+      }),
+      observe("0x2000", [], "rea-workflow", {
+        relationshipCoverage: { status: "unknown", reason },
+      }),
+    ]);
+    expect(result).toMatchObject({
+      status: "unknown",
+      search_scope: { exhaustive: false },
+    });
+    expect(result.limitations).toContain(reason);
   });
 
   it("ignores incomplete relationship coverage outside the reachable search closure", () => {
@@ -415,6 +631,34 @@ describe("explicit call relationship coverage", () => {
   });
 });
 
+describe("IDA-capped callee coverage beside unknown callers", () => {
+  it("keeps the search non-exhaustive for the combined coverage value", () => {
+    const combined = combineFunctionRelationshipCoverage(
+      {
+        status: "unknown",
+        reason: "Upstream xrefs do not establish direct caller relationships.",
+      },
+      {
+        status: "partial",
+        limitations: [
+          "Upstream callees capped results at 500; additional callees remain unknown.",
+        ],
+      },
+    );
+    expect(combined.status).toBe("unknown");
+    const result = run([
+      observe("0x1000", [], "rea-workflow", { relationshipCoverage: combined }),
+      observe("0x4000", []),
+    ]);
+    expect(result).toMatchObject({
+      status: "unknown",
+      search_scope: { exhaustive: false },
+      shortest_hops: null,
+      paths: [],
+    });
+  });
+});
+
 describe("call path evidence admission", () => {
   it("normalizes hex addresses and rejects duplicates and mixed providers", () => {
     expect(
@@ -426,9 +670,9 @@ describe("call path evidence admission", () => {
       run([observe("0x1000", [])], { start: { address: "1000" } }),
     ).toThrow();
     const one = observe("0x1000", []);
-    expect(() => run([one, one])).toThrow(/Duplicate/u);
+    expect(() => run([one, one])).toThrow(AnalysisInputError);
     expect(() => run([one, observe("0x2000", [], "other")])).toThrow(
-      /providers/u,
+      AnalysisInputError,
     );
   });
 
@@ -453,8 +697,16 @@ describe("call path evidence admission", () => {
   });
 
   it("requires an observed start function", () => {
-    expect(() => run([observe("0x2000", [])])).toThrow(
-      /supplied for start 0x1000/u,
-    );
+    expect(() => run([observe("0x2000", [])])).toThrow(AnalysisInputError);
   });
+});
+
+it("keeps an absent path unknown when only callee facet availability is declared", () => {
+  const result = run([
+    observe("0x1000", [], "rea-workflow", {
+      calleeUnavailable: "Graph callees unavailable",
+    }),
+  ]);
+  expect(result.status).toBe("unknown");
+  expect(result.limitations).toContain("Graph callees unavailable");
 });

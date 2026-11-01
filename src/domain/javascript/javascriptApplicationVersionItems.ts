@@ -7,6 +7,8 @@ import type {
   ApplicationNode,
 } from "./javascriptApplicationGraphSchemas.js";
 import type { JavaScriptApplicationGraph } from "./javascriptApplicationGraph.js";
+import { javaScriptFileOccurrenceSchema } from "./javascriptArtifactFiles.js";
+import { applicationEndpointCorrespondence } from "./javascriptApplicationEndpointCorrespondence.js";
 import type { ApplicationVersionComparisonItem } from "./javascriptApplicationVersionComparisonSchemas.js";
 import type {
   ApplicationVersionMatchingProjection,
@@ -29,6 +31,8 @@ interface ItemContext {
   readonly pairByRight: ReadonlyMap<string, string>;
   readonly leftRelationships: RelationshipIndex;
   readonly rightRelationships: RelationshipIndex;
+  readonly leftUnresolvedEndpointKinds: ReadonlySet<string | null>;
+  readonly rightUnresolvedEndpointKinds: ReadonlySet<string | null>;
 }
 
 type ItemContextInput = Omit<
@@ -39,6 +43,8 @@ type ItemContextInput = Omit<
   | "pairByRight"
   | "leftRelationships"
   | "rightRelationships"
+  | "leftUnresolvedEndpointKinds"
+  | "rightUnresolvedEndpointKinds"
 > & {
   readonly leftNativeEvidence: readonly Evidence[];
   readonly rightNativeEvidence: readonly Evidence[];
@@ -106,6 +112,8 @@ export const classifyJavaScriptApplicationVersions = (
     pairByRight,
     leftRelationships: indexRelationships(context.leftGraph),
     rightRelationships: indexRelationships(context.rightGraph),
+    leftUnresolvedEndpointKinds: unresolvedEndpointKinds(context.leftGraph),
+    rightUnresolvedEndpointKinds: unresolvedEndpointKinds(context.rightGraph),
   };
   const leftItems = matching.unmatchedLeft.map((node) => {
     const candidates = matching.candidatesForLeft.get(node.node_id) ?? [];
@@ -142,19 +150,33 @@ const matchedItem = (
   pair: ApplicationVersionNodePair,
   context: ItemContext,
 ): ApplicationVersionComparisonItem => {
-  const dimensions = changedDimensions(pair, context);
+  const relationships = compareRelationships(pair, context);
+  const dimensions = changedDimensions(pair, relationships);
   const complete = graphsComplete(context);
-  const observedChange = dimensions.some((dimension) =>
-    ["content", "location", "properties"].includes(dimension),
-  );
+  const ownEvidenceUncertain =
+    ownPresenceUncertain(pair.left) || ownPresenceUncertain(pair.right);
+  const endpointTargetUncertain =
+    unresolvedEndpointTarget(pair.left) || unresolvedEndpointTarget(pair.right);
+  const observedChange =
+    !ownEvidenceUncertain &&
+    (dimensions.includes("content") || dimensions.includes("properties"));
+  // Coordinates remain comparison evidence; relocation alone is not a
+  // content, property, or relationship change.
+  const completeChange =
+    !ownEvidenceUncertain &&
+    complete &&
+    dimensions.some((dimension) => dimension !== "location");
   const status: ApplicationVersionComparisonItem["status"] =
-    observedChange || (complete && dimensions.length > 0)
-      ? "changed"
-      : complete
-        ? "unchanged"
-        : "unknown";
-  const finalDimensions =
-    status === "unknown" && !dimensions.includes("coverage")
+    ownEvidenceUncertain
+      ? "unknown"
+      : observedChange || completeChange
+        ? "changed"
+        : complete && !relationships.unresolved && !endpointTargetUncertain
+          ? "unchanged"
+          : "unknown";
+  const finalDimensions = ownEvidenceUncertain
+    ? []
+    : status === "unknown" && !complete
       ? [...dimensions, "coverage" as const]
       : dimensions;
   const semantic: ComparisonItemSemantic = {
@@ -165,7 +187,23 @@ const matchedItem = (
     match: matchedMatch(pair),
     dimensions: finalDimensions,
     evidence_links: itemEvidenceLinks(pair.left, pair.right, context),
-    limitations: pairLimitations(pair, status),
+    limitations: [
+      ...new Set([
+        ...ownComparisonLimitations(pair.left),
+        ...ownComparisonLimitations(pair.right),
+      ]),
+      ...matchLimitations(pair),
+      ...(status === "unknown" && !complete
+        ? [
+            "Incomplete graph coverage prevents a complete node-level conclusion.",
+          ]
+        : []),
+      ...(relationships.unresolved
+        ? [
+            "Relationship target identity remains unresolved; equal node kinds do not establish cross-version alignment.",
+          ]
+        : []),
+    ],
   };
   return itemWithId(semantic);
 };
@@ -202,19 +240,45 @@ const leftOnlyItem = (
         candidate_right_node_ids: [firstCandidate, ...remainingCandidates],
       },
       dimensions: ["availability"],
-      limitations: [AMBIGUOUS_MATCH_LIMITATION],
+      limitations: [
+        ...ownComparisonLimitations(node),
+        AMBIGUOUS_MATCH_LIMITATION,
+      ],
     });
-  const absenceObserved = absenceClaimable(context.rightGraph.coverage);
+  if (ownPresenceUncertain(node) || unresolvedEndpointTarget(node))
+    return itemWithId({
+      ...common,
+      status: "unknown",
+      left_node_id: node.node_id,
+      right_node_id: null,
+      match: unmatchedMatch(),
+      dimensions: ["availability"],
+      limitations: ownComparisonLimitations(node),
+    });
+  const endpointGap = oppositeEndpointUncertain(
+    node,
+    context.rightUnresolvedEndpointKinds,
+  );
+  const absenceObserved =
+    !endpointGap && absenceClaimable(context.rightGraph.coverage);
   return itemWithId({
     ...common,
     status: absenceObserved ? "removed" : "unknown",
     left_node_id: node.node_id,
     right_node_id: null,
     match: unmatchedMatch(),
-    dimensions: absenceObserved
-      ? ["availability"]
-      : ["availability", "coverage"],
-    limitations: absenceObserved ? [] : [INCOMPLETE_GRAPH_LIMITATION],
+    dimensions:
+      absenceObserved || endpointGap
+        ? ["availability"]
+        : ["availability", "coverage"],
+    limitations: [
+      ...ownComparisonLimitations(node),
+      ...(endpointGap
+        ? [ENDPOINT_ABSENCE_LIMITATION]
+        : absenceObserved
+          ? []
+          : [INCOMPLETE_GRAPH_LIMITATION]),
+    ],
   });
 };
 
@@ -242,19 +306,45 @@ const rightOnlyItem = (
         candidate_right_node_ids: [],
       },
       dimensions: ["availability"],
-      limitations: [AMBIGUOUS_MATCH_LIMITATION],
+      limitations: [
+        ...ownComparisonLimitations(node),
+        AMBIGUOUS_MATCH_LIMITATION,
+      ],
     });
-  const absenceObserved = absenceClaimable(context.leftGraph.coverage);
+  if (ownPresenceUncertain(node) || unresolvedEndpointTarget(node))
+    return itemWithId({
+      ...common,
+      status: "unknown",
+      left_node_id: null,
+      right_node_id: node.node_id,
+      match: unmatchedMatch(),
+      dimensions: ["availability"],
+      limitations: ownComparisonLimitations(node),
+    });
+  const endpointGap = oppositeEndpointUncertain(
+    node,
+    context.leftUnresolvedEndpointKinds,
+  );
+  const absenceObserved =
+    !endpointGap && absenceClaimable(context.leftGraph.coverage);
   return itemWithId({
     ...common,
     status: absenceObserved ? "added" : "unknown",
     left_node_id: null,
     right_node_id: node.node_id,
     match: unmatchedMatch(),
-    dimensions: absenceObserved
-      ? ["availability"]
-      : ["availability", "coverage"],
-    limitations: absenceObserved ? [] : [INCOMPLETE_GRAPH_LIMITATION],
+    dimensions:
+      absenceObserved || endpointGap
+        ? ["availability"]
+        : ["availability", "coverage"],
+    limitations: [
+      ...ownComparisonLimitations(node),
+      ...(endpointGap
+        ? [ENDPOINT_ABSENCE_LIMITATION]
+        : absenceObserved
+          ? []
+          : [INCOMPLETE_GRAPH_LIMITATION]),
+    ],
   });
 };
 
@@ -314,10 +404,60 @@ const AMBIGUOUS_MATCH_LIMITATION =
   "Multiple nodes share the same permitted match key; no cross-version pair was selected.";
 const INCOMPLETE_GRAPH_LIMITATION =
   "The opposite graph is incomplete, so an unmatched node cannot be classified as added or removed.";
+const ENDPOINT_TARGET_LIMITATION =
+  "Endpoint target identity remains unresolved; any matched source site aligns retained syntax, not an established runtime destination.";
+const ENDPOINT_ABSENCE_LIMITATION =
+  "An unresolved endpoint of the same kind on the opposite side prevents proving this endpoint target absent.";
+
+const unresolvedEndpointTarget = (node: ApplicationNode): boolean =>
+  node.kind === "endpoint" &&
+  applicationEndpointCorrespondence(node).targetResolution !== "exact";
+
+const unresolvedEndpointKinds = (
+  graph: JavaScriptApplicationGraph,
+): ReadonlySet<string | null> => {
+  const kinds = new Set<string | null>();
+  for (const node of graph.nodes) {
+    if (node.kind !== "endpoint") continue;
+    const identity = applicationEndpointCorrespondence(node);
+    if (identity.targetResolution !== "exact") kinds.add(identity.endpointKind);
+  }
+  return kinds;
+};
+
+const oppositeEndpointUncertain = (
+  node: ApplicationNode,
+  kinds: ReadonlySet<string | null>,
+): boolean => {
+  if (node.kind !== "endpoint" || kinds.size === 0) return false;
+  const { endpointKind } = applicationEndpointCorrespondence(node);
+  return endpointKind === null || kinds.has(null) || kinds.has(endpointKind);
+};
+
+const ownPresenceUncertain = (node: ApplicationNode): boolean =>
+  node.observations.every(
+    ({ evidence }) =>
+      evidence.state === "unknown" || evidence.state === "unavailable",
+  );
+
+const ownComparisonLimitations = (node: ApplicationNode): string[] => {
+  const limitations = new Set<string>();
+  const endpointTargetUncertain = unresolvedEndpointTarget(node);
+  if (endpointTargetUncertain) limitations.add(ENDPOINT_TARGET_LIMITATION);
+  for (const { evidence } of node.observations)
+    if (
+      endpointTargetUncertain ||
+      evidence.state === "unknown" ||
+      evidence.state === "unavailable"
+    )
+      for (const limitation of evidence.limitations)
+        limitations.add(limitation);
+  return [...limitations].sort(compareUnicodeCodePoints);
+};
 
 const changedDimensions = (
   pair: ApplicationVersionNodePair,
-  context: ItemContext,
+  relationships: RelationshipComparison,
 ): ApplicationVersionComparisonItem["dimensions"] => {
   const dimensions: ApplicationVersionComparisonItem["dimensions"] = [];
   const leftContent = contentIdentity(pair.left);
@@ -337,11 +477,7 @@ const changedDimensions = (
     canonicalJson(properties(pair.right))
   )
     dimensions.push("properties");
-  if (
-    relationshipSignature(pair.left, "left", context) !==
-    relationshipSignature(pair.right, "right", context)
-  )
-    dimensions.push("relationships");
+  if (relationships.different) dimensions.push("relationships");
   return dimensions;
 };
 
@@ -371,12 +507,32 @@ const properties = (node: ApplicationNode) =>
   node.observations
     .map(({ label, properties: values, source_map_reference }) => ({
       label,
-      properties: values,
+      properties: comparisonPropertyValues(values),
       source_map_reference,
     }))
     .sort((left, right) =>
       compareUnicodeCodePoints(canonicalJson(left), canonicalJson(right)),
     );
+
+const comparisonPropertyValues = (
+  values: ApplicationNode["observations"][number]["properties"],
+) => {
+  const occurrence = javaScriptFileOccurrenceSchema.safeParse(
+    values.file_occurrence,
+  );
+  if (!occurrence.success) return values;
+  // A containing artifact's digest locates this occurrence in one version;
+  // sibling changes do not establish a change to this file's own facts.
+  // Keep the occurrence's path and content digest comparable, and retain the
+  // complete provenance record on the original observation.
+  return {
+    ...values,
+    file_occurrence: {
+      path: occurrence.data.path,
+      sha256: occurrence.data.sha256,
+    },
+  };
+};
 
 const indexRelationships = (
   graph: JavaScriptApplicationGraph,
@@ -406,32 +562,56 @@ const indexRelationships = (
   };
 };
 
-const relationshipSignature = (
+/** Positive topology differences and unresolved neighbor identity are independent facts. */
+interface RelationshipComparison {
+  readonly different: boolean;
+  readonly unresolved: boolean;
+}
+
+const compareRelationships = (
+  pair: ApplicationVersionNodePair,
+  context: ItemContext,
+): RelationshipComparison => {
+  const left = relationshipFacts(pair.left, "left", context);
+  const right = relationshipFacts(pair.right, "right", context);
+  return {
+    different:
+      left.paired !== right.paired ||
+      left.unpairedShape !== right.unpairedShape,
+    unresolved: left.unresolved || right.unresolved,
+  };
+};
+
+const relationshipFacts = (
   node: ApplicationNode,
   side: "left" | "right",
   context: ItemContext,
-): string => {
+): {
+  readonly paired: string;
+  readonly unpairedShape: string;
+  readonly unresolved: boolean;
+} => {
   const { nodeById, adjacency } =
     side === "left" ? context.leftRelationships : context.rightRelationships;
   const paired = side === "left" ? context.pairByLeft : context.pairByRight;
-  const signatures = (adjacency.get(node.node_id) ?? []).map((relationship) =>
-    edgeSignature({ ...relationship, paired, nodeById }),
-  );
-  return canonicalJson(signatures.sort(compareUnicodeCodePoints));
-};
-
-interface EdgeSignatureContext {
-  readonly direction: "in" | "out";
-  readonly relation: ApplicationEdge["relation"];
-  readonly neighborId: string;
-  readonly paired: ReadonlyMap<string, string>;
-  readonly nodeById: ReadonlyMap<string, ApplicationNode>;
-}
-
-const edgeSignature = (context: EdgeSignatureContext): string => {
-  const mapped = context.paired.get(context.neighborId);
-  const neighbor = context.nodeById.get(context.neighborId);
-  return `${context.direction}\0${context.relation}\0${mapped ?? `unmatched:${neighbor?.kind ?? "unknown"}`}`;
+  const matched: string[] = [];
+  const unpaired: string[] = [];
+  for (const { direction, relation, neighborId } of adjacency.get(
+    node.node_id,
+  ) ?? []) {
+    const mapped = paired.get(neighborId);
+    if (mapped !== undefined)
+      matched.push(`${direction}\0${relation}\0${mapped}`);
+    else
+      unpaired.push(
+        `${direction}\0${relation}\0${nodeById.get(neighborId)?.kind ?? "unknown"}`,
+      );
+  }
+  return {
+    paired: canonicalJson(matched.sort(compareUnicodeCodePoints)),
+    unpairedShape: canonicalJson(unpaired.sort(compareUnicodeCodePoints)),
+    unresolved: unpaired.length > 0,
+  };
 };
 
 const itemEvidenceLinks = (
@@ -472,10 +652,7 @@ const indexNativeEvidence = (
   return evidenceByDigest;
 };
 
-const pairLimitations = (
-  pair: ApplicationVersionNodePair,
-  status: ApplicationVersionComparisonItem["status"],
-): string[] => [
+const matchLimitations = (pair: ApplicationVersionNodePair): string[] => [
   ...(pair.basis === "structural-fingerprint"
     ? [
         "Structural fingerprint equality is rename-resistant inference; it is not byte identity or proof of semantic equivalence.",
@@ -490,9 +667,6 @@ const pairLimitations = (
     ? [
         "Semantic-key pairing is a deterministic inference and is never promoted to exact identity.",
       ]
-    : []),
-  ...(status === "unknown"
-    ? ["Incomplete graph coverage prevents a complete node-level conclusion."]
     : []),
 ];
 

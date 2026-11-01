@@ -206,6 +206,103 @@ const checkNativeObservationIdentities = async ({
   );
 };
 
+const checkMalformedEvidenceBeforeIdentities = async ({
+  cli,
+  root,
+  call,
+  application,
+}: WorkflowContext) => {
+  const malformed = {
+    ...application,
+    provider: { ...application.provider, name: 3 },
+  };
+  const tampered = { ...application, confidence: "observed" };
+  for (const [name, command, input, reason] of [
+    [
+      "compare_application_versions",
+      "compare-application-versions",
+      { left: application, right: malformed },
+      "provider.name",
+    ],
+    [
+      "compare_javascript_export_shapes",
+      "compare-javascript-export-shapes",
+      { left: application, right: malformed, ...selectors },
+      "provider.name",
+    ],
+    [
+      "compare_javascript_export_shapes",
+      "compare-javascript-export-shapes",
+      { left: application, right: tampered, ...selectors },
+      "semantic identifier",
+    ],
+    [
+      "trace_application_feature",
+      "trace-application-feature",
+      { application, seed, native_observations: [malformed, application] },
+      "provider.name",
+    ],
+    [
+      "compare_application_versions",
+      "compare-application-versions",
+      { left: application, right: tampered },
+      "semantic identifier",
+    ],
+    [
+      "trace_application_feature",
+      "trace-application-feature",
+      { application: tampered, seed },
+      "semantic identifier",
+    ],
+  ] as const) {
+    const rejected = await runJson(cli, root, command, input);
+    expect(rejected.exitCode).toBe(1);
+    expect(rejected.json).toMatchObject({
+      code: "evidence_integrity_mismatch",
+      retryable: false,
+      details: { reason: expect.stringContaining(reason) },
+    });
+    if (reason === "semantic identifier") {
+      const mcp = await call(name, input);
+      expect(mcp.isError).toBe(true);
+      expect(parseMcpToolError(mcp).error).toMatchObject({
+        code: "evidence_integrity_mismatch",
+        retryable: false,
+        details: { reason: expect.stringContaining(reason) },
+      });
+    }
+  }
+  const missingLeft = {
+    kind: "retained-evidence",
+    evidence_id: `ev_${"a".repeat(64)}`,
+  };
+  const missingRight = {
+    kind: "retained-evidence",
+    evidence_id: `ev_${"b".repeat(64)}`,
+  };
+  for (const [command, extra] of [
+    ["compare-application-versions", {}],
+    ["compare-javascript-export-shapes", selectors],
+  ] as const) {
+    // Lookup of both selected sources precedes graph authentication.
+    for (const [left, right, evidenceId] of [
+      [malformed, missingRight, missingRight.evidence_id],
+      [missingLeft, missingRight, missingLeft.evidence_id],
+    ] as const) {
+      const rejected = await runJson(cli, root, command, {
+        left,
+        right,
+        ...extra,
+      });
+      expect(rejected.exitCode).toBe(1);
+      expect(rejected.json).toMatchObject({
+        code: "evidence_integrity_mismatch",
+        details: { evidence_id: evidenceId, reason: "missing" },
+      });
+    }
+  }
+};
+
 cliTest(
   "preserves workflow identity validation through CLI and inline, retained and mixed MCP inputs",
   async ({ cli }) => {
@@ -277,6 +374,7 @@ cliTest(
     };
     await checkComparisonIdentities(context);
     await checkNativeObservationIdentities(context);
+    await checkMalformedEvidenceBeforeIdentities(context);
     const compared = await call("compare_application_versions", {
       left: reference,
       right: otherReference,

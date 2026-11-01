@@ -2,14 +2,18 @@ import { createHash } from "node:crypto";
 import canonicalize from "canonicalize";
 import { z } from "zod";
 
-const positiveBudget = z.number().int().safe().positive();
+const positiveBudget = z.int().safe().positive();
+/** Read the explicitly committed output budget without applying scenario defaults. */
+export const processScenarioOutputBudgetProjectionSchema = z
+  .object({ output_bytes: positiveBudget })
+  .passthrough();
 /**
  * Maximum xterm backing cells for one visible-plus-scrollback buffer. Each
  * xterm BufferLine stores three Uint32 words per cell (12 MB at this cap),
  * before row objects, serialization strings, and retained frame copies.
  */
 export const PROCESS_TERMINAL_CELL_BUDGET = 1_000_000;
-const timedEventBase = { at_ms: z.number().int().safe().nonnegative() };
+const timedEventBase = { at_ms: z.int().safe().nonnegative() };
 const reservedRunIdEnvironmentName = "REA_PROCESS_RUN_ID";
 const ENVIRONMENT_NAME_CHARACTER = "[^=\\x00]";
 
@@ -41,12 +45,43 @@ const environmentName = z
         ? `${reservedRunIdEnvironmentName} is reserved by the process adapter`
         : "Environment names cannot contain '=' or NUL",
   });
+const unsupportedPtyEnvironmentName = "__proto__";
+const ptyEnvironmentName = environmentName.regex(
+  environmentNamePattern(unsupportedPtyEnvironmentName),
+  {
+    error:
+      "The installed PTY backend cannot preserve the __proto__ environment name; pass it through /usr/bin/env instead.",
+  },
+);
 const childProcessString = z
   .string()
   .regex(
     /^[^\x00]*$/u,
     "Values passed to operating-system APIs cannot contain NUL",
   );
+const environmentRecordSchema = z.record(
+  ptyEnvironmentName,
+  childProcessString,
+);
+// z.record intentionally skips this key, so validate its presence before parsing.
+const processEnvironmentSchema = z
+  .unknown()
+  .superRefine((value, context) => {
+    if (
+      value !== null &&
+      typeof value === "object" &&
+      Object.hasOwn(value, unsupportedPtyEnvironmentName)
+    )
+      context.addIssue({
+        code: "custom",
+        path: [unsupportedPtyEnvironmentName],
+        message:
+          "The installed PTY backend cannot preserve the __proto__ environment name; pass it through /usr/bin/env instead.",
+      });
+  })
+  .pipe(environmentRecordSchema);
+processEnvironmentSchema._zod.toJSONSchema = () =>
+  z.toJSONSchema(environmentRecordSchema, { io: "input" });
 
 const fitsProcessTerminalCellBudget = (
   columns: number,
@@ -128,8 +163,15 @@ export const processComparisonContract = (
     : {}),
   limits: scenario.limits,
   normalization: scenario.normalization,
+  terminal_observation_version: "deferred-rendered-journal-v1",
+  ...(scenario.normalization.pids
+    ? { pid_normalization_version: "sampled-identifiers-v2" }
+    : {}),
+  ...(scenario.normalization.paths
+    ? { path_normalization_version: "path-component-boundaries-v2" }
+    : {}),
   ...(scenario.normalization.ports
-    ? { port_normalization_version: "contextual-endpoints-v2" }
+    ? { port_normalization_version: "contextual-endpoints-v3" }
     : {}),
   ...(scenario.normalization.patterns.length > 0
     ? { pattern_normalization_version: "literal-replacements-v1" }
@@ -146,18 +188,18 @@ export const processScenarioSchema = z
     executable: childProcessString.min(1),
     arguments: z.array(childProcessString).default([]),
     working_directory: childProcessString.default("."),
-    environment: z.record(environmentName, childProcessString).default({}),
+    environment: processEnvironmentSchema.default({}),
     filesystem_observation_paths: z
       .array(childProcessString.min(1))
       .default([]),
     terminal: z
       .strictObject({
-        columns: z.number().int().min(1).max(65_535).default(80),
-        rows: z.number().int().min(1).max(65_535).default(24),
-        scrollback: z.number().int().safe().nonnegative().default(1_000),
+        columns: z.int().min(1).max(65_535).default(80),
+        rows: z.int().min(1).max(65_535).default(24),
+        scrollback: z.int().safe().nonnegative().default(1_000),
       })
       .describe(
-        "The visible terminal and scrollback together must use at most 1,000,000 xterm renderer cells: columns × (rows + scrollback). Resize events use the same scrollback and limit.",
+        "The visible terminal and scrollback together must use at most 1,000,000 xterm renderer cells: columns × (rows + scrollback). Resize events use the same scrollback and limit. This release has no runtime override.",
       )
       .default({ columns: 80, rows: 24, scrollback: 1_000 }),
     events: z
@@ -172,8 +214,8 @@ export const processScenarioSchema = z
           z.strictObject({
             ...timedEventBase,
             type: z.literal("resize"),
-            columns: z.number().int().min(1).max(65_535),
-            rows: z.number().int().min(1).max(65_535),
+            columns: z.int().min(1).max(65_535),
+            rows: z.int().min(1).max(65_535),
           }),
           z.strictObject({
             ...timedEventBase,
@@ -185,9 +227,8 @@ export const processScenarioSchema = z
       .default([]),
     timeout_ms: positiveBudget.default(30_000),
     idle_timeout_ms: positiveBudget.default(30_000),
-    settle_ms: z.number().int().safe().nonnegative().default(100),
+    settle_ms: z.int().safe().nonnegative().default(100),
     finalization_ms: z
-      .number()
       .int()
       .safe()
       .nonnegative()
@@ -201,7 +242,7 @@ export const processScenarioSchema = z
         files: positiveBudget.default(10_000),
         file_bytes: positiveBudget.default(10_000_000),
         processes: positiveBudget.default(1_000),
-        filesystem_depth: z.number().int().safe().nonnegative().default(16),
+        filesystem_depth: z.int().safe().nonnegative().default(16),
       })
       .strict()
       .default({
@@ -261,7 +302,7 @@ export const processScenarioSchema = z
       context.addIssue({
         code: "custom",
         path: ["terminal"],
-        message: `terminal columns × (rows + scrollback) must not exceed ${String(PROCESS_TERMINAL_CELL_BUDGET)} renderer cells`,
+        message: `terminal columns × (rows + scrollback) must not exceed ${String(PROCESS_TERMINAL_CELL_BUDGET)} renderer cells. This release has no runtime override.`,
       });
     for (let index = 1; index < scenario.events.length; index += 1) {
       const event = scenario.events[index];
@@ -286,13 +327,13 @@ export const processScenarioSchema = z
         context.addIssue({
           code: "custom",
           path: ["events", index],
-          message: `resize event at ${String(event.at_ms)} ms exceeds the ${String(PROCESS_TERMINAL_CELL_BUDGET)}-cell renderer budget with the selected scrollback`,
+          message: `resize event at ${String(event.at_ms)} ms exceeds the ${String(PROCESS_TERMINAL_CELL_BUDGET)}-cell renderer budget with the selected scrollback. This release has no runtime override.`,
         });
       if (event.at_ms > scenario.timeout_ms) {
         context.addIssue({
           code: "custom",
-          message: "event occurs after the scenario timeout",
-          path: ["events"],
+          message: `event at ${String(event.at_ms)} ms occurs after the ${String(scenario.timeout_ms)} ms scenario timeout`,
+          path: ["events", index],
         });
       }
     }
@@ -306,7 +347,3 @@ const eventsOutOfOrder = (
 
 /** Parsed instructions and resource bounds for one process experiment. */
 export type ProcessScenario = z.infer<typeof processScenarioSchema>;
-
-/** Parse untrusted process scenario input and apply safe default budgets. */
-export const parseProcessScenario = (input: unknown): ProcessScenario =>
-  processScenarioSchema.parse(input);

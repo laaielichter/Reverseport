@@ -1,0 +1,166 @@
+import { createHash } from "node:crypto";
+import { afterEach, expect, it, vi } from "vitest";
+
+const faults = vi.hoisted(() => ({
+  lowHeadroom: false,
+  sourceRemoval: false,
+  removals: 0,
+}));
+
+vi.mock("node:v8", async (original) => {
+  const actual = await original<typeof import("node:v8")>();
+  return {
+    ...actual,
+    getHeapStatistics: () => {
+      const observed = actual.getHeapStatistics();
+      return faults.lowHeadroom
+        ? {
+            ...observed,
+            heap_size_limit:
+              observed.used_heap_size + 192 * 1024 * 1024 + 128 * 1024,
+          }
+        : observed;
+    },
+  };
+});
+
+vi.mock("node:fs/promises", async (original) => {
+  const actual = await original<typeof import("node:fs/promises")>();
+  return {
+    ...actual,
+    rm: async (...args: Parameters<typeof actual.rm>) => {
+      if (
+        faults.sourceRemoval &&
+        String(args[0]).includes("rea-javascript-analysis-") &&
+        String(args[0]).endsWith(".source")
+      ) {
+        faults.removals += 1;
+        throw Object.assign(
+          new Error("controlled source-file removal failure"),
+          { code: "EACCES" },
+        );
+      }
+      return actual.rm(...args);
+    },
+  };
+});
+
+import { ProviderCleanupError } from "../../../src/domain/providerCleanupError.js";
+import { JavaScriptAnalysisWorker } from "../../../src/javascript/analysis/JavaScriptAnalysisWorker.js";
+import { spawnOwnedProviderProcess } from "../../../src/process/ProviderProcess.js";
+import { projectAnalysisError } from "../../../src/domain/analysisErrorProjection.js";
+import type { JavaScriptArtifactFile } from "../../../src/domain/javascript/javascriptArtifactFiles.js";
+import { staticCheckpointFacts } from "../../fixtures/javascriptWorkerCheckpoint.js";
+import { javaScriptWorkerStaticAnalysisSchema } from "../../../src/javascript/analysis/JavaScriptAnalysisWorkerSchemas.js";
+
+const text = "export const observed = 1;";
+const file: JavaScriptArtifactFile = {
+  path: "app.mjs",
+  sha256: createHash("sha256").update(text).digest("hex"),
+  container_sha256: "1".repeat(64),
+  bytes: Buffer.byteLength(text),
+  inventory_artifact_id: "fixture-source",
+  kind: "javascript",
+  unpacked: false,
+  text: { included: true, value: text },
+};
+const ready =
+  'process.stdout.write(JSON.stringify({kind:"ready",heap_limit_bytes:require("node:v8").getHeapStatistics().heap_size_limit})+"\\n");';
+
+afterEach(() => {
+  faults.lowHeadroom = false;
+  faults.sourceRemoval = false;
+  faults.removals = 0;
+});
+
+it.each(["io", "output"] as const)(
+  "keeps worker %s failure classification distinct at the protocol boundary",
+  async (reason) => {
+    const worker = new JavaScriptAnalysisWorker(
+      { heapMb: 128, timeoutMs: 30_000 },
+      async (request) =>
+        spawnOwnedProviderProcess({
+          ...request,
+          arguments: [
+            "-e",
+            `${ready} require("node:readline").createInterface({input:process.stdin}).on("line", line => { const request=JSON.parse(line); const response={kind:"failure",id:request.id,reason:${JSON.stringify(reason)},resource:null,limits:null,message:"ENOENT: private source copy unavailable"}; process.stdout.write(JSON.stringify(response)+"\\n"); });`,
+          ],
+        }),
+    );
+    try {
+      const result = await worker.analyze(file, { nodes: 100, unknowns: 100 });
+      expect(result.ok).toBe(false);
+      if (result.ok) throw new Error("Expected worker failure");
+      expect(result.error.error._tag).toBe(
+        reason === "io" ? "ProviderAdapterError" : "AnalysisOutputError",
+      );
+      const projected = projectAnalysisError(result.error.error);
+      expect(projected.code).toBe(
+        reason === "io" ? "execution_failure" : "unreadable_output",
+      );
+      if (reason === "io") {
+        expect(JSON.stringify(projected)).toContain(
+          "ENOENT: private source copy unavailable",
+        );
+        expect(JSON.stringify(projected)).toContain(
+          '"phase":"source-transfer"',
+        );
+        expect(projected.message).toContain("storage failed");
+      }
+    } finally {
+      await worker.close();
+    }
+  },
+);
+
+it.each([false, true])(
+  "retains parent projection admission across per-source cleanup failure: %s",
+  async (removalFailure) => {
+    faults.lowHeadroom = true;
+    faults.sourceRemoval = removalFailure;
+    const sourceMapUrls = [
+      {
+        declared_url: "app.map",
+        location: {
+          start: { line: 1, column: 0 },
+          end: { line: 1, column: 1 },
+        },
+      },
+    ];
+    const checkpoint = JSON.stringify(
+      javaScriptWorkerStaticAnalysisSchema.parse({
+        ...staticCheckpointFacts,
+        source_map_urls: sourceMapUrls,
+      }),
+    );
+    const worker = new JavaScriptAnalysisWorker(
+      { heapMb: 128, timeoutMs: 30_000 },
+      async (request) =>
+        spawnOwnedProviderProcess({
+          ...request,
+          arguments: [
+            "-e",
+            `${ready} const fs=require("node:fs"); const {createHash}=require("node:crypto"); const checkpoint=${JSON.stringify(checkpoint)}; require("node:readline").createInterface({input:process.stdin}).on("line", line => { const request=JSON.parse(line); if(request.file) {fs.writeFileSync(request.id+".static.json",checkpoint); process.stdout.write(JSON.stringify({kind:"static",id:request.id,bytes:Buffer.byteLength(checkpoint),sha256:createHash("sha256").update(checkpoint).digest("hex")})+"\\n");} else process.stdout.write(JSON.stringify({kind:"complete",id:request.id,descriptor:null})+"\\n"); });`,
+          ],
+        }),
+    );
+    try {
+      const result = await worker.analyze(file, { nodes: 100, unknowns: 100 });
+      expect(result.ok).toBe(!removalFailure);
+      const retained = result.ok ? result.value : result.error;
+      expect(retained.javascript?.source_map_urls).toEqual(sourceMapUrls);
+      expect(retained.applicationProjectionFailure).toMatchObject({
+        _tag: "AnalysisResourceConstraintError",
+        reason: expect.stringContaining("Expanded application relationships"),
+      });
+      if (!result.ok) {
+        expect(result.error.error).toBeInstanceOf(ProviderCleanupError);
+        expect(result.error.error.cleanupIncomplete).toBe(true);
+      }
+      expect(faults.removals).toBe(removalFailure ? 1 : 0);
+    } finally {
+      faults.sourceRemoval = false;
+      await worker.close();
+    }
+  },
+);

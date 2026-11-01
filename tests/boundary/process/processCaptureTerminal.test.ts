@@ -5,7 +5,39 @@ import { createTestTempDirectory } from "../../fixtures/temporaryDirectory.js";
 import { itWithCaptureCapability } from "./processCaptureCapability.js";
 
 import { captureProcessScenario } from "../../../src/process/capture/ProcessHarness.js";
-import { parseProcessScenario } from "../../../src/domain/process/processScenario.js";
+import { processScenarioSchema } from "../../../src/domain/process/processScenario.js";
+
+itWithCaptureCapability(
+  "normalizes wide terminal cells without inventing blank cells",
+  async () => {
+    const result = await captureProcessScenario(
+      processScenarioSchema.parse({
+        executable: process.execPath,
+        arguments: ["-e", 'process.stdout.write("界")'],
+        terminal: { columns: 4, rows: 1, scrollback: 0 },
+        normalization: {
+          patterns: [{ pattern: " ", replacement: "_" }],
+        },
+      }),
+    );
+    if (!result.ok) throw result.error;
+    expect(
+      result.value.frames
+        .map(({ raw_data, data }) => raw_data ?? data)
+        .join(""),
+    ).toBe("界");
+    expect(result.value.rendered_frames.at(-1)).toMatchObject({
+      columns: 4,
+      cursor_x: 2,
+      lines: ["界__"],
+    });
+    expect(result.value.cleanup).toMatchObject({
+      owned_process_group: "verified",
+      temporary_root: "removed",
+    });
+  },
+  20_000,
+);
 
 itWithCaptureCapability(
   "captures one command's terminal output, selected files, and owned cleanup",
@@ -22,7 +54,7 @@ itWithCaptureCapability(
     );
     try {
       const result = await captureProcessScenario(
-        parseProcessScenario({
+        processScenarioSchema.parse({
           executable: process.execPath,
           arguments: [script],
           working_directory: root,

@@ -1,10 +1,11 @@
 import { parseEvidence } from "../../../src/domain/evidence.js";
-import { ok as resultOk } from "../../../src/domain/result.js";
+import { ok as resultOk, err } from "../../../src/domain/result.js";
 import { rm, symlink, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { pathToFileURL } from "node:url";
 
 import { Client, InMemoryTransport } from "@modelcontextprotocol/client";
+import { Ajv2020 } from "ajv/dist/2020.js";
 import { afterEach, expect, it, vi } from "vitest";
 import { z } from "zod";
 
@@ -13,6 +14,7 @@ import { createStrippedAsarAddon } from "../../fixtures/strippedAsarAddon.js";
 
 import { createTestBinarySession } from "../../fixtures/binarySession.js";
 import type { ElectronActiveObservationPort } from "../../../src/application/javascript/ElectronActiveObservationPort.js";
+import type { ElectronObservationPort } from "../../../src/application/javascript/ElectronObservationPort.js";
 import { analyzeJavaScriptApplication } from "../../support/javascriptApplicationScope.js";
 import { CdpElectronProvider } from "../../../src/browser/CdpElectronProvider.js";
 import { createServer } from "../../../src/server/createServer.js";
@@ -25,6 +27,10 @@ import { writeElectronBoundaryFixture } from "../../fixtures/electronBoundaryApp
 import { createElectronActiveObservationFixtureResult } from "../../../src/domain/javascript/electronActiveObservation.fixture.js";
 import { parseMcpToolError } from "../../fixtures/mcpToolError.js";
 import { AsarArtifactReader } from "../../../src/artifacts/AsarArtifactReader.js";
+import { toolAvailabilityInventory } from "../../../src/contracts/toolOutputSchemaPrimitives.js";
+import { AnalysisCancelledError } from "../../../src/domain/analysisErrorCore.js";
+import { emptyElectronPageCoverage } from "../../../src/domain/javascript/electronPageInspection.fixture.js";
+import type { ElectronPageInspection } from "../../../src/domain/javascript/electronObservation.js";
 
 const browsers: FakeCdpBrowser[] = [];
 const resources: Array<{ close(): Promise<unknown> }> = [];
@@ -92,6 +98,92 @@ afterEach(async () => {
   );
 });
 
+it("records completed Electron facts after final detach as server Evidence", async () => {
+  const inspection: ElectronPageInspection = {
+    browser: {
+      product: "Chromium",
+      protocol_version: "1.3",
+      revision: "123",
+      user_agent: "fixture",
+      js_version: "V8",
+    },
+    target: {
+      target_id: "target-1",
+      type: "page",
+      title: "fixture",
+      file_path: "/tmp/index.html",
+      attached: true,
+    },
+    ...emptyElectronPageCoverage(1),
+  };
+  const provider: ElectronObservationPort = {
+    identity: () => ({
+      id: "test-electron-observation",
+      name: "Test Electron observation provider",
+      version: "1",
+    }),
+    listTargets: async () => {
+      throw new Error("unexpected target listing");
+    },
+    inspectPage: async () =>
+      err(
+        new AnalysisCancelledError("inspect_electron_page", {
+          partialObservation: {
+            kind: "electron-page-observation",
+            inspection,
+            cleanup: "transport-closed",
+          },
+        }),
+      ),
+  };
+  const session = createTestBinarySession(() => ({
+    execute: () => Promise.resolve(observed(null)),
+    close: () => Promise.resolve(resultOk(null)),
+  }));
+  const server = createServer(
+    { kind: "session", session },
+    {
+      electronObservation: provider,
+    },
+  );
+  const client = new Client({ name: "electron-final-detach", version: "1" });
+  const [clientTransport, serverTransport] =
+    InMemoryTransport.createLinkedPair();
+  resources.push(client, server, session);
+  await server.connect(serverTransport);
+  await client.connect(clientTransport);
+
+  const response = await client.callTool({
+    name: "inspect_electron_page",
+    arguments: {
+      cdp_endpoint: "http://127.0.0.1:9222",
+      target_id: "target-1",
+      observation_ms: 0,
+      include_script_sources: false,
+    },
+  });
+  const { error } = parseMcpToolError(response);
+  expect(error.details).toMatchObject({
+    partial_observation: { kind: "retained-evidence" },
+  });
+  const reference = z
+    .object({
+      partial_observation: z.object({
+        kind: z.literal("retained-evidence"),
+        evidence_id: z.string(),
+      }),
+    })
+    .parse(error.details).partial_observation;
+  expect(session.evidenceById(reference.evidence_id)).toMatchObject({
+    operation: "inspect_electron_page",
+    normalized_result: { target: { target_id: "target-1" } },
+    limitations: expect.arrayContaining([
+      expect.stringContaining("closed its CDP transport"),
+    ]),
+  });
+  await expect(client.ping()).resolves.toEqual({});
+});
+
 it("lets MCP JavaScript analysis continue only with recorded untrusted ASAR bytes", async () => {
   const { archive, addon } = await createStrippedAsarAddon();
   const session = createTestBinarySession(() => ({
@@ -138,6 +230,47 @@ it("lets MCP JavaScript analysis continue only with recorded untrusted ASAR byte
   });
 });
 
+it("advertises owned JavaScript analysis effects without foreign target execution", async () => {
+  const session = createTestBinarySession(() => ({
+    execute: () => Promise.resolve(observed(null)),
+    close: () => Promise.resolve(resultOk(null)),
+  }));
+  const server = createServer({ kind: "session", session });
+  const client = new Client({
+    name: "javascript-analysis-effects",
+    version: "1",
+  });
+  const [clientTransport, serverTransport] =
+    InMemoryTransport.createLinkedPair();
+  resources.push(client, server, session);
+  await server.connect(serverTransport);
+  await client.connect(clientTransport);
+
+  const status = await client.callTool({
+    name: "binary_session",
+    arguments: {},
+  });
+  expect(status.isError).not.toBe(true);
+  const { result } = z
+    .object({
+      result: z.object({ tool_availability: toolAvailabilityInventory }),
+    })
+    .parse(status.structuredContent);
+  const analysisAvailability = result.tool_availability.groups.find(
+    ({ names }) => names.includes("analyze_javascript_application"),
+  );
+  expect(analysisAvailability?.effects.toSorted()).toEqual([
+    "idempotent",
+    "launchesProcess",
+    "mutatesSession",
+    "writesFilesystem",
+  ]);
+  expect(analysisAvailability?.annotations.toSorted()).toEqual([
+    "idempotent",
+    "open_world",
+  ]);
+});
+
 it("exposes endpoint-scoped Electron discovery and inspection as Evidence", async () => {
   const root = await createTestTempDirectory("rea-electron-mcp-");
   temporary.push(root);
@@ -152,7 +285,7 @@ it("exposes endpoint-scoped Electron discovery and inspection as Evidence", asyn
   );
   await writeFile(join(root, "worker.js"), "self.onmessage = () => {};\n");
   const browser = await startFakeCdpBrowser({
-    electronFileUrl: pathToFileURL(join(root, "index.html")).href,
+    electronFileUrl: `${pathToFileURL(join(root, "index.html")).href}?next=%2Fsettings#%5Csettings`,
     commandEvents: ({ method }) =>
       method === "Debugger.enable"
         ? [
@@ -198,6 +331,15 @@ it("exposes endpoint-scoped Electron discovery and inspection as Evidence", asyn
   });
   expect(listed.isError).not.toBe(true);
   expect(listed.structuredContent).toMatchObject({
+    environment: {
+      id: expect.any(String),
+      platform: "unknown",
+      architecture: "unknown",
+      isolation: "none",
+    },
+    limitations: expect.arrayContaining([
+      "Browser host platform and architecture were not observed.",
+    ]),
     normalized_result: {
       targets: [{ target_id: "electron-page" }],
     },
@@ -211,6 +353,10 @@ it("exposes endpoint-scoped Electron discovery and inspection as Evidence", asyn
       include_script_sources: true,
     },
   });
+  expect(inspected.isError).not.toBe(true);
+  expect(parseEvidence(inspected.structuredContent).environment).toEqual(
+    parseEvidence(listed.structuredContent).environment,
+  );
   const analyzed = await client.callTool({
     name: "analyze_javascript_application",
     arguments: { input_path: root },
@@ -248,12 +394,12 @@ it("exposes endpoint-scoped Electron discovery and inspection as Evidence", asyn
   expect(inspected.isError).not.toBe(true);
   expect(inspected.structuredContent).toMatchObject({
     normalized_result: {
-      target: { file_path: expect.stringMatching(/\/index\.html$/u) },
+      target: { file_path: expect.stringMatching(/[\\/]index\.html$/u) },
       scripts: {
         items: [
           expect.objectContaining({
             frame_id: "frame-main",
-            file_path: expect.stringMatching(/\/app\.js$/u),
+            file_path: expect.stringMatching(/[\\/]app\.js$/u),
             cdp_hash: null,
             length: null,
             is_module: null,
@@ -264,7 +410,7 @@ it("exposes endpoint-scoped Electron discovery and inspection as Evidence", asyn
         expect.objectContaining({
           target_id: "electron-worker",
           opener_target_id: "electron-page",
-          file_path: expect.stringMatching(/\/worker\.js$/u),
+          file_path: expect.stringMatching(/[\\/]worker\.js$/u),
         }),
       ],
     },
@@ -276,8 +422,13 @@ it("runs active Electron scenarios with selected paths and inferred working dire
   temporary.push(root);
   const applicationPath = join(root, "main.js");
   await writeFile(applicationPath, "module.exports = {};\n");
-  const aliasedRoot = join(root, "..", `${root.split("/").at(-1)}-alias`);
-  await symlink(root, aliasedRoot, "dir");
+  const aliasedRoot = join(root, "..", `${basename(root)}-alias`);
+  // A junction needs no symlink privilege on Windows.
+  await symlink(
+    root,
+    aliasedRoot,
+    process.platform === "win32" ? "junction" : "dir",
+  );
   temporary.push(aliasedRoot);
   const workingDirectory = await createTestTempDirectory(
     "rea-electron-working-directory-",
@@ -286,6 +437,26 @@ it("runs active Electron scenarios with selected paths and inferred working dire
   const capturedInputs: unknown[] = [];
   const activeResult =
     createElectronActiveObservationFixtureResult(applicationPath);
+  const capturedEvent = activeResult.timeline.events[0];
+  if (capturedEvent === undefined) throw new Error("IPC fixture was empty");
+  const gaps = ["custom-apply", "listener-chain"].map((event, index) => ({
+    ...capturedEvent,
+    sequence: index + 2,
+    kind: "ipc-observation-gap" as const,
+    event,
+    channel: event === "custom-apply" ? "custom" : "opaque-chain",
+    direction: null,
+    receiver: null,
+    target: "ipcMain.on",
+    argument_shapes: [],
+    result_shape: null,
+  }));
+  activeResult.timeline.events.push(...gaps);
+  activeResult.timeline.observed = 3;
+  activeResult.retention.retained = 3;
+  activeResult.retention.estimated_retained_bytes = 1_536;
+  activeResult.retention.observed_runtime = 2;
+  activeResult.coverage.observed_event_families.push("ipc-observation-gap");
   const provider: ElectronActiveObservationPort = {
     identity: () => ({
       id: "test-electron-active",
@@ -318,6 +489,15 @@ it("runs active Electron scenarios with selected paths and inferred working dire
   await server.connect(serverTransport);
   await client.connect(clientTransport);
 
+  const advertised = (await client.listTools()).tools.find(
+    ({ name }) => name === "capture_electron_scenario",
+  );
+  if (advertised?.outputSchema === undefined)
+    throw new Error("Active Electron output schema was not advertised");
+  const validateOutput = new Ajv2020({
+    strict: false,
+    validateFormats: false,
+  }).compile(z.record(z.string(), z.unknown()).parse(advertised.outputSchema));
   const captured = await client.callTool({
     name: "capture_electron_scenario",
     arguments: {
@@ -331,10 +511,21 @@ it("runs active Electron scenarios with selected paths and inferred working dire
     },
   });
   expect(captured.isError, JSON.stringify(captured)).not.toBe(true);
+  expect(
+    validateOutput(captured.structuredContent),
+    JSON.stringify(validateOutput.errors),
+  ).toBe(true);
   expect(captured.structuredContent).toMatchObject({
     normalized_result: {
       application: { process_ownership: "provider-owned" },
       ipc: { events: [{ channel: "readiness:echo" }] },
+      timeline: {
+        events: [
+          { kind: "main-handler-invocation" },
+          { kind: "ipc-observation-gap", channel: "custom" },
+          { kind: "ipc-observation-gap", channel: "opaque-chain" },
+        ],
+      },
       coverage: {
         status: "partial_attach",
         pre_capture_activity: "unavailable",
@@ -466,3 +657,49 @@ it("exposes the target-free static JavaScript application workflow", async () =>
 const evidenceFor = (value: unknown) => {
   return parseEvidence(value);
 };
+
+it("reports every unresolved Electron path without starting a provider", async () => {
+  const root = await createTestTempDirectory("rea-electron-invalid-paths-");
+  const capture = vi.fn();
+  const session = createTestBinarySession(() => {
+    throw new Error("must not start");
+  });
+  const server = createServer(
+    { kind: "session", session },
+    {
+      electronActiveObservation: {
+        capture,
+        identity: () => ({ id: "test", name: "test", version: "1" }),
+      },
+    },
+  );
+  const client = new Client({ name: "electron-path-test", version: "1" });
+  const [clientTransport, serverTransport] =
+    InMemoryTransport.createLinkedPair();
+  resources.push(client, server, session);
+  await server.connect(serverTransport);
+  await client.connect(clientTransport);
+  const fields = ["executable_path", "application_path", "application_root"];
+  const result = await client.callTool({
+    name: "capture_electron_scenario",
+    arguments: {
+      ...Object.fromEntries(fields.map((field) => [field, join(root, field)])),
+      actions: [],
+    },
+  });
+  expect(result.isError).toBe(true);
+  expect(parseMcpToolError(result)).toMatchObject({
+    error: {
+      code: "invalid_request",
+      details: {
+        issues: fields.map((field) => ({
+          path: [field],
+          reason: "invalid_value",
+          message: expect.stringContaining("ENOENT"),
+        })),
+      },
+    },
+  });
+  expect(capture).not.toHaveBeenCalled();
+  await client.ping();
+});

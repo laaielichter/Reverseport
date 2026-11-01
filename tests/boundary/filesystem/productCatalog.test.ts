@@ -6,9 +6,11 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { createTestTempDirectory } from "../../fixtures/temporaryDirectory.js";
 
+import { BYTE_ENTROPY_PROVIDER } from "../../../src/domain/investigationProviders.js";
 import { SUPPORTED_CLIENT_DEFINITIONS } from "../../../src/application/SupportedClients.js";
 import { CLI_COMMAND_NAMES } from "../../../src/cliCommandNames.js";
 import { createCli } from "../../../src/cli.js";
+import { FRIDA_PROVIDER_IDENTITY } from "../../../src/frida/FridaInstrumentationManager.js";
 import { TOOL_CONTRACTS } from "../../../src/contracts/toolContracts.js";
 import {
   HOPPER_OPERATIONS,
@@ -18,6 +20,10 @@ import {
   GHIDRA_PROVIDER_IDENTITY,
   GHIDRA_OPERATIONS,
 } from "../../../src/ghidra/GhidraProviderCapabilities.js";
+import { OBJDUMP_PROVIDER_IDENTITY } from "../../../src/objdump/ObjdumpCommand.js";
+import { RIZIN_PROVIDER_IDENTITY } from "../../../src/rizin/RizinCommand.js";
+import { GDB_PROVIDER_IDENTITY } from "../../../src/gdb/GdbSessionManager.js";
+import { PWNTOOLS_PROVIDER_IDENTITY } from "../../../src/native/pwntools/PwntoolsRelease.js";
 import {
   documentationFactIssues,
   skillReferenceIssues,
@@ -70,6 +76,16 @@ describe("canonical product catalog", () => {
     expect(catalog.setup_clients.map(({ id }) => id)).toEqual(
       SUPPORTED_CLIENT_DEFINITIONS.map(({ name }) => name),
     );
+    expect(catalog.cli.commands).toHaveLength(CLI_COMMAND_NAMES.length);
+    expect(catalog.providers.map(({ id }) => id)).toEqual(
+      expect.arrayContaining(
+        [
+          OBJDUMP_PROVIDER_IDENTITY,
+          RIZIN_PROVIDER_IDENTITY,
+          GDB_PROVIDER_IDENTITY,
+        ].map(({ id }) => id),
+      ),
+    );
     expect(
       catalog.providers.find(({ id }) => id === HOPPER_PROVIDER_IDENTITY.id)
         ?.capabilities,
@@ -78,6 +94,26 @@ describe("canonical product catalog", () => {
       catalog.providers.find(({ id }) => id === GHIDRA_PROVIDER_IDENTITY.id)
         ?.capabilities,
     ).toEqual([...GHIDRA_OPERATIONS].sort());
+    expect(
+      catalog.providers.find(({ id }) => id === FRIDA_PROVIDER_IDENTITY.id)
+        ?.capabilities,
+    ).toEqual(
+      TOOL_CONTRACTS.filter(({ name }) => name.includes("frida"))
+        .map(({ name }) => name)
+        .sort(),
+    );
+    expect(
+      catalog.providers.find(({ id }) => id === BYTE_ENTROPY_PROVIDER.id),
+    ).toEqual({
+      id: "byte-entropy",
+      name: "REA byte entropy",
+      version: "1",
+      capabilities: ["inspect_byte_entropy"],
+    });
+    expect(
+      catalog.providers.find(({ id }) => id === PWNTOOLS_PROVIDER_IDENTITY.id)
+        ?.capabilities,
+    ).toEqual(["inspect_binary_layout", "inspect_recorded_crash"]);
     expect(
       JSON.parse(await readFile("docs/public/product-catalog.json", "utf8")),
     ).toEqual(catalog);

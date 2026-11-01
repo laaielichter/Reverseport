@@ -97,6 +97,8 @@ it("retains a failed reader close, blocks new work, and retries the same reader"
   expect(await client.close()).toMatchObject({ ok: true });
   expect(closeOwners).toHaveLength(5);
   expect(closeOwners[4]).toBe(closeOwners[1]);
+  if (!extraction.ok) expect(extraction.error.cleanupIncomplete).toBe(false);
+  expect(incompleteClose.error.cleanupIncomplete).toBe(false);
   const closed = await client.execute("inventory_artifact", {});
   expect(closed).toMatchObject({
     ok: false,

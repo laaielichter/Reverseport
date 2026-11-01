@@ -4,18 +4,15 @@ import {
 } from "./lib/mcp-verifier-results.mjs";
 import assert from "node:assert/strict";
 import { join } from "node:path";
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
 import { readFile, rm } from "node:fs/promises";
 
 import { Client } from "@modelcontextprotocol/client";
 import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
-import { MCP_STARTUP_POLICY } from "../dist/mcpStartupPolicy.js";
+import { resolveMcpStartupBudgets } from "../dist/config/mcpStartupBudgets.js";
 import { parseEvidence } from "../dist/domain/evidence.js";
 import * as prompts from "./verify-package-prompts.mjs";
-import { json, verifyCompleteToolCatalog } from "./lib/verify-package-core.mjs";
-
-const execute = promisify(execFile);
+import { verifyCompleteToolCatalog } from "./lib/verify-package-core.mjs";
+import { withVerifierCleanup } from "./lib/verifier-cleanup.mjs";
 
 const verifyMcpToolsAndPrompts = async (client, mcpOptions) => {
   await verifyCompleteToolCatalog(client, mcpOptions);
@@ -98,7 +95,7 @@ const verifyMcpNonLinuxCurrentDocument = async (
   mcpOptions,
   current,
 ) => {
-  if (json(prompts.mcpText(current)).normalized_result !== "fixture")
+  if (JSON.parse(prompts.mcpText(current)).normalized_result !== "fixture")
     throw new Error("packaged MCP bridge call failed");
   const batch = await client.callTool(
     {
@@ -107,7 +104,7 @@ const verifyMcpNonLinuxCurrentDocument = async (
     },
     mcpOptions,
   );
-  const batchResult = json(prompts.mcpText(batch)).normalized_result;
+  const batchResult = JSON.parse(prompts.mcpText(batch)).normalized_result;
   if (
     batch.isError === true ||
     batchResult?.total !== 1 ||
@@ -181,7 +178,7 @@ const verifyMcpInlineArtifactEvidence = async (
       inspected.structuredContent?.normalized_result,
     );
     assert.deepEqual(
-      json(prompts.mcpText(inspected)),
+      JSON.parse(prompts.mcpText(inspected)),
       inspected.structuredContent,
     );
     const compared = await client.callTool(
@@ -248,16 +245,17 @@ const verifyMcpInlineArtifactEvidence = async (
 
 /** Connect to the packaged MCP server and verify catalog and Evidence composition. */
 export async function verifyPackageMcp({
+  commands,
   cli,
   environment,
   evidenceRoot,
   artifactArchive,
 }) {
-  const diagnosed = json(
+  const diagnosed = JSON.parse(
     (
-      await execute(cli, ["mcp", "doctor", "--json"], {
+      await commands.exec(cli, ["mcp", "doctor", "--json"], {
         env: environment,
-        timeout: MCP_STARTUP_POLICY.doctorDeadlineMs,
+        timeout: resolveMcpStartupBudgets(environment).doctor.milliseconds,
       })
     ).stdout,
   );
@@ -280,19 +278,39 @@ export async function verifyPackageMcp({
     mcpStderr += chunk.toString();
   });
   const client = new Client({ name: "package-smoke", version: "1.0.0" });
-  try {
-    await client.connect(transport);
-    const mcpOptions = { timeout: 15_000 };
-    await verifyMcpToolsAndPrompts(client, mcpOptions);
-    await verifyMcpTargetFree(client, mcpOptions);
-    await verifyMcpUnknownProvider(client, mcpOptions);
-    await verifyMcpBinaryLifecycle(client, mcpOptions);
-    await verifyMcpInlineArtifactEvidence(client, mcpOptions, artifactArchive);
-    await verifyMcpEvidenceBundle(client, mcpOptions, evidenceRoot);
-  } catch (cause) {
-    throw new Error(`packaged MCP smoke failed: ${mcpStderr}`, { cause });
-  } finally {
-    await client.close();
-    await transport.close();
-  }
+  await withVerifierCleanup(async () => {
+    try {
+      await client.connect(transport);
+      const mcpOptions = { timeout: 15_000 };
+      await verifyMcpToolsAndPrompts(client, mcpOptions);
+      await verifyMcpTargetFree(client, mcpOptions);
+      await verifyMcpUnknownProvider(client, mcpOptions);
+      await verifyMcpBinaryLifecycle(client, mcpOptions);
+      await verifyMcpInlineArtifactEvidence(
+        client,
+        mcpOptions,
+        artifactArchive,
+      );
+      await verifyMcpEvidenceBundle(client, mcpOptions, evidenceRoot);
+    } catch (cause) {
+      throw new Error(`packaged MCP smoke failed: ${mcpStderr}`, { cause });
+    }
+  }, [
+    async () => {
+      try {
+        await client.close();
+      } catch (cause) {
+        commands.adopt(client, "packaged MCP client");
+        throw cause;
+      }
+    },
+    async () => {
+      try {
+        await transport.close();
+      } catch (cause) {
+        commands.adopt(transport, "packaged MCP transport");
+        throw cause;
+      }
+    },
+  ]);
 }

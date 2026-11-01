@@ -35,7 +35,7 @@ const dimensionSchema = z.union([
   z
     .object({
       status: z.literal("changed"),
-      total_changes: z.number().int().min(1),
+      total_changes: z.int().min(1),
       changes: z.array(changeSchema),
       reason: z.null(),
     })
