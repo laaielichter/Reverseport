@@ -177,8 +177,18 @@ export async function writeJson(file, value) {
   const tmp = `${file}.${process.pid}.${++tmpCount}.${Math.random().toString(36).slice(2, 8)}.tmp`;
   try {
     await fs.writeFile(tmp, JSON.stringify(value, null, 2) + '\n');
-    await fs.rename(tmp, file);
+    await renameOver(tmp, file);
   } catch (e) { await fs.rm(tmp, { force: true }).catch(() => {}); throw e; }
+}
+
+/** Windows refuses to replace a file another handle has open for a moment (EPERM/EACCES/EBUSY): wait and try again. */
+async function renameOver(from, to) {
+  for (let attempt = 0; ; attempt++) {
+    try { return await fs.rename(from, to); } catch (e) {
+      if (process.platform !== 'win32' || !['EPERM', 'EACCES', 'EBUSY'].includes(e.code) || attempt >= 20) throw e;
+      await new Promise(r => setTimeout(r, 10 * (attempt + 1)));
+    }
+  }
 }
 
 /** One shape for "what next": next is one line, nextSteps every option (only when there are several). */

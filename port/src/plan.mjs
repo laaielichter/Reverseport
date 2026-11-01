@@ -42,7 +42,14 @@ export async function loadPlan(id) {
     throw new RPError('PLAN_UNREADABLE', `The port plan "${id}" exists but ${file} is not valid JSON (${e.message}), and there is no usable backup.`);
   }
 }
+/** Saves of one plan go one at a time in this process, so they never race for the same file. */
+const saving = new Map();
 async function savePlan(plan) {
+  const queued = (saving.get(plan.id) ?? Promise.resolve()).catch(() => {}).then(() => writePlan(plan));
+  saving.set(plan.id, queued);
+  try { return await queued; } finally { if (saving.get(plan.id) === queued) saving.delete(plan.id); }
+}
+async function writePlan(plan) {
   plan.updated = new Date().toISOString();
   const file = await planFile(plan.id);
   await fs.copyFile(file, `${file}.bak`).catch(() => {}); // the copy loadPlan falls back to
