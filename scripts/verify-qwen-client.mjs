@@ -305,7 +305,9 @@ await withVerifierCleanup(async () => {
               (await realpath(runtime)) + sep,
             ),
           );
-          const script = `const fs=require('node:fs');const e=JSON.parse(fs.readFileSync(${JSON.stringify(artifactPath)},'utf8'));console.log(JSON.stringify({REA_CLIENT_FIXTURE:JSON.stringify(e.normalized_result).includes('REA_CLIENT_FIXTURE'),evidence_id:e.evidence_id,graph_nodes:e.normalized_result.graph.nodes.length}));`;
+          // The path travels as base64, so nothing in it can become code.
+          const encodedPath = Buffer.from(artifactPath).toString("base64");
+          const script = `const fs=require('node:fs');const e=JSON.parse(fs.readFileSync(Buffer.from('${encodedPath}','base64').toString('utf8'),'utf8'));console.log(JSON.stringify({REA_CLIENT_FIXTURE:JSON.stringify(e.normalized_result).includes('REA_CLIENT_FIXTURE'),evidence_id:e.evidence_id,graph_nodes:e.normalized_result.graph.nodes.length}));`;
           // Keep paths and JSON quotes out of shell syntax on Windows and POSIX.
           const encodedScript = Buffer.from(script).toString("base64");
           message = call(shell.name, {

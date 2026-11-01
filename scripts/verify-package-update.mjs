@@ -35,7 +35,7 @@ export async function verifyPackageUpdate({
         response.destroy();
         return;
       }
-      response.writeHead(500);
+      response.writeHead(500, { "Content-Type": "text/plain; charset=utf-8" });
       response.end(String(error));
     });
   });
@@ -65,7 +65,10 @@ export async function verifyPackageUpdate({
       response.setHeader("Content-Type", "application/json");
       response.end("{}");
     } else {
-      const upstream = await fetch(`https://registry.npmjs.org${request.url}`);
+      // Only the path goes to the public registry; a request URL can never pick another host.
+      const upstream = await fetch(
+        `https://registry.npmjs.org/${request.url.replace(/^\/+/u, "")}`,
+      );
       const body = Buffer.from(await upstream.arrayBuffer());
       response.writeHead(upstream.status, {
         "Content-Type":
