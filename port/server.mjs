@@ -5,7 +5,8 @@
 //   POST /api/agent/call                {name, arguments}
 //   POST /api/agent/tools/{name}        {…arguments}
 //   GET  /api/openapi.json              (GPT Actions, LangChain/LlamaIndex OpenAPI tools, n8n, Semantic Kernel)
-//   POST /mcp                           MCP Streamable HTTP (JSON responses) for URL-based MCP clients
+//   POST /mcp                           MCP Streamable HTTP (JSON responses) for URL-based MCP clients: the legacy
+//                                       initialize session and stateless MCP 2026-07-28 requests
 // The same tools as `reverseport mcp`: ReversePort's own plus the deep-analysis engine's (when built).
 // REVERSEPORT_TOKEN=… requires `Authorization: Bearer …`. Browser pages on localhost may call it (CORS).
 // Reaching it from Docker or a tunnel: REVERSEPORT_HOST=0.0.0.0 plus REVERSEPORT_ALLOWED_HOSTS=host1,host2 — only
@@ -41,6 +42,17 @@ export function openapiFor(tools, port) {
     ...(secured ? { components: { securitySchemes: { bearer: { type: 'http', scheme: 'bearer' } } }, security: [{ bearer: [] }] } : {}) };
 }
 
+/** MCP 2026-07-28 requests repeat their version and method in headers; when given, they must agree with the body. */
+export function headerMismatch(headers, message) {
+  const version = message?.params?._meta?.['io.modelcontextprotocol/protocolVersion'];
+  if (version === undefined) return null;
+  const sentVersion = headers['mcp-protocol-version'];
+  if (sentVersion !== undefined && sentVersion !== version) return `MCP-Protocol-Version is ${sentVersion} but the body says ${version}.`;
+  const sentMethod = headers['mcp-method'];
+  if (sentMethod !== undefined && sentMethod !== message.method) return `Mcp-Method is ${sentMethod} but the body calls ${message.method}.`;
+  return null;
+}
+
 const unwrap = result => {
   if (result?.structuredContent !== undefined) return result.structuredContent;
   const text = result?.content?.find(c => c.type === 'text')?.text;
@@ -60,7 +72,7 @@ export function createServer({ relay } = {}) {
     const host = (req.headers.host ?? '').replace(/:\d+$/, '').toLowerCase();
     if (!allowedHosts().has(host)) return fail(403, new RPError('FORBIDDEN_HOST', 'ReversePort only answers on localhost (or hosts listed in REVERSEPORT_ALLOWED_HOSTS).'));
     if (origin && !LOCAL_ORIGIN.test(origin)) return fail(403, new RPError('FORBIDDEN_ORIGIN', 'Only pages on localhost may call ReversePort.'));
-    if (req.method === 'OPTIONS') { res.writeHead(204, { ...cors, 'access-control-allow-methods': 'GET, POST, DELETE, OPTIONS', 'access-control-allow-headers': 'content-type, authorization, mcp-session-id, mcp-protocol-version', 'access-control-max-age': '600' }); return res.end(); }
+    if (req.method === 'OPTIONS') { res.writeHead(204, { ...cors, 'access-control-allow-methods': 'GET, POST, DELETE, OPTIONS', 'access-control-allow-headers': 'content-type, authorization, mcp-session-id, mcp-protocol-version, mcp-method, mcp-name', 'access-control-max-age': '600' }); return res.end(); }
     const token = process.env.REVERSEPORT_TOKEN;
     if (token && req.headers.authorization !== `Bearer ${token}`) return fail(401, new RPError('UNAUTHORIZED', 'Send Authorization: Bearer <REVERSEPORT_TOKEN>.'));
     const body = async () => {
@@ -96,6 +108,8 @@ export function createServer({ relay } = {}) {
           const replies = [];
           let session = req.headers['mcp-session-id'];
           for (const m of messages) {
+            const mismatch = headerMismatch(req.headers, m);
+            if (mismatch) return json(400, { jsonrpc: '2.0', id: m?.id ?? null, error: { code: -32020, message: `Header mismatch: ${mismatch}` } });
             const r = await shared.handle(m);
             if (m?.method === 'initialize' && r?.result) { session = crypto.randomUUID(); sessions.add(session); }
             if (r) replies.push(r);

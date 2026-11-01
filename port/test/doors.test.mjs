@@ -113,6 +113,20 @@ test('HTTP: every vendor format, MCP over HTTP, CORS for localhost pages', async
     assert.ok(listed.result.tools.some(t => t.name === 're_scan'));
     const called = await (await mcp({ id: 3, method: 'tools/call', params: { name: 'port_convert', arguments: { from: 'godot', to: 'unreal', position: [1, 2, 3] } } })).json();
     assert.deepEqual(called.result.structuredContent.position, [-300, 100, 200]);
+    // MCP 2026-07-28 over the same endpoint: no session, version and method in headers and _meta
+    const modernMeta = { 'io.modelcontextprotocol/protocolVersion': '2026-07-28', 'io.modelcontextprotocol/clientCapabilities': {} };
+    const modernHeaders = method => ({ 'mcp-protocol-version': '2026-07-28', 'mcp-method': method });
+    const discovered = await mcp({ id: 10, method: 'server/discover', params: { _meta: modernMeta } }, modernHeaders('server/discover'));
+    assert.equal(discovered.headers.get('mcp-session-id'), null, 'no protocol session in 2026-07-28');
+    assert.ok((await discovered.json()).result.supportedVersions.includes('2026-07-28'));
+    const modernCall = await (await mcp({ id: 11, method: 'tools/call', params: { name: 'port_convert', arguments: { from: 'godot', to: 'unreal', position: [1, 2, 3] }, _meta: modernMeta } }, modernHeaders('tools/call'))).json();
+    assert.equal(modernCall.result.resultType, 'complete');
+    assert.deepEqual(modernCall.result.structuredContent.position, [-300, 100, 200]);
+    const mismatch = await mcp({ id: 12, method: 'tools/list', params: { _meta: modernMeta } }, modernHeaders('tools/call'));
+    assert.equal(mismatch.status, 400);
+    assert.equal((await mismatch.json()).error.code, -32020);
+    const noStream = await (await mcp({ id: 13, method: 'subscriptions/listen', params: { notifications: { toolsListChanged: true }, _meta: modernMeta } }, modernHeaders('subscriptions/listen'))).json();
+    assert.equal(noStream.error.code, -32601, 'JSON-only HTTP cannot hold a stream open and says so');
     const pre = await fetch(`${base}/mcp`, { method: 'OPTIONS', headers: { origin: 'http://localhost:3000', 'access-control-request-method': 'POST' } });
     assert.equal(pre.status, 204);
     assert.equal(pre.headers.get('access-control-allow-origin'), 'http://localhost:3000');
