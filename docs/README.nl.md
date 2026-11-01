@@ -13,7 +13,7 @@ de JSON ingekort tot de belangrijkste velden. Website: <https://laaielichter.git
 
 ## Installeren
 
-Met Node.js 22.19 of nieuwer:
+Met Node.js 22.23.4 of nieuwer (24.22.1+ bij Node 24):
 
 ```bash
 npx reverseport setup

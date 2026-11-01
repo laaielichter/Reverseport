@@ -1,5 +1,5 @@
 import { Client, InMemoryTransport } from "@modelcontextprotocol/client";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { expect, onTestFinished } from "vitest";
 import { createWebModuleTraceService } from "../../src/composition/webModules.js";
@@ -24,15 +24,25 @@ cliTest(
       join(root, "files", "modules", "main.js"),
       artifacts.source,
     );
-    const manifestPath = join(root, "manifest.json").replaceAll("\\", "/");
+    let manifestPath = join(root, "manifest.json").replaceAll("\\", "/");
     await writeFile(manifestPath, JSON.stringify(manifest));
+    if (process.platform !== "win32") {
+      await mkdir(join(root, "lexical"));
+      await mkdir(join(root, "nested"));
+      await symlink(join(root, "nested"), join(root, "lexical", "link"));
+      manifestPath = `${root}/lexical/link/../manifest.json`;
+    }
     const environment = {
       REA_LOG_LEVEL: "silent",
       REA_BROWSER_EXECUTABLE: "relative-missing-browser",
     };
     const cliResponse = await cli.run({
       arguments: ["trace-web-module-imports", manifestPath, "0", "--json"],
-      environment,
+      environment: {
+        ...environment,
+        // This single CLI invocation cannot reuse a newly written cache.
+        NODE_DISABLE_COMPILE_CACHE: "1",
+      },
       timeoutMs: 15000,
     });
     expect(cliResponse.exitCode, cliResponse.stdout + cliResponse.stderr).toBe(
@@ -41,7 +51,11 @@ cliTest(
     expect(cliResponse.json).toMatchObject({
       normalized_result: {
         engine: null,
-        source: { script_index: 0 },
+        manifest: { path: manifestPath, reported_output_directory: root },
+        source: {
+          script_index: 0,
+          path: join(root, "files", "modules", "main.js"),
+        },
         imports: [
           { resolution: { state: "unknown", reason: "computed-specifier" } },
         ],

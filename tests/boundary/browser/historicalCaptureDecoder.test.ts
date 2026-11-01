@@ -11,7 +11,7 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { expect, it, onTestFinished } from "vitest";
+import { expect, it, onTestFinished, vi } from "vitest";
 import { HistoricalCaptureDecoder } from "../../../src/browser/history/HistoricalCaptureDecoder.js";
 import { MitmproxyCaptureAdapter } from "../../../src/browser/history/MitmproxyCaptureAdapter.js";
 import { HAR_CAPTURE_PROVIDER_IDENTITY } from "../../../src/browser/history/CaptureRelease.js";
@@ -22,6 +22,7 @@ import {
 import { historicalHar } from "../../fixtures/historicalHar.js";
 import { decodeHarCapture } from "../../../src/browser/history/HarCapture.js";
 import { projectAnalysisError } from "../../../src/domain/analysisErrorProjection.js";
+import { OwnedFileHandle } from "../../../src/filesystem/OwnedFileHandle.js";
 
 const linux = it.skipIf(process.platform !== "linux");
 
@@ -57,6 +58,49 @@ linux("allows a symlink to a regular mitmdump executable", async () => {
     ),
   ).resolves.toMatchObject({ command });
 });
+
+it("applies a non-default capture deadline and releases its runtime", async () => {
+  const root = await mkdtemp(join(tmpdir(), "rea-capture-deadline-"));
+  onTestFinished(() => rm(root, { recursive: true, force: true }));
+  const path = join(root, "capture.har");
+  await writeFile(path, JSON.stringify(historicalHar()));
+  let runtimePath: string | undefined;
+  const decoder = new HistoricalCaptureDecoder(
+    [
+      {
+        format: "har",
+        identity: HAR_CAPTURE_PROVIDER_IDENTITY,
+        command: () =>
+          Promise.resolve({
+            command: process.execPath,
+            arguments: ["-e", "setInterval(() => {}, 1_000_000)"],
+          }),
+      },
+    ],
+    process.env,
+    async () => {
+      const runtime = await PrivateRuntimeRoot.create({
+        prefix: "rea-capture-deadline-",
+      });
+      runtimePath = runtime.path;
+      return runtime;
+    },
+  );
+  const result = await decoder.inspect(
+    inspectWebNetworkCaptureInputSchema.parse({
+      capture_path: path,
+      format: "har",
+      capture_timeout_ms: 250,
+    }),
+  );
+  expect(result.ok).toBe(false);
+  if (result.ok) throw new Error("expected capture timeout");
+  expect(result.error._tag).toBe("AnalysisTimeoutError");
+  expect(result.error.userMessage).toContain("250");
+  expect(result.error.userMessage).toContain("capture_timeout_ms");
+  if (runtimePath === undefined) throw new Error("runtime was not acquired");
+  await expect(access(runtimePath)).rejects.toMatchObject({ code: "ENOENT" });
+}, 8_000);
 
 it.each([true, false])(
   "binds decoder replies to the complete selected provider identity (matching name: %s)",
@@ -136,6 +180,69 @@ it("classifies an oversized selected capture before creating an owned decoder", 
       ],
     },
   });
+});
+
+it("retains a failed capture reader and retries it before a fresh load", async () => {
+  const root = await mkdtemp(join(tmpdir(), "rea-capture-reader-close-"));
+  onTestFinished(() => rm(root, { recursive: true, force: true }));
+  const path = join(root, "input.har");
+  await writeFile(path, JSON.stringify(historicalHar()));
+  const originalClose = OwnedFileHandle.prototype.close;
+  const close = vi.spyOn(OwnedFileHandle.prototype, "close");
+  let allowClose = false;
+  let closeAttempts = 0;
+  close.mockImplementation(async function (this: OwnedFileHandle) {
+    closeAttempts += 1;
+    if (!allowClose) throw new Error("injected capture reader close failure");
+    await originalClose.call(this);
+  });
+  let decoderCalls = 0;
+  const decoder = new HistoricalCaptureDecoder(
+    [
+      {
+        format: "har",
+        identity: HAR_CAPTURE_PROVIDER_IDENTITY,
+        command: async () => {
+          decoderCalls += 1;
+          return {
+            command: process.execPath,
+            arguments: ["-e", "process.exit(0)"],
+          };
+        },
+      },
+    ],
+    process.env,
+  );
+  const input = inspectWebNetworkCaptureInputSchema.parse({
+    capture_path: path,
+    format: "har",
+  });
+  try {
+    const first = await decoder.inspect(input);
+    expect(first.ok).toBe(false);
+    if (first.ok) throw new Error("Reader close failure must fail inspection");
+    expect(first.error.cleanupIncomplete).toBe(true);
+    expect(first.error.cleanupResources).toContain(path);
+    expect(decoderCalls).toBe(0);
+
+    const refused = await decoder.inspect(input);
+    expect(refused.ok).toBe(false);
+    if (refused.ok) throw new Error("Fresh read must wait for owner cleanup");
+    expect(refused.error.cleanupIncomplete).toBe(true);
+    expect(refused.error.cleanupResources).toContain(path);
+    expect(decoderCalls).toBe(0);
+    expect(closeAttempts).toBe(2);
+
+    allowClose = true;
+    await decoder.close();
+    expect(closeAttempts).toBe(3);
+    expect(first.error.cleanupIncomplete).toBe(false);
+    expect(first.error.cleanupResources).toEqual([]);
+  } finally {
+    allowClose = true;
+    await decoder.close().catch(() => undefined);
+    close.mockRestore();
+  }
 });
 
 it("does not misclassify decoder filesystem failures as missing selected input", async () => {
@@ -302,8 +409,202 @@ it("cancels after snapshot acquisition before launch and removes private input d
   await expect(access(privatePath)).rejects.toMatchObject({ code: "ENOENT" });
 });
 
+it("preserves the exact cancellation reason observed during final runtime close", async () => {
+  const root = await mkdtemp(join(tmpdir(), "rea-historical-final-cancel-"));
+  onTestFinished(() => rm(root, { recursive: true, force: true }));
+  const path = join(root, "input.har");
+  const text = JSON.stringify(historicalHar());
+  await writeFile(path, text);
+  const controller = new AbortController();
+  const reason = { request: "cancel during runtime close" };
+  const decoder = new HistoricalCaptureDecoder(
+    [
+      {
+        format: "har",
+        identity: HAR_CAPTURE_PROVIDER_IDENTITY,
+        command: async (_, runtimePath) => {
+          await writeFile(
+            join(runtimePath, "reply.json"),
+            JSON.stringify({ ok: true, value: decodeHarCapture(text, []) }),
+          );
+          return {
+            command: process.execPath,
+            arguments: ["-e", "process.exit(0)"],
+          };
+        },
+      },
+    ],
+    process.env,
+    async () => {
+      const runtime = await PrivateRuntimeRoot.create({
+        prefix: "rea-final-cancel-proof-",
+      });
+      return {
+        path: runtime.path,
+        close: async () => {
+          controller.abort(reason);
+          await runtime.close();
+        },
+      };
+    },
+  );
+  const result = await decoder.inspect(
+    inspectWebNetworkCaptureInputSchema.parse({
+      capture_path: path,
+      format: "har",
+    }),
+    { signal: controller.signal },
+  );
+  if (result.ok) throw new Error("Finalization cancellation must fail");
+  expect(result.error._tag).toBe("AnalysisCancelledError");
+  expect(result.error.cause).toBe(reason);
+  expect(result.error.partialObservation).toMatchObject({
+    artifact: { path, sha256: expect.any(String) },
+    records: [{ ordinal: 0 }],
+  });
+});
+
+it("retains completed capture facts and binds final root cleanup to its retry lease", async () => {
+  const root = await mkdtemp(join(tmpdir(), "rea-historical-report-cleanup-"));
+  onTestFinished(() => rm(root, { recursive: true, force: true }));
+  const path = join(root, "input.har");
+  const text = JSON.stringify(historicalHar());
+  await writeFile(path, text);
+  let runtimePath: string | undefined;
+  let allowClose = false;
+  let runtime: PrivateRuntimeRoot | undefined;
+  const decoder = new HistoricalCaptureDecoder(
+    [
+      {
+        format: "har",
+        identity: HAR_CAPTURE_PROVIDER_IDENTITY,
+        command: async (_, path) => {
+          await writeFile(
+            join(path, "reply.json"),
+            JSON.stringify({ ok: true, value: decodeHarCapture(text, []) }),
+          );
+          return {
+            command: process.execPath,
+            arguments: ["-e", "process.exit(0)"],
+          };
+        },
+      },
+    ],
+    process.env,
+    async () => {
+      runtime = await PrivateRuntimeRoot.create({
+        prefix: "rea-report-cleanup-proof-",
+      });
+      runtimePath = runtime.path;
+      onTestFinished(() => runtime?.close());
+      return {
+        path: runtime.path,
+        close: async () => {
+          if (!allowClose)
+            throw new Error("injected private root close failure");
+          await runtime?.close();
+        },
+      };
+    },
+  );
+  const result = await decoder.inspect(
+    inspectWebNetworkCaptureInputSchema.parse({
+      capture_path: path,
+      format: "har",
+    }),
+  );
+  expect(result.ok).toBe(false);
+  if (result.ok) throw new Error("Root close failure must be reported");
+  expect(result.error.cleanupIncomplete).toBe(true);
+  expect(runtimePath).toBeDefined();
+  expect(result.error.cleanupResources).toContain(runtimePath);
+  expect(result.error.partialObservation).toMatchObject({
+    artifact: { path, sha256: expect.any(String) },
+    records: [{ ordinal: 0 }],
+  });
+
+  allowClose = true;
+  await decoder.close();
+  expect(result.error.cleanupIncomplete).toBe(false);
+  expect(result.error.cleanupResources).toEqual([]);
+});
+
+it("keeps late cancellation primary when runtime close also fails, then clears on retry", async () => {
+  const root = await mkdtemp(join(tmpdir(), "rea-historical-cancel-cleanup-"));
+  onTestFinished(() => rm(root, { recursive: true, force: true }));
+  const path = join(root, "input.har");
+  const text = JSON.stringify(historicalHar());
+  await writeFile(path, text);
+  const controller = new AbortController();
+  const reason = { request: "cancel during failed root close" };
+  let runtime: PrivateRuntimeRoot | undefined;
+  let closeAttempts = 0;
+  const decoder = new HistoricalCaptureDecoder(
+    [
+      {
+        format: "har",
+        identity: HAR_CAPTURE_PROVIDER_IDENTITY,
+        command: async (_, runtimePath) => {
+          await writeFile(
+            join(runtimePath, "reply.json"),
+            JSON.stringify({ ok: true, value: decodeHarCapture(text, []) }),
+          );
+          return {
+            command: process.execPath,
+            arguments: ["-e", "process.exit(0)"],
+          };
+        },
+      },
+    ],
+    process.env,
+    async () => {
+      runtime = await PrivateRuntimeRoot.create({
+        prefix: "rea-cancel-cleanup-proof-",
+      });
+      onTestFinished(() => runtime?.close());
+      return {
+        path: runtime.path,
+        close: async () => {
+          closeAttempts += 1;
+          if (closeAttempts === 1) {
+            controller.abort(reason);
+            throw new Error("injected close failure after cancellation");
+          }
+          await runtime?.close();
+        },
+      };
+    },
+  );
+  const result = await decoder.inspect(
+    inspectWebNetworkCaptureInputSchema.parse({
+      capture_path: path,
+      format: "har",
+    }),
+    { signal: controller.signal },
+  );
+  if (result.ok) throw new Error("Cancellation and failed close must fail");
+  expect(result.error._tag).toBe("ProviderAdapterError");
+  expect(result.error.cleanupPrimary?._tag).toBe("AnalysisCancelledError");
+  expect(result.error.cleanupPrimary?.cause).toBe(reason);
+  expect(JSON.stringify(result.error.diagnostics)).not.toContain(
+    "partial_observation",
+  );
+  expect(result.error.partialObservation).toMatchObject({
+    artifact: { path, sha256: expect.any(String) },
+    records: [{ ordinal: 0 }],
+  });
+  expect(result.error.cleanupIncomplete).toBe(true);
+  expect(result.error.cleanupResources).toContain(runtime?.path);
+
+  await decoder.close();
+  expect(closeAttempts).toBe(2);
+  expect(result.error.cleanupIncomplete).toBe(false);
+  expect(result.error.cleanupResources).toEqual([]);
+});
+
 it.each([
   { reason: "input-limit", tag: "AnalysisInputError" },
+  { reason: "expanded-limit", tag: "AnalysisInputError" },
   { reason: "resource-limit", tag: "AnalysisResourceConstraintError" },
   { reason: "decoder", tag: "ProviderAdapterError" },
   { reason: "limit", tag: "AnalysisOutputError" },
@@ -364,6 +665,41 @@ it.each([
           ],
         },
       });
+    } else if (reason === "expanded-limit") {
+      expect(projected).toMatchObject({
+        category: "invalid_input",
+        details: {
+          issues: [
+            {
+              path: ["capture_path", "/extension/child"],
+              reason: "out_of_range",
+              expected: {
+                maximum_expanded_capture_bytes:
+                  WEB_NETWORK_CAPTURE_LIMITS.inputBytes,
+              },
+            },
+          ],
+        },
+      });
+    } else if (reason === "limit") {
+      expect(projected).toMatchObject({
+        code: "unreadable_output",
+        retryable: false,
+        message: expect.stringContaining(
+          String(WEB_NETWORK_CAPTURE_LIMITS.outputBytes),
+        ),
+        details: {
+          diagnostics: {
+            maximum_reply_bytes: WEB_NETWORK_CAPTURE_LIMITS.outputBytes,
+          },
+        },
+      });
+      expect(projected.remediation.action).toContain("no runtime override");
+      expect(projected.remediation.action).toContain(
+        "no completed capture Evidence",
+      );
+      expect(projected.remediation.action).not.toContain("rea doctor");
+      expect(result.error.partialObservation).toBeUndefined();
     } else if (tag === "ProviderAdapterError") {
       expect(projected).toMatchObject({
         details: {
@@ -482,12 +818,15 @@ it.each(["format", "process"])(
       }),
     );
     if (result.ok) throw new Error("Cleanup failure required");
+    expect(result.error.cleanupPrimary?._tag).toBe(
+      kind === "format" ? "AnalysisInputError" : "ProviderAdapterError",
+    );
     const projected = projectAnalysisError(result.error);
     expect(projected).toMatchObject({
       code: "cleanup_incomplete",
       details: {
         diagnostics: {
-          previous_error:
+          primary_error:
             kind === "format"
               ? {
                   category: "invalid_input",
@@ -515,5 +854,99 @@ it.each(["format", "process"])(
       },
     });
     expect(JSON.stringify(projected)).not.toContain("capture-private");
+  },
+);
+
+it.each([
+  { closeFails: false, reply: "capture" },
+  { closeFails: true, reply: "capture" },
+  { closeFails: false, reply: "malformed" },
+  { closeFails: true, reply: "refusal" },
+])(
+  "retains validated reply completion through descriptor cancellation %j",
+  async ({ closeFails, reply }) => {
+    const root = await mkdtemp(join(tmpdir(), "rea-reply-finalization-"));
+    onTestFinished(() => rm(root, { recursive: true, force: true }));
+    const path = join(root, "input.har");
+    const text = JSON.stringify(historicalHar());
+    await writeFile(path, text);
+    const controller = new AbortController();
+    const reason = { caller: "reply descriptor close" };
+    const originalClose = OwnedFileHandle.prototype.close;
+    let closes = 0;
+    const close = vi
+      .spyOn(OwnedFileHandle.prototype, "close")
+      .mockImplementation(async function (this: OwnedFileHandle) {
+        closes += 1;
+        if (closes === 2 && closeFails) {
+          controller.abort(reason);
+          throw new Error("controlled reply close denial");
+        }
+        await originalClose.call(this);
+        if (closes === 2) controller.abort(reason);
+      });
+    const decoder = new HistoricalCaptureDecoder(
+      [
+        {
+          format: "har",
+          identity: HAR_CAPTURE_PROVIDER_IDENTITY,
+          command: async (_, runtimePath) => {
+            await writeFile(
+              join(runtimePath, "reply.json"),
+              reply === "malformed"
+                ? "{"
+                : JSON.stringify(
+                    reply === "refusal"
+                      ? {
+                          ok: false,
+                          reason: "limit",
+                          message: "Complete reply allowance exceeded",
+                          pointer: "",
+                        }
+                      : { ok: true, value: decodeHarCapture(text, []) },
+                  ),
+            );
+            return { command: process.execPath, arguments: ["-e", ""] };
+          },
+        },
+      ],
+      process.env,
+    );
+    try {
+      const result = await decoder.inspect(
+        inspectWebNetworkCaptureInputSchema.parse({
+          capture_path: path,
+          format: "har",
+        }),
+        { signal: controller.signal },
+      );
+      if (result.ok)
+        throw new Error("Expected reply finalization cancellation");
+      expect(projectAnalysisError(result.error).code).toBe(
+        closeFails ? "cleanup_incomplete" : "cancelled",
+      );
+      if (reply !== "capture")
+        expect(result.error.partialObservation).toBeUndefined();
+      else
+        expect(result.error.partialObservation).toMatchObject({
+          artifact: { path },
+          records: [{ ordinal: 0 }],
+        });
+      await decoder.close();
+      expect(result.error.cleanupIncomplete).toBe(false);
+      expect(projectAnalysisError(result.error).code).toBe(
+        reply === "refusal" ? "unreadable_output" : "cancelled",
+      );
+      const primary = result.error.cleanupPrimary ?? result.error;
+      if (reply === "refusal")
+        expect(primary.diagnostics).toMatchObject({
+          reply_finalization_error: { code: "cancelled" },
+        });
+      else expect(primary.cause).toBe(reason);
+      expect(closes).toBe(closeFails ? 3 : 2);
+    } finally {
+      close.mockRestore();
+      await decoder.close();
+    }
   },
 );

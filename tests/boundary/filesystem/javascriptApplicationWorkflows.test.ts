@@ -14,13 +14,14 @@ import {
 import { reconcileJavaScriptRuntimeEvidence } from "../../../src/application/javascript/JavaScriptRuntimeReconciliationService.js";
 import { createEvidence } from "../../../src/domain/evidence.js";
 import { AnalysisInputError } from "../../../src/domain/analysisErrorCore.js";
-import { jsonValueSchema } from "../../../src/domain/jsonValue.js";
+
 import { javascriptApplicationAnalysisResultSchema } from "../../../src/domain/javascript/javascriptApplicationAnalysis.js";
 import {
   applicationVersionComparisonResultSchema,
   type ApplicationVersionComparisonResult,
 } from "../../../src/domain/javascript/javascriptApplicationVersionComparisonSchemas.js";
 import { javascriptRuntimeReconciliationResultSchema } from "../../../src/domain/javascript/javascriptRuntimeReconciliationSchemas.js";
+import { electronPageInspectionSchema } from "../../../src/domain/javascript/electronObservation.js";
 import { compareJavaScriptApplicationVersions } from "../../../src/domain/javascript/javascriptApplicationVersionComparison.js";
 import { createJavaScriptApplicationGraph } from "../../../src/domain/javascript/javascriptApplicationGraph.js";
 import { traceApplicationFeature } from "../../../src/domain/javascript/javascriptFeatureTrace.js";
@@ -30,8 +31,11 @@ import {
   buildSyntheticJavaScriptApplicationGraph,
 } from "../../../src/domain/javascript/javascriptApplicationGraph.fixture.js";
 import { writeVersionedJavaScriptApplicationFixtures } from "../../fixtures/javascriptArtifactApplication.js";
-import { JAVASCRIPT_APPLICATION_PROVIDER } from "../../../src/application/InvestigationProviders.js";
+import { JAVASCRIPT_APPLICATION_PROVIDER } from "../../../src/domain/investigationProviders.js";
+import { projectManagedApplicationGraphEvidence } from "../../../src/application/managed/ManagedApplicationGraphService.js";
+import { MANAGED_APPLICATION_GRAPH_EXAMPLE } from "../../../src/contracts/managed/managedWorkflowExamples.js";
 import { JAVASCRIPT_RUNTIME_RECONCILIATION_EXAMPLE } from "../../../src/contracts/javascript/javascriptRuntimeReconciliationExample.js";
+import { managedApplicationGraphResultSchema } from "../../../src/domain/managed/managedApplicationGraph.js";
 
 const temporary: string[] = [];
 
@@ -44,6 +48,37 @@ afterEach(async () => {
 });
 
 describe("JavaScript application workflows", () => {
+  it("preserves source-owned requested native members across trace directions", () => {
+    const graph = buildSyntheticJavaScriptApplicationGraph();
+    const addon = graph.nodes.find(({ kind }) => kind === "native-addon");
+    if (addon === undefined) throw new Error("Expected native fixture node");
+    const traces = (["incoming", "outgoing", "both"] as const).map(
+      (direction) =>
+        traceApplicationFeature({
+          sourceEvidenceId: `ev_${"a".repeat(64)}`,
+          graph,
+          nativeEvidence: [],
+          seed: {
+            kind: "node-id",
+            value: addon.node_id,
+            match: "exact",
+            case_sensitive: true,
+          },
+          direction,
+        }),
+    );
+    for (const trace of traces)
+      expect(trace.native_handoffs).toMatchObject([
+        {
+          native_node_id: addon.node_id,
+          requested_exports: ["openProject"],
+          export_node_ids: [expect.any(String)],
+        },
+      ]);
+    expect(traces[0]!.native_handoffs).toEqual(traces[1]!.native_handoffs);
+    expect(traces[0]!.graph?.edges).not.toEqual(traces[1]!.graph?.edges);
+  });
+
   it("traces a contextBridge API through IPC into linked native evidence", () => {
     const graph = buildSyntheticJavaScriptApplicationGraph();
     const nativeEvidence = createEvidence(
@@ -194,9 +229,9 @@ describe("complete comparison projections", () => {
     ]);
     const compared = compareApplicationVersionsEvidence({ left, right });
     if (!compared.ok) throw compared.error;
-    const result = applicationVersionComparisonResultSchema.parse(
-      compared.value.normalized_result,
-    );
+    expect(compared.value.sources[0]).toBe(left);
+    expect(compared.value.sources[1]).toBe(right);
+    const result = compared.value.result;
     expectFullComparisonResultSchema(result);
     const modules = result.items.filter(
       ({ node_kind: kind }) => kind === "javascript-module",
@@ -257,9 +292,7 @@ describe("complete comparison projections", () => {
     ]);
     const compared = compareApplicationVersionsEvidence({ left, right });
     if (!compared.ok) throw compared.error;
-    const result = applicationVersionComparisonResultSchema.parse(
-      compared.value.normalized_result,
-    );
+    const result = compared.value.result;
     expect(result.items).toContainEqual(
       expect.objectContaining({
         node_kind: "source-module",
@@ -317,6 +350,71 @@ describe("complete comparison projections", () => {
     expect(first.summary.removed).toBe(0);
     expect(first.summary.unknown).toBeGreaterThan(0);
   });
+});
+
+describe("Application graph Evidence envelopes", () => {
+  it.each(["runtime reconciliation", "managed application graph"] as const)(
+    "rejects %s result links outside the authenticated Evidence envelope",
+    (sourceKind) => {
+      const sourceResult =
+        sourceKind === "runtime reconciliation"
+          ? reconcileJavaScriptRuntimeEvidence(
+              JAVASCRIPT_RUNTIME_RECONCILIATION_EXAMPLE,
+            )
+          : projectManagedApplicationGraphEvidence(
+              MANAGED_APPLICATION_GRAPH_EXAMPLE,
+            );
+      if (!sourceResult.ok) throw sourceResult.error;
+      const source = sourceResult.value;
+      const result =
+        sourceKind === "runtime reconciliation"
+          ? javascriptRuntimeReconciliationResultSchema.parse(
+              source.normalized_result,
+            )
+          : managedApplicationGraphResultSchema.parse(source.normalized_result);
+      const extraLink = `ev_${"f".repeat(64)}`;
+      const malformed = createEvidence(undefined, source.provider, {
+        predicateType: source.predicate_type,
+        operation: source.operation,
+        parameters: source.parameters,
+        result: {
+          ...result,
+          evidence_links: [...result.evidence_links, extraLink],
+        },
+        rawResult: source.raw_result,
+        confidence: source.confidence,
+        authority: source.authority,
+        environment: source.environment,
+        limitations: source.limitations,
+        locations: source.locations,
+        evidenceLinks: source.evidence_links,
+      });
+      const workflowInput = {
+        application: source,
+        seed: { kind: "route" as const, value: "/not-present" },
+        direction: "both" as const,
+      };
+
+      expect(traceApplicationFeatureEvidence(workflowInput).ok).toBe(true);
+      const rejected = traceApplicationFeatureEvidence({
+        ...workflowInput,
+        application: malformed,
+      });
+
+      expect(rejected).toMatchObject({
+        ok: false,
+        error: {
+          issues: [
+            {
+              path: ["application", "normalized_result", "evidence_links"],
+              reason: "invalid_value",
+              message: `${sourceKind === "runtime reconciliation" ? "Runtime reconciliation result" : "Managed application graph result"} references Evidence ${extraLink} outside its envelope.`,
+            },
+          ],
+        },
+      });
+    },
+  );
 });
 
 describe("JavaScript application workflow error diagnostics", () => {
@@ -381,7 +479,7 @@ describe("JavaScript application workflow error diagnostics", () => {
         predicateType: evidence.predicate_type,
         operation: evidence.operation,
         parameters: evidence.parameters,
-        result: jsonValueSchema.parse(malformedResult),
+        result: malformedResult,
         confidence: evidence.confidence,
         authority: evidence.authority,
         limitations: evidence.limitations,
@@ -443,7 +541,98 @@ describe("JavaScript application workflow error diagnostics", () => {
   });
 });
 
+const RUNTIME_PATH_CASES = [
+  {
+    name: "case-sensitive POSIX input root",
+    root: null,
+    path: "/applications/Example.app/Contents/Resources/app/renderer.js",
+    status: "unknown",
+    basis: "none",
+  },
+  {
+    name: "case-sensitive POSIX mapping root",
+    root: "/runtime/App",
+    path: "/runtime/app/renderer.js",
+    status: "unknown",
+    basis: "none",
+  },
+  {
+    name: "matching POSIX mapping root",
+    root: "/runtime/App",
+    path: "/runtime/App/renderer.js",
+    status: "matched",
+    basis: "operator-file-mapping",
+  },
+  {
+    name: "case-insensitive Windows mapping root",
+    root: String.raw`C:\runtime\App`,
+    path: String.raw`c:\runtime\app\renderer.js`,
+    status: "matched",
+    basis: "operator-file-mapping",
+  },
+] as const;
+
 describe("JavaScript runtime reconciliation local paths", () => {
+  it.each(RUNTIME_PATH_CASES)(
+    "uses $name on every host",
+    ({ root, path, status, basis }) => {
+      const base = JAVASCRIPT_RUNTIME_RECONCILIATION_EXAMPLE;
+      const original = base.runtime_observations[0]!;
+      const inspection = electronPageInspectionSchema.parse(
+        original.normalized_result,
+      );
+      // Keep target and script coordinates consistent so an unrelated target
+      // cannot activate the static layer after its script mapping was rejected.
+      const runtime = createEvidence(undefined, original.provider, {
+        predicateType: original.predicate_type,
+        operation: original.operation,
+        parameters: { ...original.parameters, include_script_sources: false },
+        result: {
+          ...inspection,
+          target: { ...inspection.target, file_path: path },
+          scripts: {
+            ...inspection.scripts,
+            items: inspection.scripts.items.map((script) => ({
+              ...script,
+              file_path: path,
+              source: { included: false, reason: "not-requested" },
+            })),
+          },
+        },
+        confidence: original.confidence,
+        authority: original.authority,
+      });
+      const reconciled = reconcileJavaScriptRuntimeEvidence({
+        static_layers: base.static_layers.map((layer) => ({
+          ...layer,
+          runtime_mappings: root === null ? [] : [{ kind: "file-root", root }],
+        })),
+        runtime_observations: [runtime],
+      });
+      if (!reconciled.ok) throw reconciled.error;
+      const result = javascriptRuntimeReconciliationResultSchema.parse(
+        reconciled.value.normalized_result,
+      );
+      expect(
+        result.reconciliations.find(
+          ({ entity_kind }) => entity_kind === "script",
+        ),
+      ).toMatchObject({ status, basis });
+      expect(
+        result.static_load_states.find(
+          ({ kind }) => kind === "javascript-asset",
+        ),
+      ).toMatchObject(
+        status === "matched"
+          ? { status: "loaded", reason: "runtime-script-correspondence" }
+          : { status: "unknown", reason: "layer-outside-runtime-scope" },
+      );
+      expect(result.static_layers[0]?.runtime_mappings).toEqual(
+        root === null ? [] : [{ kind: "file-root", root, artifact_prefix: "" }],
+      );
+    },
+  );
+
   it("resolves relative file mapping roots before deriving result Evidence", () => {
     const absoluteRoot = resolve(process.cwd(), "runtime-cache-fixture");
     const relativeRoot = relative(process.cwd(), absoluteRoot);

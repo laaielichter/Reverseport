@@ -1,11 +1,16 @@
 import { lstat, realpath } from "node:fs/promises";
-import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { dirname, join } from "node:path";
 import { ArtifactReaderFailure } from "../../artifacts/ArtifactReader.js";
+import { ArtifactResourceScope } from "../../artifacts/ArtifactResourceScope.js";
 import { readStableArtifact } from "../../artifacts/readStableArtifact.js";
 import { normalizeArtifactPath } from "../../artifacts/ArtifactPaths.js";
 import type { WebScriptArtifactPort } from "../../application/WebScriptArtifactPort.js";
 import type { ExecutionOptions } from "../../application/AnalysisProvider.js";
-import { AnalysisCapabilityUnavailableError } from "../../domain/analysisErrorCore.js";
+import {
+  AnalysisCapabilityUnavailableError,
+  AnalysisInputError,
+} from "../../domain/analysisErrorCore.js";
+import { isPathWithinRoot } from "../../domain/localPath.js";
 import { err, ok } from "../../domain/result.js";
 import type { SelectedWebScriptInput } from "../../domain/webScriptArtifacts.js";
 import { webScriptExportManifestSchema } from "../../domain/webScriptExport.js";
@@ -13,16 +18,41 @@ import {
   decodeWebArtifact,
   readWebArtifactJson,
   webArtifactReadError,
-  WebArtifactFormatFailure,
   type WebArtifactReadContext,
 } from "./WebArtifactReads.js";
 
 /** Read one digest-verified captured source under the manifest's current location. */
 export class LocalWebScriptArtifacts implements WebScriptArtifactPort {
-  constructor(readonly operation: WebArtifactReadContext["operation"]) {}
+  constructor(
+    readonly operation: WebArtifactReadContext["operation"],
+    readonly resources = new ArtifactResourceScope(),
+  ) {}
+
+  close(): Promise<void> {
+    return this.resources.close();
+  }
 
   /** Read the selected source; relocated exports retain their reported original root. */
   async load(input: SelectedWebScriptInput, options?: ExecutionOptions) {
+    try {
+      return await this.resources.run(() => this.#load(input, options));
+    } catch (cause: unknown) {
+      return err(
+        webArtifactReadError(
+          cause,
+          {
+            operation: this.operation,
+            field: ["manifest_path"],
+            targetPath: input.manifest_path,
+            callerSelected: true,
+          },
+          options?.signal,
+        ),
+      );
+    }
+  }
+
+  async #load(input: SelectedWebScriptInput, options?: ExecutionOptions) {
     let field: readonly (string | number)[] = ["manifest_path"];
     let targetPath = input.manifest_path;
     let callerSelected = true;
@@ -31,13 +61,29 @@ export class LocalWebScriptArtifacts implements WebScriptArtifactPort {
         input.manifest_path,
         32 * 1024 * 1024,
         options?.signal,
+        this.resources,
       );
       const manifest = webScriptExportManifestSchema.parse(manifestBytes.value);
       field = ["script_index"];
       const selected = manifest.scripts[input.script_index];
+      // A valid manifest without this index is a caller selection fault.
       if (selected === undefined)
-        throw new WebArtifactFormatFailure(
-          `No script at index ${String(input.script_index)}; manifest contains ${String(manifest.scripts.length)} scripts.`,
+        return err(
+          new AnalysisInputError(this.operation, undefined, [
+            manifest.scripts.length === 0
+              ? {
+                  path: ["script_index"],
+                  reason: "invalid_value",
+                  message: "The selected manifest contains no scripts.",
+                }
+              : {
+                  path: ["script_index"],
+                  reason: "out_of_range",
+                  minimum: 0,
+                  maximum: manifest.scripts.length - 1,
+                  message: `No script at index ${String(input.script_index)}; the manifest contains ${String(manifest.scripts.length)} scripts.`,
+                },
+          ]),
         );
       if (selected.content.state !== "exported")
         return err(
@@ -50,21 +96,32 @@ export class LocalWebScriptArtifacts implements WebScriptArtifactPort {
             },
           ),
         );
+      // The index has selected a script. Its source metadata belongs to the
+      // manifest, rather than to the caller's index or file selection.
+      callerSelected = false;
       const portable = normalizeArtifactPath(selected.content.relative_path);
       if (portable !== selected.content.relative_path)
         throw new ArtifactReaderFailure(
           "path",
           `Selected source path changes during normalization: ${selected.content.relative_path}`,
         );
-      const root = resolve(dirname(input.manifest_path));
+      if (process.platform === "win32" && portable.includes("\\"))
+        throw new ArtifactReaderFailure(
+          "path",
+          `Windows source path cannot contain backslashes as literal name characters: ${JSON.stringify(portable)}`,
+        );
+      const selectedParent = dirname(input.manifest_path);
+      targetPath = selectedParent;
+      const root = await realpath(selectedParent);
       const sourcePath = join(root, "files", portable);
       targetPath = sourcePath;
-      callerSelected = false;
       await assertContained(root, sourcePath);
       const sourceBytes = await readStableArtifact(
         sourcePath,
         16 * 1024 * 1024,
         options?.signal,
+        undefined,
+        this.resources,
       );
       await assertContained(root, sourcePath);
       if (
@@ -110,14 +167,8 @@ export class LocalWebScriptArtifacts implements WebScriptArtifactPort {
 }
 
 const assertContained = async (root: string, path: string): Promise<void> => {
-  const canonicalRoot = await realpath(root);
   const canonicalFile = await realpath(path);
-  const fromRoot = relative(canonicalRoot, canonicalFile);
-  if (
-    fromRoot === ".." ||
-    fromRoot.startsWith(`..${sep}`) ||
-    isAbsolute(fromRoot)
-  )
+  if (!isPathWithinRoot(root, canonicalFile))
     throw new ArtifactReaderFailure(
       "path",
       `Selected source escapes its manifest directory: ${path}`,

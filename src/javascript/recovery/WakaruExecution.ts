@@ -4,9 +4,10 @@ import {
   type ExecutionOptions,
 } from "../../application/AnalysisProvider.js";
 import type { SafeOutputTree } from "../../artifacts/SafeOutputTree.js";
+import type { ArtifactResourceScope } from "../../artifacts/ArtifactResourceScope.js";
 import {
+  AnalysisArtifactChangedError,
   AnalysisCapabilityUnavailableError,
-  AnalysisOutputError,
 } from "../../domain/analysisErrorCore.js";
 import type { JavaScriptRecoveryInput } from "../../domain/javascript/javascriptRecovery.js";
 import { jsonValueSchema } from "../../domain/jsonValue.js";
@@ -43,12 +44,21 @@ type RecoveryWorkspace = {
   launcher: WakaruLauncher | undefined;
   options: ExecutionOptions | undefined;
   deadline: number;
+  resources: ArtifactResourceScope;
 };
 
 /** Consume the pinned producer representation in a private workspace. */
 const executeWakaruRecovery = async (context: RecoveryWorkspace) => {
-  const { root, input, sources, engine, environment, launcher, options } =
-    context;
+  const {
+    root,
+    input,
+    sources,
+    engine,
+    environment,
+    launcher,
+    options,
+    resources,
+  } = context;
   const staging = join(root, "modules");
   const commandContext = {
     ...engine,
@@ -57,6 +67,7 @@ const executeWakaruRecovery = async (context: RecoveryWorkspace) => {
     environment: environment,
     ...(options?.signal === undefined ? {} : { signal: options.signal }),
     ...(launcher === undefined ? {} : { launcher: launcher }),
+    resources,
   };
   const version = await runWakaruCommand({
     ...commandContext,
@@ -90,7 +101,11 @@ const executeWakaruRecovery = async (context: RecoveryWorkspace) => {
       staging,
     ],
   });
-  const files = await inventoryRecoveryFiles(staging, options?.signal);
+  const files = await inventoryRecoveryFiles(
+    staging,
+    options?.signal,
+    resources,
+  );
   const snapshots = new Map<string, Buffer>();
   for (const source of sources)
     snapshots.set(
@@ -99,6 +114,7 @@ const executeWakaruRecovery = async (context: RecoveryWorkspace) => {
         source.snapshot_path,
         source.bytes,
         options?.signal,
+        resources,
       ),
     );
   const parsed = await parseWakaruReports({
@@ -106,13 +122,15 @@ const executeWakaruRecovery = async (context: RecoveryWorkspace) => {
     provenancePath: join(staging, "provenance.json"),
     snapshots,
     files,
+    ...(options?.signal === undefined ? {} : { signal: options.signal }),
+    resources,
   });
   return { version, admitted, run, parsed };
 };
 
 /** Publish validated recovery and retain exact source and engine bindings. */
 export const prepareWakaruExecution = async (context: RecoveryWorkspace) => {
-  const { root, tree, input, sources, engine, options } = context;
+  const { root, tree, input, sources, engine, options, resources } = context;
   const [source] = sources;
   const staging = join(root, "modules");
   const { version, admitted, run, parsed } =
@@ -127,31 +145,47 @@ export const prepareWakaruExecution = async (context: RecoveryWorkspace) => {
     parsed,
     execution: run,
     ...(options?.signal === undefined ? {} : { signal: options.signal }),
+    resources,
   });
   for (const selected of sources) {
     const current = await fingerprintRecoveryFile(
       selected.path,
       RECOVERY_LIMITS.inputBytes,
       options?.signal,
+      resources,
     );
     if (current.sha256 !== selected.sha256 || current.bytes !== selected.bytes)
-      throw new AnalysisOutputError(
+      throw new AnalysisArtifactChangedError(
         OPERATION,
+        selected.path,
         `Original input changed during recovery: ${selected.path}`,
+        {
+          diagnostics: {
+            expected_sha256: selected.sha256,
+            observed_sha256: current.sha256,
+            expected_bytes: selected.bytes,
+            observed_bytes: current.bytes,
+          },
+        },
       );
   }
-  if (
-    (
-      await fingerprintRecoveryFile(
-        engine.command,
-        RECOVERY_LIMITS.outputBytes,
-        options?.signal,
-      )
-    ).sha256 !== engine.sha256
-  )
-    throw new AnalysisOutputError(
+  const currentEngine = await fingerprintRecoveryFile(
+    engine.command,
+    RECOVERY_LIMITS.outputBytes,
+    options?.signal,
+    resources,
+  );
+  if (currentEngine.sha256 !== engine.sha256)
+    throw new AnalysisArtifactChangedError(
       OPERATION,
+      engine.command,
       "Configured engine bytes changed during recovery",
+      {
+        diagnostics: {
+          expected_sha256: engine.sha256,
+          observed_sha256: currentEngine.sha256,
+        },
+      },
     );
   return createAnalysisExecution(
     result,

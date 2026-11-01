@@ -62,7 +62,114 @@ const sessionEvidence = effects({ appendsEvidence: true });
 
 /** Explicit effect audit for every public tool. */
 export const TOOL_EFFECTS: Readonly<Record<string, ToolEffects>> = {
+  inspect_analysis_settings: effects(),
+  update_analysis_settings: effects({ mutatesSession: true }),
+  list_cutter_sessions: effects({ accessesNetwork: true }),
+  cutter_command: effects({
+    mutatesTarget: true,
+    executesForeignCode: true,
+    mutatesSession: true,
+    writesFilesystem: true,
+    launchesProcess: true,
+    accessesNetwork: true,
+    changesUiState: true,
+    idempotent: false,
+  }),
+  inspect_with_objdump: effects({
+    mutatesSession: true,
+    launchesProcess: true,
+  }),
+  start_gdb_session: effects({
+    launchesProcess: true,
+    mutatesSession: true,
+    idempotent: false,
+  }),
+  gdb_console: effects({
+    mutatesTarget: true,
+    mutatesSession: true,
+    writesFilesystem: true,
+    launchesProcess: true,
+    accessesNetwork: true,
+    executesForeignCode: true,
+    idempotent: false,
+  }),
+  gdb_session_status: effects(),
+  start_rizin_debug_session: effects({
+    mutatesTarget: true,
+    mutatesSession: true,
+    launchesProcess: true,
+    executesForeignCode: true,
+    idempotent: false,
+  }),
+  rizin_debug_command: effects({
+    mutatesTarget: true,
+    mutatesSession: true,
+    executesForeignCode: true,
+    writesFilesystem: true,
+    launchesProcess: true,
+    accessesNetwork: true,
+    changesUiState: true,
+    mayDiscardData: true,
+    idempotent: false,
+  }),
+  rizin_debug_session_status: effects({ mutatesSession: true }),
+  close_rizin_debug_session: effects({
+    mutatesSession: true,
+    launchesProcess: true,
+    mutatesTarget: true,
+    executesForeignCode: true,
+  }),
+  close_gdb_session: effects({
+    launchesProcess: true,
+    mutatesSession: true,
+    mutatesTarget: true,
+    executesForeignCode: true,
+    idempotent: false,
+  }),
+  execute_rizin_command: effects({
+    mutatesTarget: true,
+    mutatesSession: true,
+    writesFilesystem: true,
+    launchesProcess: true,
+    accessesNetwork: true,
+    mayDiscardData: true,
+    executesForeignCode: true,
+    idempotent: false,
+  }),
+  inspect_desktop_application: evidence,
   inspect_go_binary: evidence,
+  inspect_il2cpp_metadata: evidence,
+  inspect_model_artifact: evidence,
+  inspect_gpu_code_objects: evidence,
+  inspect_rust_binary: evidence,
+  inspect_apk_signature: evidence,
+  inspect_python_pyc: evidence,
+  inspect_erlang_beam: evidence,
+  inspect_sqlite_database: effects({
+    mutatesSession: true,
+    writesFilesystem: true,
+    launchesProcess: true,
+  }),
+  inspect_packet_fields: effects({
+    mutatesSession: true,
+    launchesProcess: true,
+    writesFilesystem: true,
+  }),
+  inspect_packet_capture: effects({
+    mutatesSession: true,
+    launchesProcess: true,
+    writesFilesystem: true,
+  }),
+  inspect_signal_decoders: effects({
+    mutatesSession: true,
+    launchesProcess: true,
+    writesFilesystem: true,
+  }),
+  decode_signal_recording: effects({
+    mutatesSession: true,
+    launchesProcess: true,
+    writesFilesystem: true,
+  }),
   inspect_wasm_artifact: effects({
     mutatesSession: true,
     writesFilesystem: true,
@@ -107,7 +214,68 @@ export const TOOL_EFFECTS: Readonly<Record<string, ToolEffects>> = {
     writesFilesystem: true,
     launchesProcess: true,
   }),
+  list_frida_devices: effects({ launchesProcess: true, accessesNetwork: true }),
+  list_frida_processes: effects({
+    launchesProcess: true,
+    accessesNetwork: true,
+  }),
+  start_frida_session: effects({
+    mutatesTarget: true,
+    mutatesSession: true,
+    launchesProcess: true,
+    accessesNetwork: true,
+    idempotent: false,
+  }),
+  load_frida_script: effects({
+    mutatesTarget: true,
+    mutatesSession: true,
+    launchesProcess: true,
+    accessesNetwork: true,
+    executesForeignCode: true,
+    idempotent: false,
+  }),
+  resume_frida_session: effects({
+    mutatesTarget: true,
+    mutatesSession: true,
+    launchesProcess: true,
+    accessesNetwork: true,
+    executesForeignCode: true,
+    idempotent: false,
+  }),
+  unload_frida_script: effects({
+    mutatesTarget: true,
+    mutatesSession: true,
+    launchesProcess: true,
+    accessesNetwork: true,
+    idempotent: false,
+  }),
+  frida_session_status: evidence,
+  close_frida_session: effects({
+    mutatesTarget: true,
+    mutatesSession: true,
+    launchesProcess: true,
+    accessesNetwork: true,
+    executesForeignCode: true,
+    idempotent: false,
+  }),
+  instrument_with_frida: effects({
+    mutatesTarget: true,
+    mutatesSession: true,
+    launchesProcess: true,
+    accessesNetwork: true,
+    executesForeignCode: true,
+    idempotent: false,
+  }),
+  inspect_byte_entropy: evidence,
   inspect_pe_resources: evidence,
+  inspect_pe_certificates: evidence,
+  inspect_pe_imports: evidence,
+  inspect_native_exports: evidence,
+  inspect_elf_notes: evidence,
+  inspect_apple_ips: evidence,
+  inspect_devicetree: evidence,
+  inspect_kernel_module: evidence,
+  inspect_pe_load_config: evidence,
   inspect_analysis_view: evidence,
   inspect_firmware_regions: effects({
     mutatesSession: true,
@@ -123,6 +291,24 @@ export const TOOL_EFFECTS: Readonly<Record<string, ToolEffects>> = {
   inspect_android_package: effects({
     mutatesSession: true,
     launchesProcess: true,
+    writesFilesystem: true,
+  }),
+  inspect_pcap_client: effects({
+    mutatesSession: true,
+    launchesProcess: true,
+    writesFilesystem: true,
+  }),
+  inspect_pcap_capture: effects({
+    mutatesSession: true,
+    launchesProcess: true,
+    writesFilesystem: true,
+  }),
+  identify_flutter_build: effects({
+    mutatesSession: true,
+    writesFilesystem: true,
+  }),
+  inspect_dart_aot: effects({
+    mutatesSession: true,
     writesFilesystem: true,
   }),
   inspect_apktool_client: effects({
@@ -353,6 +539,7 @@ export const TOOL_EFFECTS: Readonly<Record<string, ToolEffects>> = {
   inspect_native_data_type: evidence,
   resolve_native_call_targets: evidence,
   read_bytes: evidence,
+  search_bytes: evidence,
   address_to_file_offset: evidence,
   procedure_references: evidence,
   procedure_pseudo_code: evidence,
@@ -393,6 +580,11 @@ export const TOOL_EFFECTS: Readonly<Record<string, ToolEffects>> = {
   get_objc_classes: evidence,
   get_objc_protocols: evidence,
   batch_decompile: evidence,
+  decompile_all: effects({
+    mutatesSession: true,
+    writesFilesystem: true,
+    idempotent: false,
+  }),
   get_call_graph: evidence,
   analyze_swift_types: evidence,
   find_xrefs_to_name: evidence,
@@ -428,7 +620,7 @@ export const TOOL_EFFECTS: Readonly<Record<string, ToolEffects>> = {
     idempotent: false,
   }),
   inspect_macho: nativeEvidence,
-  inspect_signature: nativeEvidence,
+  inspect_signature: { ...nativeEvidence, writesFilesystem: true },
   inspect_plist: nativeEvidence,
   list_architectures: nativeEvidence,
   demangle_swift: nativeEvidence,
@@ -456,7 +648,11 @@ export const TOOL_EFFECTS: Readonly<Record<string, ToolEffects>> = {
   project_managed_application_graph: sessionEvidence,
   list_browser_targets: browserEvidence,
   inspect_web_page: browserEvidence,
-  analyze_web_bundle: browserEvidence,
+  analyze_web_bundle: effects({
+    ...browserEvidence,
+    launchesProcess: true,
+    writesFilesystem: true,
+  }),
   observe_web_session: browserEvidence,
   discover_webmcp_tools: browserEvidence,
   compare_web_captures: sessionEvidence,
@@ -488,9 +684,18 @@ export const TOOL_EFFECTS: Readonly<Record<string, ToolEffects>> = {
   }),
   list_javascript_runtime_targets: browserEvidence,
   observe_javascript_runtime: browserEvidence,
-  analyze_javascript_application: evidence,
+  analyze_javascript_application: effects({
+    mutatesSession: true,
+    writesFilesystem: true,
+    launchesProcess: true,
+  }),
+  inspect_electron_fuses: evidence,
   export_web_scripts: effects({
     mutatesSession: true,
+    writesFilesystem: true,
+    idempotent: false,
+  }),
+  export_environment_bundle: effects({
     writesFilesystem: true,
     idempotent: false,
   }),
@@ -512,13 +717,14 @@ export const TOOL_EFFECTS: Readonly<Record<string, ToolEffects>> = {
   project_apple_application_graph: evidence,
   project_harmony_application_graph: evidence,
   open_binary: effects({ mutatesSession: true, launchesProcess: true }),
+  open_bundle_resources: effects({ mutatesSession: true }),
   close_binary: effects({
     mutatesSession: true,
     writesFilesystem: true,
     mayDiscardData: true,
     idempotent: false,
   }),
-  binary_session: effects(),
+  binary_session: effects({ launchesProcess: true }),
   export_evidence_bundle: effects({
     writesFilesystem: true,
     mayDiscardData: true,
@@ -537,7 +743,9 @@ export const TOOL_EFFECTS: Readonly<Record<string, ToolEffects>> = {
   }),
   compare_process_captures: sessionEvidence,
   compare_artifacts: sessionEvidence,
+  compare_wasm_interfaces: sessionEvidence,
   compare_functions: sessionEvidence,
+  match_native_functions: sessionEvidence,
   compare_bundles: effects({ mutatesSession: true }),
   find_changed_behavior: sessionEvidence,
   build_call_path: sessionEvidence,
@@ -573,6 +781,33 @@ export const annotationsFromEffects = (
   openWorldHint: value.launchesProcess || value.accessesNetwork,
 });
 
+/**
+ * Tools whose results, successful or failed, carry only REA-authored session
+ * state or caller-supplied values, never text originating from an analysis
+ * target, a provider, a launcher or a device. Every other tool can return
+ * such text (strings, symbols, code, page text, scripts, captures, logs, file
+ * listings, provider diagnostics or captured process output), so a newly
+ * added tool is marked untrusted until it is audited into this set. A tool
+ * stays out when any error path can project external process output, as
+ * close_binary (provider cleanup diagnostics), binary_session (provider
+ * failure reasons and availability diagnostics) and the adb and apktool
+ * client probes (version output and stderr excerpts) can.
+ */
+export const TARGET_CONTENT_FREE_TOOLS: ReadonlySet<string> = new Set([
+  "inspect_analysis_settings",
+  "update_analysis_settings",
+  "export_evidence_bundle",
+  "record_unknown",
+]);
+
+/**
+ * Whether results of the named tool, successful or failed, can carry text that
+ * originates from the analysis target. Unknown names are treated as target
+ * content so an unaudited path never loses the untrusted marker.
+ */
+export const toolReturnsTargetContent = (name: string): boolean =>
+  !TARGET_CONTENT_FREE_TOOLS.has(name);
+
 /** Resolve the audited metadata for one public tool. */
 export const toolContractMetadata = (name: string) => {
   const audited = TOOL_EFFECTS[name];
@@ -585,5 +820,6 @@ export const toolContractMetadata = (name: string) => {
       .join(" "),
     effects: audited,
     annotations: annotationsFromEffects(audited),
+    returnsTargetContent: toolReturnsTargetContent(name),
   };
 };

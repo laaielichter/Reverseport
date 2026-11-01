@@ -1,4 +1,5 @@
 import type { ToolContract } from "../contracts/toolContractTypes.js";
+import type { StandardSchemaWithJSON } from "@modelcontextprotocol/server";
 import {
   toolInputSchemaWithMetadata,
   toolOutputSchemaWithMetadata,
@@ -20,3 +21,20 @@ export const toolRegistrationOptions = <Contract extends ToolContract>(
   outputSchema: toolOutputSchemaWithMetadata(contract),
   annotations: contract.annotations,
 });
+
+/** Register a workflow that validates raw input before effects and projects its own errors. */
+export const applicationToolRegistrationOptions = <
+  Contract extends ToolContract,
+>(
+  contract: Contract,
+) => {
+  const registration = toolRegistrationOptions(contract);
+  const inputSchema: StandardSchemaWithJSON = {
+    "~standard": {
+      ...registration.inputSchema["~standard"],
+      vendor: "rea-application",
+      validate: (value: unknown) => ({ value }),
+    },
+  };
+  return { ...registration, inputSchema };
+};

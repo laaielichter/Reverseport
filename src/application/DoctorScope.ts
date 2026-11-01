@@ -1,4 +1,5 @@
 import { uniqueSorted } from "../domain/canonicalOrdering.js";
+import { blocksProcessStart } from "../config/processStart.js";
 import type {
   ClientRegistrationStatus,
   UnhealthyClientRegistrationStatus,
@@ -8,6 +9,7 @@ import type {
   DoctorCheck,
   DoctorProviderInspection,
   DoctorScope,
+  DoctorSkillState,
 } from "./Doctor.js";
 
 /** Normalized readiness boundary included in every doctor response. */
@@ -29,7 +31,7 @@ interface DoctorProviderState {
 interface DoctorScopeInput {
   readonly checks: readonly DoctorCheck[];
   readonly registrations: readonly ClientRegistrationStatus[];
-  readonly skillState: "aligned" | "stale" | "missing";
+  readonly skillState: DoctorSkillState;
   readonly providers: DoctorProviderState;
   readonly scope: DoctorScopeReport;
 }
@@ -79,8 +81,33 @@ export const scopeDoctorChecks = (
   const hopperHostChecks = input.scope.providers.includes("hopper")
     ? input.checks.filter(({ name }) => name === "host")
     : [];
+  // parseConfig rejects these before the MCP server starts. Hopper's own
+  // scope already includes hopper-startup-timeout through its provider checks.
+  const blocksMcpStartup = (check: DoctorCheck): boolean =>
+    check.name.startsWith("runtime-configuration:") ||
+    check.name === "hopper-startup-timeout";
+  const blocksProcess = (check: DoctorCheck): boolean => {
+    const setting = check.details?.setting;
+    return (
+      check.name.startsWith("runtime-configuration:") &&
+      typeof setting === "string" &&
+      blocksProcessStart(setting)
+    );
+  };
+  const exercisesMcpStartup =
+    input.scope.clients.length > 0 || input.scope.providers.length > 0;
+  const startupChecks = (
+    exercisesMcpStartup
+      ? input.checks.filter(blocksMcpStartup)
+      : input.checks.filter(blocksProcess)
+  ).filter(
+    (check) =>
+      check.name !== "hopper-startup-timeout" ||
+      !input.scope.providers.includes("hopper"),
+  );
   const scopeChecks = [
     ...coreChecks,
+    ...startupChecks,
     ...hopperHostChecks,
     ...selectedProviderChecks,
     ...clientChecks,
@@ -90,6 +117,7 @@ export const scopeDoctorChecks = (
   return {
     healthy:
       coreChecks.every(({ ok }) => ok) &&
+      startupChecks.every(({ ok }) => ok) &&
       hopperHostChecks.every(({ ok }) => ok) &&
       clientChecks.every(({ ok }) => ok) &&
       skillChecks.every(({ ok }) => ok) &&
@@ -173,7 +201,7 @@ const registrationCheck = (
 ): DoctorCheck => ({
   name: `registration:${status.client}`,
   ok: false,
-  classification: "config_drift",
+  classification: status.state === "unknown" ? "unknown" : "config_drift",
   detail: status.config_path,
   remediation: status.remediation,
 });
@@ -190,7 +218,11 @@ const selectedSkillCheck = (
       ? { detail: "Installed REA skill identity is aligned." }
       : {
           remediation:
-            "Run reverseport setup to update the installed REA skill.",
+            state === "unmanaged"
+              ? "Use regular skill directories, or run reverseport setup with --skill=false to configure the client without installing the skill."
+              : state === "unknown"
+                ? "Verify access to the reported skill files before retrying."
+                : "Run reverseport setup to update the installed REA skill.",
         }),
   };
 

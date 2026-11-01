@@ -1,3 +1,4 @@
+import type { AnalysisCapturedOutput } from "../domain/analysisErrorBase.js";
 import {
   execFile,
   type ExecFileOptionsWithBufferEncoding,
@@ -10,10 +11,12 @@ type ExecFileOutputOptions = Omit<
   readonly maxBuffer?: number;
   /**
    * Signal that stops the process on abort or timeout. The promise then
-   * settles only after the process exits, so the caller can remove files it
-   * writes; a process still running after a grace period is killed. Without
-   * it, Node's execFile sends SIGTERM on abort and rejects before the
-   * process exits.
+   * settles only after that process's stdio pipes close, so a caller can
+   * remove files the command wrote. A descendant that inherited those pipes
+   * keeps them open until it exits; destroying the readers is not
+   * process-family completion and must not unblock this settlement. A process
+   * still running after a grace period is killed. Without this signal, Node's
+   * execFile sends SIGTERM on abort and rejects before the process exits.
    */
   readonly stopSignal?: NodeJS.Signals;
 };
@@ -21,14 +24,16 @@ type ExecFileOutputOptions = Omit<
 /** How long a stopped process may take to exit before it is killed. */
 const STOP_GRACE_MS = 5_000;
 
-const abortError = (signal: AbortSignal): Error => {
-  const error = new Error("The operation was aborted", {
-    cause: signal.reason,
-  });
-  error.name = "AbortError";
-  Reflect.set(error, "code", "ABORT_ERR");
-  return error;
-};
+/** Cancellation observed by the command owner, with the caller's exact reason. */
+export class ExecFileOutputCancelledError extends Error {
+  readonly _tag = "ExecFileOutputCancelledError";
+  readonly code = "ABORT_ERR";
+
+  constructor(reason: unknown) {
+    super("The operation was aborted", { cause: reason });
+    this.name = "AbortError";
+  }
+}
 
 /**
  * A command stopped at its timeout can still exit cleanly, so the timeout is
@@ -76,6 +81,9 @@ export interface ExecFileOutputFailure {
   readonly signal: string | null;
   readonly killed: boolean;
   readonly outputTruncated: boolean;
+  readonly stdoutBytes?: number;
+  readonly stderrBytes?: number;
+  readonly collectionFailure?: boolean;
 }
 
 /** Read captured output metadata from a failed execFileOutput invocation. */
@@ -88,17 +96,50 @@ export const execFileOutputFailure = (
   const code = Reflect.get(cause, "code");
   const signal = Reflect.get(cause, "signal");
   const killed = Reflect.get(cause, "killed");
+  const outputTruncated = Reflect.get(cause, "outputTruncated");
+  const stdoutBytes = Reflect.get(cause, "stdoutBytes");
+  const stderrBytes = Reflect.get(cause, "stderrBytes");
+  const collectionFailure = Reflect.get(cause, "collectionFailure");
   if (typeof stdout !== "string" || typeof stderr !== "string")
     return undefined;
   return {
     stdout,
     stderr,
+    ...(typeof stdoutBytes === "number" &&
+    Number.isSafeInteger(stdoutBytes) &&
+    stdoutBytes >= 0
+      ? { stdoutBytes }
+      : {}),
+    ...(typeof stderrBytes === "number" &&
+    Number.isSafeInteger(stderrBytes) &&
+    stderrBytes >= 0
+      ? { stderrBytes }
+      : {}),
     code: typeof code === "string" || typeof code === "number" ? code : null,
     signal: typeof signal === "string" ? signal : null,
     killed: killed === true,
-    outputTruncated: code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER",
+    outputTruncated:
+      outputTruncated === true || code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER",
+    ...(collectionFailure === true ? { collectionFailure: true } : {}),
   };
 };
+
+/** Project admitted command failure facts without reinterpreting failure policy. */
+export const execFileFailureCapturedOutput = (
+  failure: ExecFileOutputFailure,
+): AnalysisCapturedOutput => ({
+  stdout: failure.stdout,
+  stderr: failure.stderr,
+  ...(failure.stdoutBytes === undefined
+    ? {}
+    : { stdout_bytes: failure.stdoutBytes }),
+  ...(failure.stderrBytes === undefined
+    ? {}
+    : { stderr_bytes: failure.stderrBytes }),
+  exit_code: typeof failure.code === "number" ? failure.code : null,
+  signal: failure.signal,
+  truncated: failure.outputTruncated,
+});
 
 /** Run a shell-free command while capturing its complete output bytes. */
 export const execFileBytes = (
@@ -114,7 +155,7 @@ export const execFileBytes = (
       return;
     }
     if (stopSignal !== undefined && signal?.aborted === true) {
-      reject(abortError(signal));
+      reject(new ExecFileOutputCancelledError(signal.reason));
       return;
     }
     let stopped: "abort" | "timeout" | undefined;
@@ -143,13 +184,17 @@ export const execFileBytes = (
         clearTimeout(grace);
         const failure =
           stopped === "abort" && signal !== undefined
-            ? abortError(signal)
+            ? new ExecFileOutputCancelledError(signal.reason)
             : stopped === "timeout" && timeout !== undefined
               ? timeoutError(command, timeout, error)
-              : error;
+              : error?.name === "AbortError" && error.code === "ABORT_ERR"
+                ? new ExecFileOutputCancelledError(error.cause)
+                : error;
         if (failure !== null) {
           Reflect.set(failure, "stdout", stdout.toString("utf8"));
           Reflect.set(failure, "stderr", stderr.toString("utf8"));
+          Reflect.set(failure, "stdoutBytes", stdout.byteLength);
+          Reflect.set(failure, "stderrBytes", stderr.byteLength);
           reject(failure);
           return;
         }
@@ -179,8 +224,15 @@ export const execFileOutput = (
   command: string,
   arguments_: readonly string[],
   options: ExecFileOutputOptions = {},
-): Promise<{ readonly stdout: string; readonly stderr: string }> =>
+): Promise<{
+  readonly stdout: string;
+  readonly stderr: string;
+  readonly stdoutBytes: number;
+  readonly stderrBytes: number;
+}> =>
   execFileBytes(command, arguments_, options).then(({ stdout, stderr }) => ({
     stdout: stdout.toString("utf8"),
     stderr: stderr.toString("utf8"),
+    stdoutBytes: stdout.byteLength,
+    stderrBytes: stderr.byteLength,
   }));

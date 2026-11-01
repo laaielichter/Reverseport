@@ -112,7 +112,7 @@ it.each(["vmaddr", "vmsize", "uuid", "entryoff"])(
   },
 );
 
-it("retains the unnamed segment of a Mach-O object file", () => {
+it("retains the empty segment name of a Mach-O object file", () => {
   // Captured from `otool -l` on a clang `-c` object: MH_OBJECT sections live
   // in one segment whose segname is empty, printed as a bare label.
   const objectSegment = [
@@ -143,17 +143,19 @@ it("retains the unnamed segment of a Mach-O object file", () => {
     "",
   ].join("\n");
   const load = parseOtoolLoadCommands(withOtoolMachHeader(objectSegment));
+  // The empty name is the observed source value, as in the raw command.
+  expect(load.commands[0]?.fields.segname).toBe("");
   expect(load.segments).toMatchObject([
-    { name: "unknown", sections: [{ segment: "__TEXT", name: "__text" }] },
+    { name: "", sections: [{ segment: "__TEXT", name: "__text" }] },
   ]);
-  // An all-NUL section name is printed the same way and stays "unknown".
+  // An all-NUL section name is printed the same way and stays empty.
   expect(
     parseOtoolLoadCommands(
       withOtoolMachHeader(
         objectSegment.replace("  sectname __text", "  sectname "),
       ),
     ).segments,
-  ).toMatchObject([{ sections: [{ segment: "__TEXT", name: "unknown" }] }]);
+  ).toMatchObject([{ sections: [{ segment: "__TEXT", name: "" }] }]);
   expect(() =>
     parseOtoolLoadCommands(
       withOtoolMachHeader(
@@ -161,6 +163,92 @@ it("retains the unnamed segment of a Mach-O object file", () => {
       ),
     ),
   ).toThrow("otool field vmaddr has no value");
+});
+
+it.each([
+  { label: "segment", segmentName: "version", sectionName: "__mysect" },
+  { label: "section", segmentName: "__DATA", sectionName: "version" },
+])(
+  "preserves a legal $label name equal to a compound field word",
+  ({ segmentName, sectionName }) => {
+    const output = [
+      "Load command 0",
+      "      cmd LC_SEGMENT_64",
+      "  cmdsize 152",
+      `  segname ${segmentName}`,
+      "   vmaddr 0x0000000000000000",
+      "   vmsize 0x0000000000000018",
+      "  fileoff 0",
+      " filesize 24",
+      "  maxprot 0x00000007",
+      " initprot 0x00000007",
+      "   nsects 1",
+      "    flags 0x0",
+      "Section",
+      `  sectname ${sectionName}`,
+      `   segname ${segmentName}`,
+      "      addr 0x0000000000000000",
+      "      size 0x0000000000000018",
+      "    offset 0",
+      "     align 2^2 (4)",
+      "    flags 0x80000400",
+      "",
+    ].join("\n");
+
+    const parsed = parseOtoolLoadCommands(withOtoolMachHeader(output));
+
+    expect(parsed.commands[0]?.fields.segname).toBe(segmentName);
+    expect(parsed.segments).toMatchObject([
+      {
+        name: segmentName,
+        sections: [{ segment: segmentName, name: sectionName }],
+      },
+    ]);
+  },
+);
+
+it("keeps the surrounding spaces of segment and section names", () => {
+  // Captured from `otool -l` on an object whose section is " sec " in segment
+  // " seg ": otool prints one space after the label, then the stored name.
+  const output = [
+    "Load command 0",
+    "      cmd LC_SEGMENT_64",
+    "  cmdsize 152",
+    "  segname ",
+    "   vmaddr 0x0000000000000000",
+    "   vmsize 0x0000000000000008",
+    "  fileoff 184",
+    " filesize 8",
+    "  maxprot 0x00000007",
+    " initprot 0x00000007",
+    "   nsects 1",
+    "    flags 0x0",
+    "Section",
+    "  sectname  sec ",
+    "   segname  seg ",
+    "      addr 0x0000000000000000",
+    "      size 0x0000000000000008",
+    "    offset 184",
+    "     align 2^0 (1)",
+    "    reloff 0",
+    "    nreloc 0",
+    "     flags 0x00000000",
+    " reserved1 0",
+    " reserved2 0",
+    "",
+  ].join("\n");
+
+  expect(
+    parseOtoolLoadCommands(withOtoolMachHeader(output)).segments,
+  ).toMatchObject([
+    { name: "", sections: [{ segment: " seg ", name: " sec " }] },
+  ]);
+
+  const named = parseOtoolLoadCommands(
+    withOtoolMachHeader(output.replace("  segname \n", "  segname  seg \n")),
+  );
+  expect(named.commands[0]?.fields.segname).toBe(" seg ");
+  expect(named.segments[0]?.name).toBe(" seg ");
 });
 
 it("preserves dependency install names that begin with the word stamp", () => {
@@ -190,6 +278,49 @@ it("preserves dependency install names that begin with the word stamp", () => {
     ],
   ).toMatch(/^2 Thu Jan/);
 });
+
+it.each([
+  ["surrounding spaces", "  leading.dylib  "],
+  ["surrounding tabs", "\tleading.dylib\t"],
+  ["version prefix", "version 2.dylib"],
+  ["embedded offset annotation", "named (offset 99)"],
+  ["numeric name", "123"],
+  ["ordinary control", "leading.dylib"],
+])(
+  "preserves dependency install-name whitespace: %s",
+  (_label, installName) => {
+    const load = parseOtoolLoadCommands(
+      withOtoolMachHeader(
+        [
+          "Load command 0",
+          "          cmd LC_LOAD_DYLIB",
+          "      cmdsize 48",
+          `         name ${installName} (offset 24)`,
+          "   time stamp 2 Thu Jan  1 00:00:02 1970",
+          "      current version 0.0.0",
+          "compatibility version 0.0.0",
+          "Load command 1",
+          "          cmd LC_RPATH",
+          "      cmdsize 32",
+          `         path ${installName} (offset 12)`,
+          "",
+        ].join("\n"),
+      ),
+    );
+    expect(load.dependencies).toEqual([
+      {
+        path: installName,
+        kind: "LC_LOAD_DYLIB",
+        current_version: "0.0.0",
+        compatibility_version: "0.0.0",
+      },
+    ]);
+    expect(load.commands.map((command) => command.fields)).toMatchObject([
+      { name: `${installName} (offset 24)` },
+      { path: `${installName} (offset 12)` },
+    ]);
+  },
+);
 
 it("normalizes legacy version-minimum commands into build metadata", () => {
   const load = parseOtoolLoadCommands(
@@ -227,6 +358,122 @@ it("normalizes legacy version-minimum commands into build metadata", () => {
       tools: [],
     },
   ]);
+});
+
+it("names numeric build-version platforms and tools", () => {
+  const load = parseOtoolLoadCommands(
+    withOtoolMachHeader(
+      [
+        "Load command 0",
+        "      cmd LC_BUILD_VERSION",
+        "  cmdsize 48",
+        " platform 1",
+        "    minos 11.0",
+        "      sdk 26.5",
+        "   ntools 2",
+        "     tool 3",
+        "  version 1267.0",
+        "     tool 1029",
+        "  version 1.0",
+        "Load command 1",
+        "      cmd LC_BUILD_VERSION",
+        "  cmdsize 24",
+        " platform 99",
+        "    minos 1.0",
+        "      sdk 1.0",
+        "   ntools 0",
+        "Load command 2",
+        "      cmd LC_BUILD_VERSION",
+        "  cmdsize 32",
+        " platform MACCATALYST",
+        "    minos 14.0",
+        "      sdk 14.2",
+        "   ntools 1",
+        "     tool SWIFT",
+        "  version 5.9",
+        "",
+      ].join("\n"),
+    ),
+  );
+  expect(load.builds).toEqual([
+    {
+      platform: "MACOS",
+      minimum_os: "11.0",
+      sdk: "26.5",
+      tools: [
+        { name: "LD", version: "1267.0" },
+        { name: "1029", version: "1.0" },
+      ],
+    },
+    { platform: "99", minimum_os: "1.0", sdk: "1.0", tools: [] },
+    {
+      platform: "MACCATALYST",
+      minimum_os: "14.0",
+      sdk: "14.2",
+      tools: [{ name: "SWIFT", version: "5.9" }],
+    },
+  ]);
+  expect(load.commands[0]?.fields).toEqual({
+    cmd: "LC_BUILD_VERSION",
+    cmdsize: 48,
+    platform: 1,
+    minos: "11.0",
+    sdk: "26.5",
+    ntools: 2,
+    "tool #1": 3,
+    "version #1": "1267.0",
+    "tool #2": 1029,
+    "version #2": "1.0",
+  });
+  expect(load.commands[2]?.fields).toMatchObject({
+    tool: "SWIFT",
+    version: "5.9",
+  });
+});
+
+// Captured from `otool -l` on a clang `-c` object declaring
+// `.linker_option "-framework", "Foundation"`.
+const linkerOption = (strings: readonly string[], count = strings.length) =>
+  withOtoolMachHeader(
+    [
+      "Load command 0",
+      "     cmd LC_LINKER_OPTION",
+      " cmdsize 40",
+      `   count ${String(count)}`,
+      ...strings.map((line) => `  string ${line}`),
+      "",
+    ].join("\n"),
+  );
+
+it("retains every linker-option string exactly and in order", () => {
+  expect(
+    parseOtoolLoadCommands(
+      linkerOption(["#1 -framework", "#2 Foundation", "#3  -lx ", "#4 1"]),
+    ).commands[0]?.fields,
+  ).toEqual({
+    cmd: "LC_LINKER_OPTION",
+    cmdsize: 40,
+    count: 4,
+    "string #1": "-framework",
+    "string #2": "Foundation",
+    "string #3": " -lx ",
+    "string #4": "1",
+  });
+});
+
+it.each([
+  ["fewer strings than count", linkerOption(["#1 -framework"], 2)],
+  ["more strings than count", linkerOption(["#1 -lz", "#2 -lm"], 1)],
+  ["an out-of-order ordinal", linkerOption(["#2 Foundation", "#1 -lz"])],
+  ["a repeated ordinal", linkerOption(["#1 -lz", "#1 -lm"])],
+  [
+    "an unlabeled row",
+    linkerOption(["#1 -lz", "#2 -lm"]).replace("string #2", "string"),
+  ],
+])("rejects linker options with %s", (_name, raw) => {
+  expect(() => parseOtoolLoadCommands(raw)).toThrow(
+    "otool linker-option strings do not match count",
+  );
 });
 
 it("does not classify LC_LOAD_DYLINKER as a dylib dependency", async () => {
@@ -272,4 +519,79 @@ it("limits thread-state entrypoints instead of reporting none silently", async (
   expect(result.value.limitations).toContain(
     "Thread-state entrypoints (LC_UNIXTHREAD/LC_THREAD) are retained as raw load commands; file offsets are not derived.",
   );
+});
+
+it.each([
+  ["1", "MACOS"],
+  ["2", "IOS"],
+  ["3", "TVOS"],
+  ["4", "WATCHOS"],
+  ["5", "BRIDGEOS"],
+  ["6", "MACCATALYST"],
+  ["7", "IOSSIMULATOR"],
+  ["8", "TVOSSIMULATOR"],
+  ["9", "WATCHOSSIMULATOR"],
+  ["10", "DRIVERKIT"],
+  ["11", "VISIONOS"],
+  ["12", "VISIONOSSIMULATOR"],
+  ["13", "FIRMWARE"],
+  ["14", "SEPOS"],
+  ["15", "MACOS_EXCLAVECORE"],
+  ["16", "MACOS_EXCLAVEKIT"],
+  ["17", "IOS_EXCLAVECORE"],
+  ["18", "IOS_EXCLAVEKIT"],
+  ["19", "TVOS_EXCLAVECORE"],
+  ["20", "TVOS_EXCLAVEKIT"],
+  ["21", "WATCHOS_EXCLAVECORE"],
+  ["22", "WATCHOS_EXCLAVEKIT"],
+  ["23", "VISIONOS_EXCLAVECORE"],
+  ["24", "VISIONOS_EXCLAVEKIT"],
+] as const)("names build platform %s as %s", (code, name) => {
+  const load = parseOtoolLoadCommands(
+    withOtoolMachHeader(
+      [
+        "Load command 0",
+        "cmd LC_BUILD_VERSION",
+        "cmdsize 24",
+        `platform ${code}`,
+        "minos 1.0",
+        "sdk 1.0",
+        "ntools 0",
+        "",
+      ].join("\n"),
+    ),
+  );
+  expect(load.builds[0]?.platform).toBe(name);
+});
+
+it.each([
+  ["1", "CLANG"],
+  ["2", "SWIFT"],
+  ["3", "LD"],
+  ["4", "LLD"],
+  ["1024", "METAL"],
+  ["1025", "AIRLLD"],
+  ["1026", "AIRNT"],
+  ["1027", "AIRNT_PLUGIN"],
+  ["1028", "AIRPACK"],
+  ["1031", "GPUARCHIVER"],
+  ["1032", "METAL_FRAMEWORK"],
+] as const)("names build tool %s as %s", (code, name) => {
+  const load = parseOtoolLoadCommands(
+    withOtoolMachHeader(
+      [
+        "Load command 0",
+        "cmd LC_BUILD_VERSION",
+        "cmdsize 32",
+        "platform 1",
+        "minos 1.0",
+        "sdk 1.0",
+        "ntools 1",
+        `tool ${code}`,
+        "version 1.0",
+        "",
+      ].join("\n"),
+    ),
+  );
+  expect(load.builds[0]?.tools).toEqual([{ name, version: "1.0" }]);
 });

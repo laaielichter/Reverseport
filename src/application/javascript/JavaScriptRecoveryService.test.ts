@@ -123,11 +123,14 @@ describe("JavaScript recovery workflow", () => {
     const invalid = await service.recover({});
     if (invalid.ok) throw new Error("expected malformed input");
     expect(invalid.error._tag).toBe("AnalysisInputError");
-    const cancelled = await service.recover(input, {
-      signal: AbortSignal.abort(),
-    });
-    if (cancelled.ok) throw new Error("expected cancellation");
-    expect(cancelled.error._tag).toBe("AnalysisCancelledError");
+    for (const reason of [null, false, { request: "cancel recovery" }]) {
+      const cancelled = await service.recover(input, {
+        signal: AbortSignal.abort(reason),
+      });
+      if (cancelled.ok) throw new Error("expected cancellation");
+      expect(cancelled.error._tag).toBe("AnalysisCancelledError");
+      expect(cancelled.error.cause).toBe(reason);
+    }
   });
   it("rejects additional_paths repeating path or each other", async () => {
     const service = new JavaScriptRecoveryService({
@@ -174,5 +177,31 @@ describe("JavaScript recovery workflow", () => {
     expect(result.error).toMatchObject({
       issues: [{ path: ["additional_paths"], reason: "invalid_format" }],
     });
+  });
+});
+
+it("returns cancellation with the validated Evidence when the caller aborts after provider success", async () => {
+  const controller = new AbortController();
+  const reason = { request: "stop recovery" };
+  const service = new JavaScriptRecoveryService({
+    recover: async () => {
+      controller.abort(reason);
+      return ok(
+        createAnalysisExecution(recoveryResult(), providerIdentity, {
+          subject: {
+            path: artifact.path,
+            sha256: artifact.sha256,
+            format: "javascript" as const,
+          },
+        }),
+      );
+    },
+  });
+  const result = await service.recover(input, { signal: controller.signal });
+  if (result.ok) throw new Error("expected cancellation");
+  expect(result.error._tag).toBe("AnalysisCancelledError");
+  expect(result.error.cause).toBe(reason);
+  expect(result.error.partialObservation).toMatchObject({
+    operation: "recover_javascript_sources",
   });
 });

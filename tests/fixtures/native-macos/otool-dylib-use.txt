@@ -240,7 +240,7 @@ Load command 16
           cmd LC_LOAD_DYLIB
       cmdsize 56
          name @rpath/libdelay.dylib (offset 28)
-      options delay-init 
+      options delay-init
       current version 0.0.0
 compatibility version 1.0.0
 Load command 17

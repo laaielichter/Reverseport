@@ -3,13 +3,89 @@ import { expect, it } from "vitest";
 import {
   AnalysisInputError,
   AnalysisCapabilityUnavailableError,
+  AnalysisCancelledError,
+  AnalysisTimeoutError,
+  AnalysisArtifactChangedError,
+  AnalysisOutputError,
+  AnalysisResourceConstraintError,
 } from "./analysisErrorCore.js";
 import { projectAnalysisError } from "./analysisErrorProjection.js";
 import { ProviderCleanupError } from "./providerCleanupError.js";
+import { ProviderAdapterError } from "./providerAdapterError.js";
+import { analysisErrorWithCleanupFailure } from "./analysisErrorCleanup.js";
+import { resolvedAnalysisError } from "./analysisErrorBase.js";
+import { createEvidence } from "./evidence.js";
 import {
   redactExplicitFailure,
   redactExplicitPointer,
 } from "./explicitSensitiveFailure.js";
+
+const context = {
+  diagnostics: {
+    note: "explicit-secret warning",
+    nested: { "explicit-secret-key": 5, observed: 7 },
+    caller_path: "/tmp/password-fixture?token=public-value",
+  },
+  capturedOutput: {
+    stdout: "explicit-secret output",
+    stderr: "public stderr",
+    stdout_bytes: 22,
+    truncated: false,
+  },
+};
+
+it.each([
+  new AnalysisCancelledError("inspect", context),
+  new AnalysisTimeoutError("inspect", 250, context),
+  new AnalysisInputError("inspect", context),
+  new AnalysisAccessDeniedError("inspect", "/public", "EACCES", context),
+  new AnalysisArtifactChangedError("inspect", "/public", "changed", context),
+  new AnalysisOutputError("inspect", "invalid", context),
+  new AnalysisCapabilityUnavailableError(
+    "provider",
+    "inspect",
+    "unsupported",
+    context,
+  ),
+  new AnalysisResourceConstraintError(
+    "inspect",
+    "memory",
+    "capacity",
+    null,
+    context,
+  ),
+  new ProviderAdapterError("provider", "inspect", context),
+])("preserves sanitized common context for $._tag", (error) => {
+  const observation = createEvidence(
+    undefined,
+    { id: "fixture", name: "Owner facts", version: "1" },
+    {
+      operation: "inspect",
+      parameters: {},
+      result: { source: "already sanitized owner facts" },
+      confidence: "observed",
+      authority: "historical-reference",
+    },
+  );
+  error.retainPartialObservation(observation);
+  const sanitized = redactExplicitFailure(error, ["explicit-secret"]);
+  expect(sanitized.partialObservation).toBe(observation);
+  expect(sanitized._tag).toBe(error._tag);
+  const projected = projectAnalysisError(sanitized);
+  expect(projected.details).toMatchObject({
+    diagnostics: {
+      note: "[REDACTED] warning",
+      nested: { observed: 7 },
+      caller_path: context.diagnostics.caller_path,
+    },
+    captured_output: {
+      stdout: "[REDACTED] output",
+      stdout_bytes: 22,
+      stderr: "public stderr",
+    },
+  });
+  expect(JSON.stringify(projected)).not.toContain("explicit-secret");
+});
 
 it.each([
   ["/metadata/private~1~0/numeric", ["private/~"], "/metadata"],
@@ -43,6 +119,73 @@ it("preserves cleanup failure authority and resources while excluding diagnostic
   expect(JSON.stringify(projected)).toContain('"exit_code":2');
 });
 
+it("redacts cleanup primaries and mirrors the source error's live status", () => {
+  const primary = new AnalysisInputError(
+    "inspect_web_network_capture",
+    undefined,
+    [
+      {
+        path: ["capture_path", "/root/private-marker/capture.har"],
+        reason: "invalid_value",
+        message: "Selected private-marker capture was invalid",
+      },
+    ],
+  );
+  const cleanup = new ProviderCleanupError(
+    "har",
+    ["/tmp/private-marker-runtime"],
+    { reason: "private-marker runtime close failed" },
+    { operation: "inspect_web_network_capture" },
+  );
+  const original = analysisErrorWithCleanupFailure(
+    primary,
+    cleanup,
+    "inspect_web_network_capture",
+  );
+
+  const redacted = redactExplicitFailure(original, ["private-marker"]);
+  expect(redacted.cleanupIncomplete).toBe(true);
+  expect(redacted.cleanupResources).toEqual(["/tmp/[REDACTED]-runtime"]);
+  expect(JSON.stringify(projectAnalysisError(redacted))).not.toContain(
+    "private-marker",
+  );
+
+  original.resolveCleanup();
+  expect(redacted.cleanupIncomplete).toBe(false);
+  const resolved = resolvedAnalysisError(redacted);
+  expect(JSON.stringify(projectAnalysisError(resolved))).not.toContain(
+    "private-marker",
+  );
+  expect(projectAnalysisError(resolved).details).toMatchObject({
+    issues: [
+      {
+        path: ["capture_path", "/root"],
+        reason: "invalid_value",
+      },
+    ],
+  });
+});
+
+it("keeps a named timeout control through explicit-value redaction", () => {
+  const error = new AnalysisTimeoutError(
+    "analyze_javascript_application",
+    300000,
+    {
+      userMessage:
+        "JavaScript source analysis reached its 300000ms per-source server/provider deadline (analysis_timeout_ms) for explicit-secret, not the MCP client deadline.",
+      remediationAction:
+        "Increase analysis_timeout_ms through MCP for explicit-secret, or use rea analyze-javascript-application <input_path> --analysis-timeout-ms <milliseconds> on the CLI.",
+    },
+  );
+  const redacted = redactExplicitFailure(error, ["explicit-secret"]);
+  const projected = projectAnalysisError(redacted);
+  expect(projected.message).toContain("analysis_timeout_ms");
+  expect(projected.message).toContain("300000");
+  expect(projected.remediation.action).toContain("analysis_timeout_ms");
+  expect(projected.remediation.action).toContain("--analysis-timeout-ms");
+  expect(JSON.stringify(projected)).not.toContain("explicit-secret");
+});
+
 it("keeps unsupported profile reasons distinct from malformed input", () => {
   const error = new AnalysisCapabilityUnavailableError(
     "mitmproxy",
@@ -53,6 +196,24 @@ it("keeps unsupported profile reasons distinct from malformed input", () => {
   const result = redactExplicitFailure(error, ["private"]);
   expect(result).toBeInstanceOf(AnalysisCapabilityUnavailableError);
   expect(projectAnalysisError(result).code).toBe("capability_unavailable");
+  expect(JSON.stringify(projectAnalysisError(result))).not.toContain("private");
+});
+
+it("preserves a retryable capability failure through explicit-value redaction", () => {
+  // Retryability is a semantic field of the error, not presentation: dropping
+  // it turns a transient admission failure into a permanent one and changes
+  // the remediation the caller is shown.
+  const error = new AnalysisCapabilityUnavailableError(
+    "mitmproxy",
+    "inspect_web_network_capture",
+    "Runtime admission for /targets/private/capture failed transiently",
+    { retryable: true },
+  );
+  expect(projectAnalysisError(error).retryable).toBe(true);
+  const result = redactExplicitFailure(error, ["private"]);
+  expect(result).toBeInstanceOf(AnalysisCapabilityUnavailableError);
+  expect((result as AnalysisCapabilityUnavailableError).retryable).toBe(true);
+  expect(projectAnalysisError(result).retryable).toBe(true);
   expect(JSON.stringify(projectAnalysisError(result))).not.toContain("private");
 });
 

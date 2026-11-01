@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { nativeMacOSCapabilities } from "./NativeMacOSProviderMetadata.js";
 import { NativeMacOSProvider } from "./NativeMacOSProvider.js";
 import type { JsonValue } from "../domain/jsonValue.js";
 import { ok } from "../domain/result.js";
@@ -87,4 +88,31 @@ describe("native dispatch metadata input boundary", () => {
     expect((await second.close()).ok).toBe(true);
     expect(closes).toEqual([1, 1]);
   });
+});
+
+it.each(["inspect_macho", "list_architectures"] as const)(
+  "retains unreadable lipo output as an output failure for %s",
+  async (operation) => {
+    const client = new NativeMacOSProvider(
+      {},
+      new NativeFixtureRunner({ lipo: "unrecognized slice record\n" }),
+      "darwin",
+    ).createClient(nativeMachoTarget("/fixture"));
+    const result = await client.execute(operation, {});
+    expect(result).toMatchObject({
+      ok: false,
+      error: {
+        _tag: "AnalysisOutputError",
+        capturedOutput: { stdout: "unrecognized slice record\n", exit_code: 0 },
+      },
+    });
+  },
+);
+
+it("declares the signature snapshot write in provider capabilities", () => {
+  expect(
+    nativeMacOSCapabilities("darwin").find(
+      ({ operation }) => operation === "inspect_signature",
+    )?.effects,
+  ).toMatchObject({ mayWriteFilesystem: true, mutatesArtifact: false });
 });

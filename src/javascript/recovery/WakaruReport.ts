@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { ArtifactReaderFailure } from "../../artifacts/ArtifactReader.js";
+import type { ArtifactResourceScope } from "../../artifacts/ArtifactResourceScope.js";
 import {
   normalizeArtifactPath,
   ArtifactPathRegistry,
@@ -6,8 +8,12 @@ import {
 import { AnalysisOutputError } from "../../domain/analysisErrorCore.js";
 import { ProviderAdapterError } from "../../domain/providerAdapterError.js";
 import type { JavaScriptRecoveryResult } from "../../domain/javascript/javascriptRecovery.js";
-import { readRecoveryFile, recoveryFailureMessage } from "./RecoveryFiles.js";
-import { RECOVERY_LIMITS } from "./WakaruRelease.js";
+import {
+  isRecoveryFileSizeError,
+  readRecoveryFile,
+  recoveryFailureMessage,
+} from "./RecoveryFiles.js";
+import { RECOVERY_LIMITS, wakaruFixedLimitRecovery } from "./WakaruRelease.js";
 import type { runWakaruCommand } from "./WakaruCommand.js";
 
 const warningSchema = z.looseObject({
@@ -27,14 +33,11 @@ const reportSchema = z.looseObject({
     }),
   ),
   warnings: z.array(warningSchema),
-  total: z.number().int().nonnegative(),
-  failed: z.number().int().nonnegative(),
-  elapsed_ms: z.number().int().nonnegative(),
+  total: z.int().nonnegative(),
+  failed: z.int().nonnegative(),
+  elapsed_ms: z.int().nonnegative(),
 });
-const rangeSchema = z.tuple([
-  z.number().int().nonnegative(),
-  z.number().int().nonnegative(),
-]);
+const rangeSchema = z.tuple([z.int().nonnegative(), z.int().nonnegative()]);
 const provenanceSchema = z.looseObject({
   format: z.string(),
   strategy: z.string(),
@@ -56,6 +59,8 @@ type ReportContext = {
   provenancePath: string;
   snapshots: ReadonlyMap<string, Buffer>;
   files: readonly { relativePath: string }[];
+  resources?: ArtifactResourceScope;
+  signal?: AbortSignal;
 };
 
 /**
@@ -65,7 +70,7 @@ type ReportContext = {
  * checks below remain exact.
  */
 export const parseWakaruReports = async (context: ReportContext) => {
-  const { execution, provenancePath } = context;
+  const { execution, provenancePath, resources, signal } = context;
 
   try {
     if (execution.exit_code !== 0 && execution.exit_code !== 1)
@@ -76,7 +81,7 @@ export const parseWakaruReports = async (context: ReportContext) => {
     const provenance = provenanceSchema.parse(
       JSON.parse(
         (
-          await readRecoveryFile(provenancePath, RECOVERY_LIMITS.reportBytes)
+          await readWakaruProvenanceReport(provenancePath, signal, resources)
         ).toString("utf8"),
       ),
     );
@@ -102,8 +107,14 @@ export const parseWakaruReports = async (context: ReportContext) => {
           : ("complete" as const),
     };
   } catch (cause: unknown) {
+    if (
+      cause instanceof ArtifactReaderFailure &&
+      (cause.cleanup !== undefined || cause.reason === "cancelled")
+    )
+      throw cause;
     throw new ProviderAdapterError("wakaru", OPERATION, {
       cause,
+      ...wakaruReportGuidance(cause),
       diagnostics: {
         reason: `Unusable Wakaru recovery report: ${recoveryFailureMessage(cause)}`,
         exit_code: execution.exit_code,
@@ -113,6 +124,50 @@ export const parseWakaruReports = async (context: ReportContext) => {
       },
     });
   }
+};
+
+const PROVENANCE_REPORT_ALLOWANCE = `Wakaru provenance report exceeds the ${String(RECOVERY_LIMITS.reportBytes)}-byte report allowance`;
+
+/** Report-size refusals name the fixed allowance; other read failures stay unchanged. */
+const readWakaruProvenanceReport = async (
+  path: string,
+  signal: AbortSignal | undefined,
+  resources: ArtifactResourceScope | undefined,
+): Promise<Buffer> => {
+  try {
+    return await readRecoveryFile(
+      path,
+      RECOVERY_LIMITS.reportBytes,
+      signal,
+      resources,
+    );
+  } catch (cause: unknown) {
+    if (!isRecoveryFileSizeError(cause, RECOVERY_LIMITS.reportBytes))
+      throw cause;
+    throw new AnalysisOutputError(OPERATION, PROVENANCE_REPORT_ALLOWANCE, {
+      cause,
+      ...wakaruFixedLimitRecovery(PROVENANCE_REPORT_ALLOWANCE),
+    });
+  }
+};
+
+/** Keep fixed-limit guidance when the report parser wraps the producing error. */
+const wakaruReportGuidance = (
+  cause: unknown,
+): { readonly userMessage?: string; readonly remediationAction?: string } => {
+  if (typeof cause !== "object" || cause === null) return {};
+  const userMessage =
+    "userMessage" in cause && typeof cause.userMessage === "string"
+      ? cause.userMessage
+      : undefined;
+  const remediationAction =
+    "remediationAction" in cause && typeof cause.remediationAction === "string"
+      ? cause.remediationAction
+      : undefined;
+  return {
+    ...(userMessage === undefined ? {} : { userMessage }),
+    ...(remediationAction === undefined ? {} : { remediationAction }),
+  };
 };
 
 const validateModuleSet = (

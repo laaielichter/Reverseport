@@ -12,6 +12,11 @@ export const analysisSearchInput = {
     .describe(
       "literal (default) matches the exact text; regex uses ECMAScript syntax",
     ),
-  case_sensitive: z.boolean().default(false).describe("Whether to match case"),
+  case_sensitive: z
+    .boolean()
+    .default(false)
+    .describe(
+      "Whether to match case; case-insensitive matching uses Unicode simple case folding, one character at a time",
+    ),
   document: z.string().optional().describe("The document name"),
 };

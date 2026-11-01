@@ -6,7 +6,7 @@ import { promisify } from "node:util";
 
 import { createTestTempDirectory } from "../../../fixtures/temporaryDirectory.js";
 import type { JavaScriptArtifactFile } from "../../../../src/domain/javascript/javascriptArtifactFiles.js";
-import { resolveArtifactPathByContext } from "../../../../src/application/javascript/JavaScriptArtifactPathResolution.js";
+import { resolveStandaloneArtifactPath } from "../../../support/javascriptArtifactPathResolution.js";
 import { analyzeJavaScriptApplication } from "../../../support/javascriptApplicationScope.js";
 import { javascriptApplicationAnalysisResultSchema } from "../../../../src/domain/javascript/javascriptApplicationAnalysis.js";
 
@@ -99,7 +99,7 @@ describe("module specifier punctuation", () => {
     (punctuation) => {
       const literal = `app/dep.cjs${punctuation}literal.cjs`;
       const stripped = "app/dep.cjs";
-      const commonJs = resolveArtifactPathByContext({
+      const commonJs = resolveStandaloneArtifactPath({
         declaredPath: `./dep.cjs${punctuation}literal.cjs`,
         sourcePath: "app/main.js",
         context: "module-specifier",
@@ -111,7 +111,7 @@ describe("module specifier punctuation", () => {
         resolved_path: literal,
       });
 
-      const esm = resolveArtifactPathByContext({
+      const esm = resolveStandaloneArtifactPath({
         declaredPath: `./dep.cjs${punctuation}literal.cjs`,
         sourcePath: "app/main.js",
         context: "module-specifier",
@@ -123,7 +123,7 @@ describe("module specifier punctuation", () => {
         resolved_path: stripped,
       });
 
-      const noStrippedTarget = resolveArtifactPathByContext({
+      const noStrippedTarget = resolveStandaloneArtifactPath({
         declaredPath: `./dep.cjs${punctuation}literal.cjs`,
         sourcePath: "app/main.js",
         context: "module-specifier",
@@ -141,7 +141,7 @@ describe("module specifier punctuation", () => {
     "keeps HTML URL suffix handling for %s",
     (punctuation) => {
       expect(
-        resolveArtifactPathByContext({
+        resolveStandaloneArtifactPath({
           declaredPath: `./dep.cjs${punctuation}literal.cjs`,
           sourcePath: "app/main.js",
           context: "html-reference",
@@ -216,7 +216,7 @@ describe("ESM module URL decoding", () => {
 
   it("preserves CommonJS literal percent names", () => {
     expect(
-      resolveArtifactPathByContext({
+      resolveStandaloneArtifactPath({
         declaredPath: "./space%20name.cjs",
         sourcePath: "app/main.js",
         context: "module-specifier",
@@ -233,7 +233,7 @@ describe("ESM module URL decoding", () => {
     "rejects malformed or NUL URL %s",
     (declaredPath) => {
       expect(
-        resolveArtifactPathByContext({
+        resolveStandaloneArtifactPath({
           declaredPath,
           sourcePath: "app/main.js",
           context: "module-specifier",
@@ -342,7 +342,6 @@ describe("package exports URL path rejections", () => {
         "./actual%00file.cjs",
         "./actual%2Ffile.cjs",
         "./actual%5Cfile.cjs",
-        "./actual%2Efile.cjs",
         "./../../../../escape.cjs",
       ].map((declaredPath) => ({ moduleKind, declaredPath })),
     ),
@@ -365,7 +364,7 @@ describe("package exports URL path rejections", () => {
         },
       });
       expect(
-        resolveArtifactPathByContext({
+        resolveStandaloneArtifactPath({
           declaredPath: "fixture",
           sourcePath: "app/main.js",
           context: "module-specifier",
@@ -398,15 +397,32 @@ describe("package exports URL path rejections", () => {
         ...crossContainer,
         container_sha256: "c".repeat(64),
       });
-      expect(
-        resolveArtifactPathByContext({
+      const resolveTarget = () =>
+        resolveStandaloneArtifactPath({
           declaredPath: "fixture",
           sourcePath: "app/main.js",
           context: "module-specifier",
           moduleKind,
           files,
-        }),
-      ).toMatchObject({ resolved_path: null, resolution_status: "not-found" });
+        });
+      expect(resolveTarget()).toMatchObject({
+        resolved_path: null,
+        resolution_status: "unavailable",
+        candidate_path: target,
+        limitations: [
+          expect.stringContaining("crosses an artifact container boundary"),
+        ],
+      });
+      files.delete(target);
+      expect(resolveTarget()).toMatchObject({
+        resolved_path: null,
+        resolution_status: "not-found",
+      });
+      files.set(target, crossContainer);
+      expect(resolveTarget()).toMatchObject({
+        resolved_path: target,
+        resolution_status: "resolved",
+      });
     },
   );
 });

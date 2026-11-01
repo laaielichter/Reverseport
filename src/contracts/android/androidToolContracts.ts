@@ -1,7 +1,10 @@
+import { z } from "zod";
 import {
   androidInputSchemas,
+  androidPackageInspectionInputSchema,
   androidResultSchemas,
 } from "../../domain/android/androidAnalysis.js";
+import { androidPackageSummaryViewResultSchema } from "../../domain/analysisView/analysisView.js";
 import type { ToolContract } from "../toolContractTypes.js";
 import { evidenceResultOf } from "../toolOutputSchemaPrimitives.js";
 import { toolContractMetadata } from "../toolEffects.js";
@@ -12,21 +15,28 @@ export const ANDROID_TOOL_CONTRACTS = [
     name: "inspect_android_package",
     ...toolContractMetadata("inspect_android_package"),
     description:
-      "Inspect a local APK's package, SDK and permission declarations, decoded manifest and class/resource counts. Does not execute the APK or verify signatures. Requires a caller-supplied JADX MCP JAR and JDK; uses one worker in an isolated temporary workspace.",
+      'Inspect a local APK\'s package, SDK and permission declarations, decoded manifest and class/resource counts, with a bounded static component projection. Omitted or complete detail preserves the complete result. Select detail: "summary" for all declarations, engine identity and counts without decoded manifest text or duplicate raw calls; retains the complete source and returns a distinct linked inspect_analysis_view summary. Read the exact retained manifest with view kind android, facet manifest, offset and limit (UTF-16 code units), using normalized_result.parent_evidence_id. Does not execute the APK or verify signatures. Requires a caller-supplied JADX MCP JAR and JDK; uses one worker in an isolated temporary workspace.',
     kind: "android-provider",
-    inputSchema: androidInputSchemas.inspect_android_package,
+    inputSchema: androidPackageInspectionInputSchema,
     outputSchema: evidenceResultOf(
-      androidResultSchemas.inspect_android_package,
+      z.union([
+        androidResultSchemas.inspect_android_package,
+        androidPackageSummaryViewResultSchema,
+      ]),
     ),
     examples: [
       { title: "Inspect an APK", input: { path: "/tmp/Example.apk" } },
+      {
+        title: "Inspect APK declarations with retained manifest",
+        input: { path: "/tmp/Example.apk", detail: "summary" },
+      },
     ],
   },
   {
     name: "search_android_classes",
     ...toolContractMetadata("search_android_classes"),
     description:
-      "Search complete decompiler class-name rows in an explicit local APK by case-sensitive substring. Empty query inventories all rows. Repeated names remain repeated and appear in duplicate_names; the provider accepts only class names for lookup, so these rows do not identify which same-name class node a later lookup selects. Retains artifact and engine identity; no APK execution.",
+      "Search complete top-level decompiler class-name rows in an explicit local APK by case-sensitive substring. Empty query inventories all rows. Repeated names remain repeated and appear in duplicate_names; the provider accepts only class names for lookup, so these rows do not identify which same-name class node a later lookup selects. Retains artifact and engine identity; no APK execution.",
     kind: "android-provider",
     inputSchema: androidInputSchemas.search_android_classes,
     outputSchema: evidenceResultOf(androidResultSchemas.search_android_classes),
@@ -41,7 +51,7 @@ export const ANDROID_TOOL_CONTRACTS = [
     name: "inspect_android_class",
     ...toolContractMetadata("inspect_android_class"),
     description:
-      "Inspect one exact Android class's parsed methods, fields and inner classes, including synthetic members. Returns display signatures and explicit unknown DEX descriptors without generating source. Overload indices remain consistent within the artifact and engine session.",
+      "Inspect one exact Android class's parsed methods, fields and inner classes, including synthetic members. Returns display signatures, exact DEX prototypes and encoded static final field values without generating source. A prototype is not a complete raw method ID; overload indices remain consistent within the artifact and engine session.",
     kind: "android-provider",
     inputSchema: androidInputSchemas.inspect_android_class,
     outputSchema: evidenceResultOf(androidResultSchemas.inspect_android_class),
@@ -56,7 +66,7 @@ export const ANDROID_TOOL_CONTRACTS = [
     name: "inspect_android_method",
     ...toolContractMetadata("inspect_android_method"),
     description:
-      "Decompile one Android method with smali fallback. Requires explicit overload_index when multiple methods share a name. Reports representation, fallback markers and source truncation; never treats display signatures as exact DEX identities.",
+      "Decompile one Android method with smali fallback. Requires explicit overload_index when multiple methods share a name. Reports its DEX prototype, representation, fallback markers and source truncation; display signatures may be aliases.",
     kind: "android-provider",
     inputSchema: androidInputSchemas.inspect_android_method,
     outputSchema: evidenceResultOf(androidResultSchemas.inspect_android_method),
@@ -75,7 +85,7 @@ export const ANDROID_TOOL_CONTRACTS = [
     name: "trace_android_references",
     ...toolContractMetadata("trace_android_references"),
     description:
-      "Trace incoming static references to an exact Android class or unique method. Overloaded method reference queries are explicitly unsupported by the current engine. Source lines and DEX offsets remain unknown; no runtime calls are inferred.",
+      "Trace incoming static using nodes to an exact Android class or selected method overload. The total counts containing nodes, not individual invoke instructions. Use inspect_android_class to choose an overload_index when names collide. Source lines and the containing node dex_offset remain unknown. direct_invokes carries exact DEX code-unit instruction offsets when available; direct_invokes_exhaustive false marks byte-bounded partial instruction evidence, and null means coverage is unknown. Using-node coverage remains separate; no runtime calls are inferred.",
     kind: "android-provider",
     inputSchema: androidInputSchemas.trace_android_references,
     outputSchema: evidenceResultOf(

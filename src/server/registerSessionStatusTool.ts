@@ -2,7 +2,8 @@ import type { EvidenceMcpServer } from "./EvidenceMcpServer.js";
 
 import type { BinarySessionPort } from "../application/binary/BinarySessionPort.js";
 import type { ProviderAvailability } from "../application/AnalysisProvider.js";
-import { AnalysisCancelledError } from "../domain/analysisErrorCore.js";
+import type { JebAnalysisAvailability } from "../application/jeb/JebAnalysisPort.js";
+import { AnalysisError } from "../domain/analysisErrorBase.js";
 import {
   buildCapabilityInventory,
   compactToolAvailability,
@@ -12,37 +13,71 @@ import type {
   ClientFeatureAvailability,
   ToolAvailability,
 } from "../contracts/toolOutputSchemaPrimitives.js";
-import { jsonObjectSchema } from "../domain/jsonValue.js";
+import { jsonObjectSchema, type JsonValue } from "../domain/jsonValue.js";
 import { createServerIdentity } from "../serverIdentity.js";
 import { mcpClientMetadata } from "./mcpClientMetadata.js";
 import type { AvailabilityPolicy } from "../application/CapabilityInventory.js";
 import { toolRegistrationOptions } from "./toolRegistrationOptions.js";
 import { err } from "../domain/result.js";
+import { CURRENT_ENTRYPOINT_PATH } from "../process/CurrentEntrypointPath.js";
+
+/** Provider-owned live probes used by session discovery. */
+export interface SessionAvailabilityProbes {
+  readonly androidAnalysisAvailability: (
+    signal: AbortSignal,
+  ) => Promise<ProviderAvailability>;
+  readonly adbAnalysisAvailability?: (
+    signal: AbortSignal,
+  ) => Promise<ProviderAvailability>;
+  readonly apktoolAnalysisAvailability?: (
+    signal: AbortSignal,
+  ) => Promise<ProviderAvailability>;
+  readonly jebAnalysisAvailability?: (
+    signal: AbortSignal,
+  ) => Promise<JebAnalysisAvailability>;
+  readonly evmLimiterAvailability?: (
+    signal: AbortSignal,
+  ) => Promise<ProviderAvailability | undefined>;
+}
 
 /** Inputs required to register the binary session status tool. */
-export interface SessionStatusToolOptions {
+export interface SessionStatusToolOptions extends SessionAvailabilityProbes {
   readonly server: EvidenceMcpServer;
   readonly session: BinarySessionPort;
   readonly contract: ReturnType<typeof toolContract<"binary_session">>;
   readonly startedAt: string;
   readonly availabilityPolicy: () => AvailabilityPolicy;
-  readonly androidAnalysisAvailability: (
-    signal: AbortSignal,
-  ) => Promise<ProviderAvailability>;
 }
+
+const probeSessionAvailability = (
+  probes: SessionAvailabilityProbes,
+  signal: AbortSignal,
+): Promise<{
+  readonly android: ProviderAvailability;
+  readonly adb: ProviderAvailability | undefined;
+  readonly apktool: ProviderAvailability | undefined;
+  readonly jeb: JebAnalysisAvailability | undefined;
+  readonly evmLimiter: ProviderAvailability | undefined;
+}> =>
+  Promise.all([
+    probes.androidAnalysisAvailability(signal),
+    probes.adbAnalysisAvailability?.(signal) ?? undefined,
+    probes.apktoolAnalysisAvailability?.(signal) ?? undefined,
+    probes.jebAnalysisAvailability?.(signal) ?? undefined,
+    probes.evmLimiterAvailability?.(signal) ?? undefined,
+  ] as const).then(([android, adb, apktool, jeb, evmLimiter]) => ({
+    android,
+    adb,
+    apktool,
+    jeb,
+    evmLimiter,
+  }));
 
 /** Register the read-only provider and target status operation. */
 export const registerSessionStatusTool = (
   options: SessionStatusToolOptions,
 ): void => {
-  const {
-    server,
-    session,
-    contract,
-    startedAt,
-    availabilityPolicy,
-    androidAnalysisAvailability,
-  } = options;
+  const { server, session, contract, startedAt, availabilityPolicy } = options;
   server.registerTool(
     contract.name,
     toolRegistrationOptions(contract),
@@ -51,30 +86,45 @@ export const registerSessionStatusTool = (
         context,
         server.server,
       );
-      let androidAvailability: ProviderAvailability;
+      let availabilityResults: Awaited<
+        ReturnType<typeof probeSessionAvailability>
+      >;
+      let status: JsonValue;
       try {
-        androidAvailability = await androidAnalysisAvailability(
+        availabilityResults = await probeSessionAvailability(
+          options,
           context.mcpReq.signal,
         );
+        status = await session.status({ signal: context.mcpReq.signal });
       } catch (cause) {
-        if (!context.mcpReq.signal.aborted) throw cause;
-        return server.delivery.toCallToolResult(
-          err(new AnalysisCancelledError("binary_session")),
-          contract,
-        );
+        if (!(cause instanceof AnalysisError)) throw cause;
+        return server.delivery.toCallToolResult(err(cause), contract);
       }
-      const status = session.status();
       const statusObject = jsonObjectSchema.parse(status);
       const toolAvailability = buildCapabilityInventory(
         status,
         {
           ...availabilityPolicy(),
-          androidAnalysisAvailability: androidAvailability,
+          androidAnalysisAvailability: availabilityResults.android,
+          ...(availabilityResults.adb === undefined
+            ? {}
+            : { adbAnalysisAvailability: availabilityResults.adb }),
+          ...(availabilityResults.apktool === undefined
+            ? {}
+            : { apktoolAnalysisAvailability: availabilityResults.apktool }),
+          ...(availabilityResults.jeb === undefined
+            ? {}
+            : { jebAnalysisAvailability: availabilityResults.jeb }),
+          ...(availabilityResults.evmLimiter === undefined
+            ? {}
+            : { evmLimiterAvailability: availabilityResults.evmLimiter }),
         },
         clientFeatures,
       );
       const serverIdentity = createServerIdentity({
         startedAt,
+        commandPath: CURRENT_ENTRYPOINT_PATH,
+        catalog: server.catalogIdentity,
         expected: {
           ...(input.expected_package_version === undefined
             ? {}

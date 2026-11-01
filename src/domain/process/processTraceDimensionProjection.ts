@@ -1,12 +1,6 @@
 import type { ProcessCapture } from "./processCaptureParsing.js";
 import type { ProcessObservationSource } from "./processObservation.js";
-
-export type ProcessComparisonDimension =
-  | "terminal"
-  | "interaction"
-  | "exit"
-  | "filesystem"
-  | "process";
+import type { ProcessComparisonDimension } from "./processComparison.js";
 
 /** Map declared trace sources to process-comparison dimensions. */
 export const dimensionsForTraceSources = (
@@ -46,7 +40,7 @@ export const traceCoversObservedDimension = (
     case "exit":
       return sources.has("lifecycle");
     case "filesystem":
-      return false;
+      return sources.has("filesystem");
     case "process":
       return sources.has("process");
   }

@@ -1,3 +1,4 @@
+import type { BinaryTarget } from "../../domain/binaryTargetTypes.js";
 import { describe, expect, it } from "vitest";
 
 import type {
@@ -6,6 +7,7 @@ import type {
 } from "../AnalysisProvider.js";
 import {
   expandProviderCapabilities,
+  sessionProvider,
   type ProviderCapabilitySet,
 } from "../../contracts/toolOutputSchemaPrimitives.js";
 import { compareUnicodeCodePoints } from "../../domain/unicodeCodePointOrder.js";
@@ -15,17 +17,16 @@ import type {
   SessionProviderRouter,
 } from "./SessionProviderRouter.js";
 import { binarySessionStatus } from "./BinarySessionStatus.js";
+import {
+  APPLE_DISPATCH_METADATA_ANALYSIS_PROFILE,
+  NATIVE_MACOS_PROVIDER_IDENTITY,
+  nativeMacOSCapabilities,
+} from "../../native/NativeMacOSProviderMetadata.js";
 
-type ProjectedStatus = {
-  capabilities: ProviderCapabilitySet[];
-  analysis_provider_candidates: {
-    provider: ProviderIdentity;
-    availability: unknown;
-    target_support: unknown;
-    selected: boolean;
-    capabilities: ProviderCapabilitySet[];
-  }[];
-};
+const projectedStatusSchema = sessionProvider.pick({
+  capabilities: true,
+  analysis_provider_candidates: true,
+});
 
 const providerA: ProviderIdentity = {
   id: "provider-a",
@@ -117,32 +118,41 @@ const candidate = (
   capabilities,
 });
 
-const project = (
+const project = async (
   routeCapabilities: readonly CapabilityDescriptor[],
   candidates: readonly AnalysisProviderCandidateStatus[],
   runtimeUnavailability: ReadonlyMap<
     string,
     { readonly reason: string }
   > = new Map(),
-): ProjectedStatus => {
-  const route = {
+  target?: BinaryTarget,
+) => {
+  const route: SessionProviderRoute = {
+    identity: providerA,
+    profile: null,
+    selection: undefined,
+    createClient: () => {
+      throw new Error("Projection does not create clients");
+    },
     capabilities: new Map(
       routeCapabilities.map((capability) => [capability.operation, capability]),
     ),
     binding: null,
-  } as unknown as SessionProviderRoute;
-  const router = {
-    candidateStatuses: () => candidates,
-  } as unknown as SessionProviderRouter;
-  return binarySessionStatus({
-    target: undefined,
-    route,
-    router,
-    runtimeUnavailability,
-    runId: undefined,
-    runtimeLineageSnapshots: [],
-    requestActivitySnapshots: [],
-  }) as unknown as ProjectedStatus;
+  };
+  const router: Pick<SessionProviderRouter, "candidateStatuses"> = {
+    candidateStatuses: async () => candidates,
+  };
+  return projectedStatusSchema.parse(
+    await binarySessionStatus({
+      target,
+      route,
+      router,
+      runtimeUnavailability,
+      runId: undefined,
+      runtimeLineageSnapshots: [],
+      requestActivitySnapshots: [],
+    }),
+  );
 };
 
 const expandCanonicalCapabilities = (sets: readonly ProviderCapabilitySet[]) =>
@@ -323,10 +333,25 @@ const expectedExpandedCandidateCapabilities = [
 ];
 
 describe("binary session provider capability projection", () => {
-  it("preserves provider scope and route overlays while factoring exact prefixes", () => {
+  it("keeps the private dispatch reader profile out of public capability status", async () => {
+    const capabilities = nativeMacOSCapabilities("darwin");
+    const projected = await project(capabilities, [
+      candidate(NATIVE_MACOS_PROVIDER_IDENTITY, capabilities),
+    ]);
+    const serialized = JSON.stringify(projected);
+    expect(serialized).not.toContain(
+      APPLE_DISPATCH_METADATA_ANALYSIS_PROFILE.provider.version,
+    );
+    expect(serialized).not.toContain(
+      APPLE_DISPATCH_METADATA_ANALYSIS_PROFILE.digest,
+    );
+    expect(projectedStatusSchema.parse(projected)).toEqual(projected);
+  });
+
+  it("preserves provider scope and route overlays while factoring exact prefixes", async () => {
     const selectedBefore = structuredClone(selectedCapabilities);
     const otherBefore = structuredClone(otherCapabilities);
-    const status = project(
+    const status = await project(
       selectedCapabilities,
       [
         candidate(providerA, selectedCapabilities),
@@ -355,13 +380,13 @@ describe("binary session provider capability projection", () => {
     ).toEqual(expectedExpandedCandidateCapabilities[1]);
   });
 
-  it("keeps empty route and candidate capability collections empty", () => {
-    const status = project([], [candidate(providerA, [])]);
+  it("keeps empty route and candidate capability collections empty", async () => {
+    const status = await project([], [candidate(providerA, [])]);
     expect(status.capabilities).toEqual([]);
     expect(status.analysis_provider_candidates[0]?.capabilities).toEqual([]);
   });
 
-  it("preserves repeated limitations in their original order", () => {
+  it("preserves repeated limitations in their original order", async () => {
     const capabilities = [
       descriptor(providerA, "procedure_info", [
         "Repeated",
@@ -370,7 +395,7 @@ describe("binary session provider capability projection", () => {
       ]),
       descriptor(providerA, "xrefs", ["Repeated", "Repeated", "right detail"]),
     ];
-    const status = project(capabilities, []);
+    const status = await project(capabilities, []);
 
     expect(status.capabilities[0]).toMatchObject({
       shared_limitations: ["Repeated", "Repeated"],
@@ -389,3 +414,33 @@ describe("binary session provider capability projection", () => {
     ]);
   });
 });
+
+it.each(["elf", "pe"] as const)(
+  "reports format rejection for %s dylib discovery",
+  async (format) => {
+    const target: BinaryTarget = {
+      kind: "executable",
+      format,
+      path: "/fixture",
+      sha256: "a".repeat(64),
+      architecture: "x86_64",
+      availableArchitectures: ["x86_64"],
+      ...(format === "pe"
+        ? { executableRole: "application" as const, managed: false }
+        : {}),
+    } as BinaryTarget;
+    const status = await project(
+      [descriptor(providerA, "trace_dylib_resolution", [])],
+      [],
+      new Map(),
+      target,
+    );
+    expect(expandCanonicalCapabilities(status.capabilities)).toMatchObject([
+      {
+        operation: "trace_dylib_resolution",
+        available: false,
+        availability_code: "target_format_unsupported",
+      },
+    ]);
+  },
+);

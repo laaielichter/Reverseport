@@ -290,6 +290,7 @@ try {
       );
       const compute = await call("analyze_function", {
         procedure: addressOf(fixtureSymbols.compute),
+        detail: "complete",
       });
       assert.ok(compute.pseudocode.trim());
       assert.doesNotMatch(
@@ -300,6 +301,7 @@ try {
       assert.match(compute.pseudocode, /(?:0xb|\b11\b|<<)/u);
       const dispatch = await call("analyze_function", {
         procedure: addressOf(fixtureSymbols.dispatch),
+        detail: "complete",
       });
       assert.ok(dispatch.pseudocode.trim());
       for (const literal of oracle.expected_strings)

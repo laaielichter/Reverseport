@@ -1,12 +1,7 @@
+import { procedureInfoSchema } from "../domain/native/procedureInfo.js";
 import { z } from "zod";
 
-import {
-  procedureClassificationSchema,
-  procedureIdentitySchema,
-  localVariableSchema,
-  functionDossierSchema,
-  functionBodySchema,
-} from "../domain/hopperValues.js";
+import { functionDossierSchema } from "../domain/hopperValues.js";
 import { analysisProfileSchema } from "../domain/analysisProfile.js";
 import {
   evidenceSchema,
@@ -24,6 +19,8 @@ import {
 } from "../domain/providerOperationHealth.js";
 import { analysisErrorProjectionSchema } from "./errorSchemas.js";
 import { relationshipCoverageSchema } from "../domain/relationshipCoverage.js";
+import { ZIP_PACKAGE_FORMATS } from "../domain/zipPackageFormat.js";
+import { objcClassImportIdentitySchema } from "../domain/native/objcSwiftMetadata.js";
 
 /** Specialize the single normalized result inside a complete Evidence record. */
 export const evidenceResultOf = <Schema extends z.ZodType>(schema: Schema) =>
@@ -59,12 +56,10 @@ export const targetFormatSchema = z.enum([
   "dos-mz",
   "dos-com",
   "raw-binary",
-  "zip",
-  "ipa",
-  "apk",
-  "msix",
-  "appx",
+  "gamecube-dol",
+  ...ZIP_PACKAGE_FORMATS,
   "asar",
+  "godot-pck",
   "dmg",
   "pkg",
   "plist",
@@ -177,8 +172,8 @@ export const expandProviderCapabilities = (
   );
 
 const processCoordinates = {
-  launcher_pid: z.number().int().min(1),
-  process_group_id: z.number().int().min(1),
+  launcher_pid: z.int().min(1),
+  process_group_id: z.int().min(1),
 };
 
 const processLineageObservation = z.discriminatedUnion("status", [
@@ -192,12 +187,12 @@ const processLineageObservation = z.discriminatedUnion("status", [
     status: z.literal("verified"),
     observed_at: z.iso.datetime(),
     ...processCoordinates,
-    launcher_parent_pid: z.number().int().min(0),
+    launcher_parent_pid: z.int().min(0),
     descendants: z.array(
       z.object({
-        pid: z.number().int().min(1),
-        parent_pid: z.number().int().min(0),
-        process_group_id: z.number().int().min(1),
+        pid: z.int().min(1),
+        parent_pid: z.int().min(0),
+        process_group_id: z.int().min(1),
       }),
     ),
   }),
@@ -228,19 +223,19 @@ export const analysisActivity = z.object({
       provider: providerIdentity,
       active: z
         .object({
-          request_id: z.number().int().min(1),
+          request_id: z.int().min(1),
           operation: z.string().min(1),
-          elapsed_ms: z.number().int().min(0),
+          elapsed_ms: z.int().min(0),
           caller_state: z.enum(["waiting", "cancelled"]),
         })
         .nullable(),
-      queued_requests: z.number().int().min(0),
+      queued_requests: z.int().min(0),
     }),
   ),
 });
 
 const providerOperationRequest = z.object({
-  request_id: z.number().int().min(1),
+  request_id: z.int().min(1),
   operation: z.string().min(1),
   stage: z.enum(PROVIDER_FAILURE_STAGES),
 });
@@ -250,7 +245,7 @@ export const providerOperationHealth = z
     state: z.enum(PROVIDER_OPERATION_STATES),
     stage: z.enum(PROVIDER_FAILURE_STAGES).nullable(),
     retry_action: z.enum(PROVIDER_RETRY_ACTIONS).nullable(),
-    exit_code: z.number().int().nullable(),
+    exit_code: z.int().nullable(),
     requests: z.array(providerOperationRequest),
   })
   .nullable();
@@ -262,6 +257,12 @@ const providerRejectionCode: z.ZodType<ProviderRejectionCode> = z.enum(
 const providerDiagnostics = z.record(z.string(), jsonValueSchema);
 
 const providerAvailability = z.discriminatedUnion("status", [
+  z.object({
+    status: z.literal("unknown"),
+    code: z.null(),
+    reason: z.string().min(1),
+    diagnostics: providerDiagnostics,
+  }),
   z.object({
     status: z.literal("available"),
     code: z.null(),
@@ -467,6 +468,7 @@ export const expandToolAvailability = (
 
 export const sessionProvider = z
   .object({
+    cleanup_pending: z.boolean(),
     capabilities: z.array(providerCapabilitySet),
     analysis_run: analysisRun,
     analysis_activity: analysisActivity,
@@ -509,7 +511,7 @@ export const sessionProvider = z
         name: z.string(),
         version: z.string(),
         started_at: z.string(),
-        command_path: z.string(),
+        command_path: z.string().nullable(),
       }),
       sdk: z.object({
         server: z.string(),
@@ -521,9 +523,9 @@ export const sessionProvider = z
       skill: z.object({ name: z.string(), expected_version: z.string() }),
       catalog: z.strictObject({
         counts: z.strictObject({
-          cli_commands: z.number().int().min(0),
-          mcp_tools: z.number().int().min(0),
-          mcp_prompts: z.number().int().min(0),
+          cli_commands: z.int().min(0),
+          mcp_tools: z.int().min(0),
+          mcp_prompts: z.int().min(0),
         }),
         digests: z.strictObject({
           tools_sha256: z.string().regex(/^[a-f0-9]{64}$/u),
@@ -551,20 +553,6 @@ export const addressedEntry = z.object({
   address: z.string(),
   name: z.string(),
 });
-export const containingProcedureResolution = z.discriminatedUnion("found", [
-  z.object({
-    query_address: z.string(),
-    found: z.literal(true),
-    procedure: procedureIdentitySchema,
-  }),
-  z.object({
-    query_address: z.string(),
-    found: z.literal(false),
-    procedure: z.null(),
-    reason: z.enum(["outside_segments", "not_in_procedure"]),
-  }),
-]);
-
 const unavailable = z.object({
   available: z.literal(false),
   reason: z.string(),
@@ -573,34 +561,6 @@ const unavailable = z.object({
 const availableMemoryPermissions = z.object({
   available: z.literal(true),
   source: z.literal("ghidra-memory-block"),
-});
-
-export const addressedValue = z.object({
-  address: z.string(),
-  value: z.string(),
-  symbol: z
-    .object({
-      primary: z.boolean(),
-      dynamic: z.boolean(),
-      external: z.boolean(),
-      type: z.string(),
-      source: z.enum(["default", "analysis", "ai", "imported", "user_defined"]),
-    })
-    .optional(),
-  procedure: z
-    .object({
-      external: z.boolean(),
-      thunk: z.boolean(),
-      thunk_target: z.string().nullable(),
-    })
-    .optional(),
-  string: z
-    .object({
-      encoding: z.string(),
-      termination: z.enum(["missing", "present_or_not_required"]),
-      byte_length: z.number().int().min(0),
-    })
-    .optional(),
 });
 
 const memoryRegionOutput = z.object({
@@ -622,26 +582,41 @@ export const segmentOutput = evidenceResultOf(
   z.array(memoryRegionOutput.extend({ sections: z.array(memoryRegionOutput) })),
 );
 
-export const procedureInfoOutput = evidenceResultOf(
-  z.object({
-    name: z.string(),
-    entrypoint: z.string(),
-    basicblock_count: z.number().int().min(0),
-    length: z.number().min(0),
-    signature: nullableText,
-    locals: z.array(localVariableSchema),
-    classification: procedureClassificationSchema.nullable(),
-    body: functionBodySchema,
-  }),
-);
+export const procedureInfoOutput = evidenceResultOf(procedureInfoSchema);
 
 export const symbolDiscoveryOutput = (property: "classes" | "protocols") =>
   evidenceResultOf(
     z.object({
-      count: z.number().int().min(0),
+      count: z.int().min(0),
       [property]: z.array(addressedEntry),
     }),
   );
+
+export const objcClassDiscoveryOutput = evidenceResultOf(
+  z.object({
+    count: z.int().min(0),
+    classes: z.array(
+      addressedEntry.extend({
+        binding_identity: objcClassImportIdentitySchema
+          .extend({
+            slot_addresses: z.array(z.string().min(1)).min(1),
+          })
+          .optional(),
+      }),
+    ),
+    identity_coverage: z.strictObject({
+      status: z.enum([
+        "complete",
+        "partial",
+        "unsupported",
+        "not_requested",
+        "unknown",
+        "not_applicable",
+      ]),
+      reason: z.string().nullable(),
+    }),
+  }),
+);
 
 export const graphNode = z.discriminatedUnion("status", [
   z.object({

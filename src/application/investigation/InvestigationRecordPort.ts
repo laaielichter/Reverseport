@@ -12,14 +12,14 @@ import type {
 } from "../../domain/residualUnknown.js";
 import type { Result } from "../../domain/result.js";
 
-/** Detached investigation Evidence reads without target execution or lifecycle authority. */
+/** Read-only investigation Evidence access without target execution or lifecycle authority. */
 export interface EvidenceReader {
   hasEvidence(evidenceId: string): boolean;
   evidenceById(evidenceId: string): Evidence | undefined;
-  /** Optional immutable analysis read; older adapters can keep detached reads. */
-  evidenceForAnalysis?(evidenceId: string): Evidence | undefined;
-  /** Optional immutable bundle snapshot for complete serialization without graph copies. */
-  evidenceBundleForSerialization?(): EvidenceBundle;
+  /** Borrow an immutable authenticated record for read-only application workflows. */
+  evidenceForAnalysis(evidenceId: string): Evidence | undefined;
+  /** Borrow an immutable bundle snapshot for read-only workflows and serialization. */
+  immutableEvidenceBundle(): EvidenceBundle;
   exportEvidenceBundle(): EvidenceBundle;
 }
 
@@ -38,6 +38,21 @@ export interface EvidenceUnknownWriter {
   ): Result<ResidualUnknown | null, AnalysisError>;
 }
 
+export type UnknownPage = {
+  readonly items: ResidualUnknown[];
+  readonly total: number;
+  readonly offset: number;
+  readonly next_offset: number | null;
+};
+
+export interface UnknownQuery {
+  readonly status?: UnknownStatus;
+  readonly severity?: ResidualUnknown["severity"];
+  readonly domain?: string;
+  readonly offset?: number;
+  readonly limit?: number;
+}
+
 /** Optimistic Unknown revisions and consistency verification. */
 export interface UnknownRegistryPort {
   recordUnknown(
@@ -51,6 +66,7 @@ export interface UnknownRegistryPort {
     readonly severity?: ResidualUnknown["severity"];
     readonly domain?: string;
   }): ResidualUnknown[];
+  listUnknownsPage(query?: UnknownQuery): UnknownPage;
   verifyUnknownResolution(unknownId: string): Result<
     {
       readonly valid: boolean;
@@ -61,7 +77,7 @@ export interface UnknownRegistryPort {
   >;
 }
 
-/** Compatibility record surface; binary execution and snapshots remain separate. */
+/** Investigation record surface; binary execution and snapshots remain separate. */
 export interface InvestigationRecordPort
   extends
     EvidenceReader,

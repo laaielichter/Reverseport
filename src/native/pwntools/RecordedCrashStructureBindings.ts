@@ -1,8 +1,13 @@
 import { AnalysisOutputError } from "../../domain/analysisErrorCore.js";
-import type { RecordedCrash } from "../../domain/native/recordedCrash.js";
+import {
+  RECORDED_LINUX_CORE_PROFILES,
+  type RecordedCrash,
+  type RecordedCrashArchitecture,
+} from "../../domain/native/recordedCrash.js";
 
-// Exact amd64/core enum projections in the pinned pyelftools 0.33 profile.
-const segmentKinds = new Map([
+// Pinned pyelftools 0.33 display projections depend on the machine. Validate
+// them separately from the original numeric p_type identity bound below.
+const baseSegmentKinds = new Map([
   [0, "PT_NULL"],
   [1, "PT_LOAD"],
   [2, "PT_DYNAMIC"],
@@ -18,15 +23,16 @@ const segmentKinds = new Map([
   [0x6474e552, "PT_GNU_RELRO"],
   [0x6474e553, "PT_GNU_PROPERTY"],
 ]);
-const noteKinds = new Map([
-  [1, "NT_PRSTATUS"],
-  [2, "NT_FPREGSET"],
-  [3, "NT_PRPSINFO"],
-  [4, "NT_TASKSTRUCT"],
-  [6, "NT_AUXV"],
-  [0x53494749, "NT_SIGINFO"],
-  [0x46494c45, "NT_FILE"],
-]);
+const segmentKinds: Readonly<
+  Record<RecordedCrashArchitecture, ReadonlyMap<number, string>>
+> = {
+  "x86_64-little-endian": baseSegmentKinds,
+  "aarch64-little-endian": new Map([
+    ...baseSegmentKinds,
+    [0x70000000, "PT_AARCH64_ARCHEXT"],
+    [0x70000001, "PT_AARCH64_UNWIND"],
+  ]),
+};
 const matchesKind = (
   raw: number,
   reported: string | number,
@@ -41,10 +47,12 @@ const matchesKind = (
 const segmentMatches = (
   segment: RecordedCrash["segments"][number],
   raw: Buffer,
+  kinds: ReadonlyMap<number, string>,
 ): boolean => {
   const type = raw.readUInt32LE(0);
   return (
-    matchesKind(type, segment.type, segmentKinds) &&
+    type === segment.type_id &&
+    matchesKind(type, segment.type, kinds) &&
     BigInt(segment.flags) === BigInt(raw.readUInt32LE(4)) &&
     segment.file_backing ===
       (type === 0 || raw.readBigUInt64LE(32) === 0n ? "none" : "file") &&
@@ -81,6 +89,8 @@ export function validateRecordedCrashStructure(
     return snapshot.subarray(Number(offset), Number(offset) + bytes);
   };
   const header = bytesAt(0n, 64);
+  const expectedMachine =
+    RECORDED_LINUX_CORE_PROFILES[report.architecture].machine;
   if (
     !header
       .subarray(0, 6)
@@ -90,7 +100,7 @@ export function validateRecordedCrashStructure(
     ![0, 3].includes(header[7] ?? -1) ||
     header[8] !== 0 ||
     header.readUInt16LE(16) !== 4 ||
-    header.readUInt16LE(18) !== 62
+    header.readUInt16LE(18) !== expectedMachine
   )
     fail();
   const table = header.readBigUInt64LE(32);
@@ -110,26 +120,16 @@ export function validateRecordedCrashStructure(
     )
       fail();
     const raw = bytesAt(offset, entryBytes);
-    if (!segmentMatches(segment, raw)) fail();
+    if (!segmentMatches(segment, raw, segmentKinds[report.architecture]))
+      fail();
   }
   for (const note of report.notes) {
     const raw = bytesAt(BigInt(note.location.offset), 12);
     if (
       BigInt(note.owner_location.bytes) !== BigInt(raw.readUInt32LE(0)) ||
       BigInt(note.descriptor_location.bytes) !== BigInt(raw.readUInt32LE(4)) ||
-      !matchesKind(raw.readUInt32LE(8), note.type, noteKinds)
+      raw.readUInt32LE(8) !== note.type_id
     )
-      fail();
-    const owner = bytesAt(
-      BigInt(note.owner_location.offset),
-      raw.readUInt32LE(0),
-    );
-    const terminator = owner.indexOf(0);
-    const display =
-      owner.length === 0
-        ? null
-        : owner.subarray(0, terminator).toString("utf8");
-    if ((owner.length > 0 && terminator < 0) || note.owner_display !== display)
       fail();
   }
 }

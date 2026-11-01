@@ -20,6 +20,7 @@ describe("input issue projection", () => {
       input,
       {
         cause,
+        userMessage: "Supply an integer count.",
         additionalIssues: [
           { path: ["count"], reason: "out_of_range", minimum: 0 },
         ],
@@ -27,6 +28,7 @@ describe("input issue projection", () => {
     );
 
     expect(error.cause).toBe(cause);
+    expect(error.userMessage).toBe("Supply an integer count.");
     expect(error.issues).toEqual([
       { path: ["count"], reason: "invalid_type", expected: "number" },
       { path: ["count"], reason: "out_of_range", minimum: 0 },

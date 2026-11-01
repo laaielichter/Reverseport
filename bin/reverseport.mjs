@@ -45,7 +45,7 @@ function suggestion(cmd, names) {
 const engineBuilt = () => existsSync(path.join(REPO, 'dist', 'cli-runtime', 'cli.js')) && existsSync(path.join(REPO, 'dist', 'mcp', 'main.js'));
 const ENGINE_MISSING = `The deep-analysis engine is not built in this copy of ReversePort.
   Installed from npm?  npx -y reverseport@latest setup
-  Git checkout?        npm ci && npm run build      (Node ${'>='}22.19)
+  Git checkout?        npm ci && npm run build      (Node ${'>='}22.23.4)
 ReversePort's own commands (scan, binary, archive, diff, lookup, blueprint, plan, …) work without it.
 `;
 

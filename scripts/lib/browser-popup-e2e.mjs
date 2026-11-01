@@ -98,13 +98,13 @@ const verifySharedContext = async (executable, origin) => {
       scenarioFor(executable, origin, ["network"]),
       {},
     );
-    assert.ok(secrets);
+    if (!secrets.ok) throw secrets.error;
     const events = new PlaywrightScenarioEvents({
       page,
       context,
       ownsContext: false,
       enabled: new Set(["network"]),
-      secrets,
+      secrets: secrets.value,
     });
     await Promise.all([
       page.goto(origin),

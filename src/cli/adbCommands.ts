@@ -1,15 +1,18 @@
 import { z } from "incur";
-import { AnalysisError } from "../domain/analysisErrorBase.js";
+import { AnalysisInputError } from "../domain/analysisErrorCore.js";
 import { AdbDeviceAnalysisService } from "../application/adb/AdbDeviceAnalysisService.js";
 import type { AdbDeviceAnalysisPort } from "../application/adb/AdbDeviceAnalysisPort.js";
 import { createAdbDeviceAnalysisProvider } from "../composition/adb.js";
 import { CLI_COMMANDS } from "../cliCommandNames.js";
 import { logCliCommand } from "../cliLogging.js";
-import { projectAnalysisError } from "../domain/analysisErrorProjection.js";
-import type { AdbOperation } from "../domain/adb/adbDeviceAnalysis.js";
+import {
+  MAX_ADB_ACTIVITY_EXTRAS,
+  type AdbOperation,
+} from "../domain/adb/adbDeviceAnalysis.js";
 import type { Logger } from "pino";
 import type { CliInstance } from "./types.js";
 import { withCommandCancellation } from "./commandCancellation.js";
+import { finishAnalysisCommand } from "./finishAnalysisCommand.js";
 
 /** Expose the same explicit ADB requests through one-shot CLI commands. */
 export const registerAdbCommands = (
@@ -23,17 +26,15 @@ export const registerAdbCommands = (
   const service = new AdbDeviceAnalysisService(provider);
   const execute = (name: string, operation: AdbOperation, input: unknown) =>
     withCommandCancellation((signal) =>
-      logCliCommand(logger, name, async () => {
-        const result = await service.execute(operation, input, { signal });
-        try {
-          await provider.close();
-        } catch (cause) {
-          if (cause instanceof AnalysisError)
-            return projectAnalysisError(cause);
-          throw cause;
-        }
-        return result.ok ? result.value : projectAnalysisError(result.error);
-      }),
+      logCliCommand(logger, name, () =>
+        finishAnalysisCommand(
+          () => service.execute(operation, input, { signal }),
+          { close: () => provider.close() },
+          "adb",
+          operation,
+          signal,
+        ),
+      ),
     );
 
   const serial = z
@@ -284,7 +285,7 @@ export const registerAdbCommands = (
   });
   cli.command(CLI_COMMANDS.installAdbPackage, {
     description:
-      "Install one local APK; --replace re-installs keeping the app's data",
+      "Install one local APK; --replace requests reinstall mode to keep existing app data",
     args: z.object({
       serial,
       "apk-path": z.string().min(1).describe("Local APK file to install"),
@@ -293,7 +294,9 @@ export const registerAdbCommands = (
       replace: z
         .boolean()
         .default(false)
-        .describe("Replace an existing install and keep its data"),
+        .describe(
+          "Request reinstall mode and keep existing app data if present",
+        ),
     }),
     run: ({ args, options }) =>
       execute(CLI_COMMANDS.installAdbPackage, "install_adb_package", {
@@ -343,18 +346,37 @@ export const registerAdbCommands = (
         .describe("Explicit component in package/activity form (-n)"),
       extra: z
         .array(z.string().min(1))
+        .max(MAX_ADB_ACTIVITY_EXTRAS)
         .default([])
         .describe(
           "Typed extra as type:key:value (string, boolean, int, long, float), repeatable",
         ),
     }),
     run: ({ args, options }) => {
-      const extras = options.extra.map((entry) => {
+      const extras: {
+        readonly type: "string" | "boolean" | "int" | "long" | "float";
+        readonly key: string;
+        readonly value: string;
+      }[] = [];
+      for (const [index, entry] of options.extra.entries()) {
         const first = entry.indexOf(":");
         const second = entry.indexOf(":", first + 1);
         if (first === -1 || second === -1)
-          throw new Error(`--extra expects type:key:value, received: ${entry}`);
-        return {
+          return logCliCommand(
+            logger,
+            CLI_COMMANDS.startAdbActivity,
+            async () => {
+              throw new AnalysisInputError("start_adb_activity", undefined, [
+                {
+                  path: ["extras", index],
+                  reason: "invalid_format",
+                  message: "Expected --extra in type:key:value form.",
+                  expected: "type:key:value",
+                },
+              ]);
+            },
+          );
+        extras.push({
           type: entry.slice(0, first) as
             | "string"
             | "boolean"
@@ -363,8 +385,8 @@ export const registerAdbCommands = (
             | "float",
           key: entry.slice(first + 1, second),
           value: entry.slice(second + 1),
-        };
-      });
+        });
+      }
       return execute(CLI_COMMANDS.startAdbActivity, "start_adb_activity", {
         serial: args.serial,
         action: args.action,

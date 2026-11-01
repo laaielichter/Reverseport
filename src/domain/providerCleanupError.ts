@@ -1,11 +1,10 @@
 import type { JsonValue } from "./jsonValue.js";
 import { ProviderAdapterError } from "./providerAdapterError.js";
-import type { AnalysisPartialObservation } from "./analysisErrorBase.js";
+import type { AnalysisErrorOptions } from "./analysisErrorBase.js";
 
 /** Provider resources could not be proven closed after bounded cleanup. */
 export class ProviderCleanupError extends ProviderAdapterError {
-  override readonly cleanupIncomplete = true;
-  override readonly cleanupResources: readonly string[];
+  override cleanupIncomplete = true;
   override readonly userMessage =
     "Provider cleanup could not be fully confirmed. Review the reported local resources before opening another target.";
 
@@ -14,21 +13,16 @@ export class ProviderCleanupError extends ProviderAdapterError {
     resources: readonly string[],
     diagnostics: Readonly<Record<string, JsonValue>>,
     /** Identify the operation owning these resources; binary callers retain their default. */
-    options?: ErrorOptions & {
+    options?: Omit<AnalysisErrorOptions, "diagnostics"> & {
       readonly operation?: string;
-      readonly partialObservation?: AnalysisPartialObservation;
+      readonly remediationAction?: string;
     },
   ) {
-    const {
-      operation = "close_binary",
-      partialObservation,
-      ...errorOptions
-    } = options ?? {};
+    const { operation = "close_binary", ...errorOptions } = options ?? {};
     super(providerId, operation, {
       ...errorOptions,
-      ...(partialObservation === undefined ? {} : { partialObservation }),
       diagnostics,
     });
-    this.cleanupResources = [...resources];
+    this.setCleanupResources(resources);
   }
 }

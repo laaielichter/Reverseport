@@ -1,3 +1,5 @@
+import { ok as javaProbeOk, ok } from "../../../src/domain/result.js";
+import type { GhidraJavaObservation } from "../../../src/ghidra/GhidraJavaProbe.js";
 import { expect } from "vitest";
 import { parseEvidence } from "../../../src/domain/evidence.js";
 import { Client, InMemoryTransport } from "@modelcontextprotocol/client";
@@ -6,12 +8,12 @@ import type { BinarySession } from "../../../src/application/binary/BinarySessio
 import { AnalysisProviderRegistry } from "../../../src/application/binary/AnalysisProviderRegistry.js";
 import { parseConfig } from "../../../src/config/parseConfig.js";
 import type { JsonValue } from "../../../src/domain/jsonValue.js";
-import { ok } from "../../../src/domain/result.js";
 import type { GhidraInstallationHost } from "../../../src/ghidra/GhidraInstallation.js";
 import type { GhidraOperation } from "../../../src/ghidra/GhidraClient.js";
 import { GhidraProvider } from "../../../src/ghidra/GhidraProvider.js";
 import type { GhidraProviderClientFactory } from "../../../src/ghidra/GhidraProviderClient.js";
 import { GHIDRA_SESSION_CAPABILITIES } from "../../../src/ghidra/GhidraSessionValues.js";
+import type { GhidraSessionInfo } from "../../../src/ghidra/GhidraSessionValues.js";
 import { silentLogger } from "../../../src/logger.js";
 import { createServer } from "../../../src/server/createServer.js";
 import {
@@ -26,12 +28,24 @@ const INSTALL = "/opt/ghidra_12.1.4_PUBLIC";
 export const connectGhidraMcp = async (
   name: string,
   execute?: ReturnType<GhidraProviderClientFactory>["callTool"],
+  fixture: {
+    readonly targetPath?: string;
+    readonly pdb?: GhidraSessionInfo["pdb"];
+    readonly sessionTarget?: GhidraSessionInfo["target"];
+    readonly attestDosTargetSnapshot?: ReturnType<GhidraProviderClientFactory>["attestDosTargetSnapshot"];
+  } = {},
 ) => {
   const calls: GhidraOperation[] = [];
   const factory: GhidraProviderClientFactory = (options) => ({
     start: () =>
       Promise.resolve(
-        ok(sessionInfo(options.profileDigest, options.targetSha256)),
+        ok({
+          ...sessionInfo(options.profileDigest, options.targetSha256),
+          ...(fixture.sessionTarget === undefined
+            ? {}
+            : { target: fixture.sessionTarget }),
+          ...(fixture.pdb === undefined ? {} : { pdb: fixture.pdb }),
+        }),
       ),
     callTool: (operation, input, options) => {
       calls.push(operation);
@@ -39,6 +53,9 @@ export const connectGhidraMcp = async (
       return Promise.resolve(ok(resultFor(operation, input)));
     },
     close: () => Promise.resolve(ok(null)),
+    ...(fixture.attestDosTargetSnapshot === undefined
+      ? {}
+      : { attestDosTargetSnapshot: fixture.attestDosTargetSnapshot }),
   });
   const config = parseConfig({ GHIDRA_INSTALL_DIR: INSTALL });
   if (!config.ok) throw config.error;
@@ -46,7 +63,7 @@ export const connectGhidraMcp = async (
     config.value,
     silentLogger,
     {},
-    installationHost(),
+    ghidraInstallationHost(),
     factory,
   );
   const session = composeBinarySession(
@@ -68,7 +85,7 @@ export const connectGhidraMcp = async (
     await mcp.connect(clientTransport);
     const opened = await mcp.callTool({
       name: "open_binary",
-      arguments: { path: process.execPath },
+      arguments: { path: fixture.targetPath ?? process.execPath },
     });
     if (opened.isError === true)
       throw new Error(
@@ -92,18 +109,21 @@ export const sessionEvidence = (session: BinarySession, value: unknown) => {
   return evidence;
 };
 
-const installationHost = (): GhidraInstallationHost => ({
+export const ghidraInstallationHost = (): GhidraInstallationHost => ({
   platform: "linux",
   architecture: "x64",
-  readText: () => "application.version=12.1.4\n",
+  readText: () => "application.version=12.1.4\napplication.java.min=21\n",
   executable: () => true,
-  probeJava: () => ({
-    version: "21.0.11",
-    major: 21,
-    home: "/usr/lib/jvm/jdk-21",
-    bits: 64,
-    runtime: "jdk",
-  }),
+  probeJava: () =>
+    javaProbeOk<GhidraJavaObservation>({
+      osArch: "amd64",
+      osName: "Linux",
+      version: "21.0.11",
+      major: 21,
+      home: "/usr/lib/jvm/jdk-21",
+      bits: 64,
+      runtime: "jdk",
+    }),
 });
 
 const sessionInfo = (profileDigest: string, targetSha256: string) => ({
@@ -131,6 +151,15 @@ type GhidraResultBuilder = (
 ) => JsonValue;
 
 const resultBuilders = new Map<GhidraOperation, GhidraResultBuilder>([
+  [
+    "read_binary_inventory_summary",
+    () => ({
+      document: "fixture",
+      segments: resultFor("list_segments", {}),
+      procedure_count: 1,
+      string_count: 2,
+    }),
+  ],
   ["list_documents", () => ["fixture"]],
   [
     "list_procedures",
@@ -235,13 +264,12 @@ const resultBuilders = new Map<GhidraOperation, GhidraResultBuilder>([
       procedure: ghidraFunctionIdentity(),
       direction: input.direction ?? "outgoing",
       references: [ghidraReferenceEdge()],
+      reference_kinds_available: true,
+      unresolved_calls: [],
     }),
   ],
   ["xrefs", () => ["0x401001"]],
-  [
-    "analyze_function",
-    (input) => ghidraFunctionDossier(input.include_assembly === true),
-  ],
+  ["analyze_function", () => ghidraFunctionDossier()],
 ]);
 
 const resultFor = (
@@ -263,8 +291,11 @@ const resultFor = (
 const functionObservationOperations: ReadonlySet<GhidraOperation> = new Set([
   "analyze_function",
   "procedure_assembly",
+  "procedure_callees",
+  "procedure_callers",
   "procedure_info",
   "procedure_pseudo_code",
+  "procedure_references",
   "read_function_instructions",
 ]);
 

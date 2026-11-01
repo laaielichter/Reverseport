@@ -82,6 +82,9 @@ const fixture = (
   const dependencies: DirectAnalysisDependencies = {
     readConfiguration: () => parseConfig({}),
     createBinarySession: createSession,
+    createArtifactBinarySession: createSession,
+    createNativeDispatchBinarySession: createSession,
+    createNativeBinarySession: createSession,
     createManagedBinarySession: createSession,
   };
   return { dependencies, closed: () => closed };

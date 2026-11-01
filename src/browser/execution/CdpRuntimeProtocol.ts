@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-const integer = z.number().int().min(0);
+const integer = z.int().min(0);
 const contextAuxDataSchema = z
   .object({
     frameId: z.string().optional(),
@@ -103,12 +103,11 @@ export const runtimeListenersSchema = z.object({
     }),
   ),
 });
-/** Current main frame identity protects same-URL reloads as well as URL changes. */
+/** Runtime document IDs; frame URLs are interpreted by CdpCaptureDocuments. */
 export const runtimeFrameTreeSchema = z.object({
   frameTree: z.object({
     frame: z.object({
       id: z.string().min(1),
-      url: z.string(),
       loaderId: z.string().optional(),
     }),
   }),

@@ -76,6 +76,35 @@ describe("managed native boundaries", () => {
       "P/Invoke rows prove managed import declarations only; this inspection does not verify that a native library, export, thunk, or provider-qualified function exists.",
     );
   });
+
+  it.each([
+    {
+      name: "C++/CLI with a native method body",
+      options: {
+        cliFlags: 0,
+        methods: [
+          { name: "NativeMethod", body: Buffer.from([0xc3]), implFlags: 1 },
+        ],
+      },
+      mixed: true,
+    },
+    {
+      name: "ILONLY clear with unreadable metadata",
+      options: { cliFlags: 0, corruptMetadataSignature: true },
+      mixed: true,
+    },
+    { name: "pure IL", options: {}, mixed: false },
+    { name: "ReadyToRun", options: { readyToRun: true }, mixed: true },
+  ])("agrees with artifact classification for $name", ({ options, mixed }) => {
+    const bytes = buildManagedPeFixture(options);
+    const target = managedPeFixtureTarget(bytes);
+    const artifact = inspectManagedArtifactBytes(bytes, target);
+    const boundaries = inspectManagedNativeBoundariesBytes(bytes, target);
+
+    expect(boundaries.summary.mixed_mode_or_native_header).toBe(mixed);
+    if (artifact.classification.runtime_family === "mixed-clr-native")
+      expect(boundaries.summary.mixed_mode_or_native_header).toBe(true);
+  });
 });
 
 describe("managed native boundary coded indexes", () => {
@@ -304,6 +333,17 @@ describe("independent managed metadata facets", () => {
         ]),
       });
     }
+    expect({
+      artifact: native.artifact,
+      module: native.module,
+      metadata: native.metadata,
+      identity_scope: native.identity_scope,
+    }).toEqual({
+      artifact: members.artifact,
+      module: members.module,
+      metadata: members.metadata,
+      identity_scope: members.identity_scope,
+    });
     expect(members.methods[0]?.name).toBe("Main");
     expect(native.pinvoke_imports[0]?.import_name).toBe("MessageBoxW");
     expect(native.cli_native?.ready_to_run_signature).toBe(true);

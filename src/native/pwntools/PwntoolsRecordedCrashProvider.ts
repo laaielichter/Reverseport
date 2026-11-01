@@ -1,4 +1,8 @@
-import { AnalysisOutputError } from "../../domain/analysisErrorCore.js";
+import {
+  AnalysisCancelledError,
+  AnalysisOutputError,
+} from "../../domain/analysisErrorCore.js";
+import { AnalysisError } from "../../domain/analysisErrorBase.js";
 import {
   recordedCrashPayloadSchema,
   recordedCrashSchema,
@@ -9,6 +13,7 @@ import type { RecordedCrashPort } from "../../application/binaryDiagnostics/Reco
 import { PrivateRuntimeRoot } from "../../process/PrivateRuntimeRoot.js";
 import { PwntoolsDecoder, type PwntoolsLauncher } from "./PwntoolsDecoder.js";
 import { PWNTOOLS_PROVIDER_IDENTITY } from "./PwntoolsRelease.js";
+import { validateCoreFileMappingAuthority } from "../pwndbg/CoreFileMappingAuthority.js";
 import { validateRecordedCrashSources } from "./RecordedCrashSourceBindings.js";
 import { validateRecordedCrashStructure } from "./RecordedCrashStructureBindings.js";
 import {
@@ -47,8 +52,11 @@ export class PwntoolsRecordedCrashProvider
           payload,
           snapshot,
           rootPath,
+          resources,
           diagnostics,
           options,
+          runCommand,
+          timeoutMs,
         }) => {
           const validate = (debuggerContext: RecordedCrash["debugger"]) =>
             recordedCrashSchema.safeParse({
@@ -114,26 +122,51 @@ export class PwntoolsRecordedCrashProvider
                 );
             }
           if (!input.include_debugger_context) return value;
-          const context = await inspectPwndbgCore({
-            environment,
-            rootPath,
-            diagnostics,
-            options,
-            ...(launcher === undefined ? {} : { launcher }),
-          });
-          const enriched = validate(context);
-          if (!enriched.success)
-            throw new AnalysisOutputError(
-              "inspect_recorded_crash",
-              `Recorded debugger context is invalid: ${enriched.error.issues[0]?.message ?? "schema mismatch"}`,
-              {
-                capturedOutput:
-                  context.status === "available"
-                    ? recordedCrashStageOutput(diagnostics, context.diagnostics)
-                    : diagnostics,
-              },
+          try {
+            if (options?.signal?.aborted)
+              throw new AnalysisCancelledError("inspect_recorded_crash", {
+                cause: options.signal.reason,
+                capturedOutput: diagnostics,
+              });
+            const authority = validateCoreFileMappingAuthority(
+              value,
+              snapshot.bytes,
             );
-          return enriched.data;
+            if (!authority.ok) throw authority.error;
+            const context = await inspectPwndbgCore({
+              environment,
+              architecture: value.architecture,
+              rootPath,
+              resources,
+              diagnostics,
+              options,
+              runCommand,
+              timeoutMs,
+            });
+            const enriched = validate(context);
+            if (!enriched.success)
+              throw new AnalysisOutputError(
+                "inspect_recorded_crash",
+                `Recorded debugger context is invalid: ${enriched.error.issues[0]?.message ?? "schema mismatch"}`,
+                {
+                  capturedOutput:
+                    context.status === "available"
+                      ? recordedCrashStageOutput(
+                          diagnostics,
+                          context.diagnostics,
+                        )
+                      : diagnostics,
+                },
+              );
+            return enriched.data;
+          } catch (cause: unknown) {
+            if (cause instanceof AnalysisError)
+              cause.retainPartialObservation({
+                ...value,
+                debugger: { status: "unavailable", requested: true },
+              });
+            throw cause;
+          }
         },
       },
       environment,

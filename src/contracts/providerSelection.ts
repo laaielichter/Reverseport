@@ -20,6 +20,7 @@ export const PROVIDER_REJECTION_CODES = [
   "not_configured",
   "executable_missing",
   "runtime_missing",
+  "runtime_unavailable",
   "unsupported_host",
   "unsupported_version",
   "target_kind_unsupported",

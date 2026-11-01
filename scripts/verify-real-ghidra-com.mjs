@@ -12,7 +12,7 @@ import { Client } from "@modelcontextprotocol/client";
 import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
 import { parseEvidence } from "../dist/domain/evidence.js";
 import { functionDossierSchema } from "../dist/domain/hopperValues.js";
-import { inspectGhidraInstallation } from "../dist/ghidra/GhidraInstallation.js";
+import { inspectVerifierGhidraInstallation } from "./lib/ghidra-installation-inspection.mjs";
 import { buildDosComFixture } from "../tests/conformance/ghidra/dos-com-fixture.mjs";
 import { createVerifierRun, completeVerifierRun } from "./lib/verifier-run.mjs";
 import { verifyGhidraAddressBoundaries } from "./lib/real-ghidra-address-boundaries.mjs";
@@ -28,7 +28,7 @@ if (process.env.GHIDRA_INSTALL_DIR === undefined)
   throw new Error(
     "verify:ghidra:com prerequisite missing: GHIDRA_INSTALL_DIR (bring your own Ghidra).",
   );
-const installation = inspectGhidraInstallation({
+const installation = await inspectVerifierGhidraInstallation({
   environment: process.env,
   installDir: process.env.GHIDRA_INSTALL_DIR,
   ...(process.env.JAVA_HOME === undefined
@@ -141,7 +141,10 @@ try {
   assert.ok(procedures.some((p) => p.address === fixture.entry));
   assert.ok(procedures.some((p) => p.address === fixture.near));
   const dossier = functionDossierSchema.parse(
-    await call("analyze_function", { procedure: fixture.entry }),
+    await call("analyze_function", {
+      procedure: fixture.entry,
+      detail: "complete",
+    }),
   );
   assert.ok(dossier.pseudocode.trim().length > 0);
   assert.equal(dossier.procedure.body.available, true);
@@ -203,8 +206,12 @@ try {
   );
   assert.ok((await call("list_names")).some((p) => p.value === changes.name));
   assert.equal(
-    (await call("analyze_function", { procedure: fixture.entry })).procedure
-      .name,
+    (
+      await call("analyze_function", {
+        procedure: fixture.entry,
+        detail: "complete",
+      })
+    ).procedure.name,
     changes.name,
   );
   const rejected = await client.callTool({

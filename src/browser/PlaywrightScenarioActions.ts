@@ -5,6 +5,7 @@ import type {
   BrowserScenarioValue,
 } from "../domain/browserScenarioValues.js";
 import type { BrowserScenarioSecrets } from "./BrowserScenarioSecrets.js";
+import { performScenarioRequest } from "./PlaywrightScenarioRequest.js";
 
 type ScenarioLocator = Extract<
   BrowserScenarioAction,
@@ -34,13 +35,17 @@ interface PerformActionInput {
   readonly page: Page;
   readonly action: BrowserScenarioAction;
   readonly secrets: BrowserScenarioSecrets;
+  /** Origin of the scenario's start URL, the only origin a request step may address. */
+  readonly startOrigin: string;
+  /** Cancellation of the step; a request step that sees it before sending sends nothing. */
+  readonly signal?: AbortSignal | undefined;
 }
 
-/** Execute one admitted declarative action with no caller-supplied code. */
+/** Execute one admitted declarative action; a request step sends one declared request through the page's own fetch, and no action runs caller-supplied code. */
 export const performPlaywrightScenarioAction = async (
   input: PerformActionInput,
 ): Promise<void> => {
-  const { page, action, secrets } = input;
+  const { page, action, secrets, startOrigin, signal } = input;
   const timeout = "timeout_ms" in action ? action.timeout_ms : undefined;
   const options = timeout === undefined ? {} : { timeout };
   switch (action.action) {
@@ -86,5 +91,19 @@ export const performPlaywrightScenarioAction = async (
       return;
     case "wait_for_timeout":
       await page.waitForTimeout(action.duration_ms);
+      return;
+    case "request":
+      await performScenarioRequest({
+        page,
+        action,
+        secrets,
+        startOrigin,
+        signal,
+      });
+      return;
+    default: {
+      const unhandled: never = action;
+      throw new Error(`Unhandled browser scenario action ${String(unhandled)}`);
+    }
   }
 };

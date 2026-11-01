@@ -1,6 +1,7 @@
 import { fileURLToPath } from "node:url";
 import { access } from "node:fs/promises";
 import { expect, it, vi } from "vitest";
+import { AnalysisInputError } from "../../../src/domain/analysisErrorCore.js";
 import { SourceMapDecoder } from "../../../src/javascript/sourceMaps/SourceMapDecoder.js";
 import {
   SOURCE_MAP_CODEC_MEMORY_LIMIT_BYTES,
@@ -114,8 +115,16 @@ it("runs the real pinned codec with an independent heap and removes its private 
   await expect(access(path)).rejects.toMatchObject({ code: "ENOENT" });
 });
 it.each([
-  { text: "{", tag: "AnalysisInputError" },
   {
+    failure: "malformed JSON",
+    text: "{",
+    error: {
+      _tag: "AnalysisInputError",
+      issues: [{ reason: "invalid_format" }],
+    },
+  },
+  {
+    failure: "external section",
     text: JSON.stringify({
       version: 3,
       sections: [
@@ -125,19 +134,93 @@ it.each([
         },
       ],
     }),
-    tag: "AnalysisCapabilityUnavailableError",
+    error: {
+      _tag: "AnalysisCapabilityUnavailableError",
+      reason: "unsupported_source_map_profile",
+      userMessage: expect.stringContaining("https://app.test/external.map"),
+    },
   },
   {
+    failure: "malformed embedded map before row admission",
     text: JSON.stringify({
       version: 3,
       sections: [{ offset: { line: 1000000000, column: 0 }, map: {} }],
     }),
-    tag: "ArtifactOperationError",
+    error: {
+      _tag: "AnalysisInputError",
+      issues: [
+        {
+          reason: "invalid_format",
+          message: expect.stringContaining("not a version 3 map"),
+        },
+      ],
+    },
   },
-])("preserves actual producer failures: $tag", async ({ text, tag }) => {
+  {
+    failure: "indexed row limit",
+    text: JSON.stringify({
+      version: 3,
+      sections: [
+        {
+          offset: { line: 1000000000, column: 0 },
+          map: JSON.parse(fixture.sourceMap.text) as unknown,
+        },
+      ],
+    }),
+    error: {
+      _tag: "ArtifactOperationError",
+      reason: "limit",
+      detail: expect.stringContaining("generated-row decoder budget"),
+    },
+  },
+])("preserves actual producer failures: $failure", async ({ text, error }) => {
   const response = await realDecoder().trace({ ...input, text });
   if (response.ok) throw new Error("expected failed map");
-  expect(response.error._tag).toBe(tag);
+  expect(response.error).toMatchObject({
+    operation: "trace_web_source_location",
+    ...error,
+  });
+});
+
+it("keeps indexed section overlap typed as a malformed source map", async () => {
+  const text = JSON.stringify({
+    version: 3,
+    sections: [
+      {
+        offset: { line: 0, column: 0 },
+        map: {
+          version: 3,
+          sources: ["a.js"],
+          sourcesContent: ["x();"],
+          names: [],
+          mappings: "AAAA,EAAA",
+        },
+      },
+      {
+        offset: { line: 0, column: 1 },
+        map: {
+          version: 3,
+          sources: ["b.js"],
+          sourcesContent: ["y();"],
+          names: [],
+          mappings: "AAAA",
+        },
+      },
+    ],
+  });
+  const response = await realDecoder().trace({ ...input, text });
+  if (response.ok) throw new Error("expected overlapping map rejection");
+  expect(response.error).toBeInstanceOf(AnalysisInputError);
+  if (!(response.error instanceof AnalysisInputError))
+    throw new Error("expected malformed source-map input error");
+  expect(response.error.issues).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        reason: "invalid_format",
+        message: expect.stringContaining("overlap"),
+      }),
+    ]),
+  );
 });
 it("reports cleanup failure with the actual owning operation", async () => {
   const response = await realDecoder({

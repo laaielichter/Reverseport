@@ -11,7 +11,7 @@
 [![MCP Registry](https://img.shields.io/badge/MCP_Registry-io.github.laaielichter%2Freverseport-5c4ee5?style=flat-square)](https://registry.modelcontextprotocol.io/v0/servers?search=io.github.laaielichter/reverseport)
 [![MCP tool catalog](https://img.shields.io/badge/MCP-tool_catalog-5c4ee5?style=flat-square)](docs/mcp-contracts.md#generated-catalog)
 [![License: MIT](https://img.shields.io/badge/license-MIT-22c55e?style=flat-square)](LICENSE)
-[![Node.js](https://img.shields.io/badge/Node.js-22.19%2B-339933?style=flat-square&logo=nodedotjs&logoColor=white)](docs/installation.md)
+[![Node.js](https://img.shields.io/badge/Node.js-22.23.4%2B-339933?style=flat-square&logo=nodedotjs&logoColor=white)](docs/installation.md)
 
 ```bash
 npx reverseport setup
@@ -53,7 +53,7 @@ ReversePort gives agents one consistent way to do all of that:
 
 ### 1. Connect your agent
 
-With Node.js 22.19 or newer:
+With Node.js 22.23.4 or newer (24.22.1+ on Node 24):
 
 ```bash
 npx reverseport setup
@@ -314,7 +314,7 @@ anti-cheat or licensing. Read [RESPONSIBLE-USE.md](RESPONSIBLE-USE.md) and the [
 
 ## Credits
 
-The deep-analysis engine is based on [REA: Reverse Engineer Anything](https://github.com/morluto/rea) (MIT).
+The deep-analysis engine is based on [REA: Reverse Engineer Anything](https://github.com/morluto/rea) 6.8.0 (MIT).
 Proof cases are ported from [Digfox](https://github.com/Devaretanmay/digfox) (MIT) and the guard hooks follow
 [rea-jev](https://github.com/juan-viox/rea-jev) (MIT); the challenge self-check uses
 [rea-lab](https://github.com/pablodiazjorge/rea-lab)'s generator and oracle (MIT). Third-party components are listed in

@@ -1,4 +1,4 @@
-import type { NibArchiveDocument } from "./NibArchive.js";
+import { nibCollectionMembers, type NibArchiveDocument } from "./NibArchive.js";
 import type { JsonValue } from "../../domain/jsonValue.js";
 
 export type NibHierarchyNode = {
@@ -17,7 +17,7 @@ export const projectNibViewHierarchy = (
     objects,
     retainedIds,
   );
-  if (parents.size === 0) return { hierarchy: null, omitted: invalid };
+  if (involved.size === 0) return { hierarchy: null, omitted: invalid };
   const children = new Map<number, number[]>();
   for (const [child, parent] of parents) {
     if (!retainedIds.has(parent) || !retainedIds.has(child)) continue;
@@ -181,6 +181,51 @@ const collectNibParents = (
     parents.set(object.id, parent);
     involved.add(object.id);
     if (retainedIds.has(parent)) involved.add(parent);
+  }
+  const byId = new Map(objects.map((object) => [object.id, object]));
+  for (const object of objects) {
+    if (object.class_name.replace(/\0+$/u, "") !== "NSIBObjectData") continue;
+    const keysRef = reference(object.values.NSObjectsKeys);
+    const valuesRef = reference(object.values.NSObjectsValues);
+    if (keysRef === null && valuesRef === null) continue;
+    const keys = nibCollectionMembers(
+      keysRef === null ? undefined : byId.get(keysRef),
+    );
+    const values = nibCollectionMembers(
+      valuesRef === null ? undefined : byId.get(valuesRef),
+    );
+    if (
+      keys === undefined ||
+      values === undefined ||
+      keys.length !== values.length
+    ) {
+      invalid += 1;
+      continue;
+    }
+    const rootOwner = reference(object.values.NSRoot);
+    for (let index = 0; index < keys.length; index += 1) {
+      const child = reference(keys[index]);
+      const parent = reference(values[index]);
+      if (child === null || parent === null) {
+        invalid += 1;
+        continue;
+      }
+      // Registry keys include non-UI records. Only retained objects contribute
+      // hierarchy, and a paired NSRoot owner identifies a top-level object.
+      if (!retainedIds.has(child)) continue;
+      involved.add(child);
+      const prior = parents.get(child);
+      if (parent === rootOwner) {
+        if (prior !== undefined) invalid += 1;
+        continue;
+      }
+      if (prior !== undefined && prior !== parent) {
+        invalid += 1;
+        continue;
+      }
+      parents.set(child, parent);
+      if (retainedIds.has(parent)) involved.add(parent);
+    }
   }
   return { parents, involved, invalid };
 };

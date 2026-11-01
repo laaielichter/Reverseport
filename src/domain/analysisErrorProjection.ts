@@ -1,3 +1,5 @@
+import { projectArtifactIntegrityDetails } from "./artifactIntegrity.js";
+import type { AnalysisErrorRecovery } from "./analysisErrorRecovery.js";
 import { jsonValueSchema, type JsonValue } from "./jsonValue.js";
 import { isImmutableJsonSnapshot } from "./immutableJson.js";
 
@@ -40,18 +42,71 @@ import { ProviderAdapterError } from "./providerAdapterError.js";
 import { ProviderSelectionError } from "./providerSelectionError.js";
 import { UnknownRegistryError } from "./unknownRegistryError.js";
 import { providerRetryAction } from "./providerOperationHealth.js";
-import type { AnalysisError, AnalysisErrorTag } from "./analysisErrorBase.js";
+import {
+  primaryAnalysisError,
+  resolvedAnalysisError,
+  type AnalysisError,
+  type AnalysisErrorTag,
+} from "./analysisErrorBase.js";
 
 /** Project expected failures into exhaustive, secret-safe caller fields. */
 export const projectAnalysisError = (
   error: AnalysisError,
+): AnalysisErrorProjection => projectError(error, true);
+
+/** Cleanup history references output retained by its enclosing error owner. */
+export const projectAnalysisErrorWithoutCapturedOutput = (
+  error: AnalysisError,
+): AnalysisErrorProjection => projectError(error, false);
+
+const projectError = (
+  error: AnalysisError,
+  includeCapturedOutput: boolean,
 ): AnalysisErrorProjection => {
+  const composed = error;
+  error = resolvedAnalysisError(error);
+  let diagnosticSource = error;
+  while (
+    diagnosticSource.diagnostics === undefined &&
+    diagnosticSource.cleanupPrimary !== undefined
+  )
+    diagnosticSource = diagnosticSource.cleanupPrimary;
+  const diagnostics = diagnosticSource.diagnostics;
+  const capturedOutput = composed.capturedOutput ?? error.capturedOutput;
+  const partialObservation =
+    composed.partialObservation ?? error.partialObservation;
+  // A finalizer can add a report above the semantic primary, including while
+  // its cleanup is pending or beneath another cleanup composition.
+  let cleanupReport = composed.cleanupReport;
+  for (
+    let owner = composed.cleanupPrimary;
+    cleanupReport === undefined && owner !== undefined;
+    owner = owner.cleanupPrimary
+  )
+    cleanupReport = owner.cleanupReport;
   assertKnownAnalysisErrorTag(error._tag);
-  const underlyingCode = underlyingErrorCode(error);
+  const primary = primaryAnalysisError(error);
+  assertKnownAnalysisErrorTag(primary._tag);
+  const underlyingCode = underlyingErrorCode(primary);
   const code = error.cleanupIncomplete ? "cleanup_incomplete" : underlyingCode;
-  const primaryDetails = errorDetails(error);
+  const primaryDetails = errorDetails(primary);
   const details = {
     ...primaryDetails,
+    ...(primary.limit === undefined ? {} : { limit: { ...primary.limit } }),
+    ...(cleanupReport === undefined
+      ? {}
+      : { cleanup_report: jsonValueSchema.parse(cleanupReport) }),
+    ...(diagnostics === undefined
+      ? {}
+      : {
+          diagnostics,
+          ...(primaryDetails?.diagnostics === undefined
+            ? {}
+            : { provider_diagnostics: primaryDetails.diagnostics }),
+        }),
+    ...(composed === error || composed.diagnostics === undefined
+      ? {}
+      : { cleanup_history: composed.diagnostics }),
     ...(error.cleanupIncomplete
       ? {
           cleanup: "incomplete",
@@ -63,27 +118,56 @@ export const projectAnalysisError = (
             primaryDetails?.execution_failure ?? underlyingCode,
         }
       : {}),
-    ...(error.capturedOutput === undefined
-      ? {}
-      : { captured_output: { ...error.capturedOutput } }),
-    ...(error.partialObservation === undefined
+    ...(!includeCapturedOutput || capturedOutput === undefined
       ? {}
       : {
-          partial_observation: isImmutableJsonSnapshot(error.partialObservation)
-            ? error.partialObservation
-            : jsonValueSchema.parse(error.partialObservation),
+          captured_output: {
+            ...capturedOutput,
+          },
+        }),
+    ...(partialObservation === undefined
+      ? {}
+      : {
+          partial_observation: isImmutableJsonSnapshot(partialObservation)
+            ? partialObservation
+            : jsonValueSchema.parse(partialObservation),
         }),
   };
+  const recovery = errorRecovery(error);
   return {
     code,
     category: analysisErrorCategory(error),
     message: analysisErrorUserMessage(error),
-    retryable: RETRYABLE_CODES.has(code),
+    retryable:
+      RETRYABLE_CODES.has(code) ||
+      (error instanceof AnalysisCapabilityUnavailableError &&
+        error.retryable) ||
+      (code === "resource_constraint" &&
+        error instanceof AnalysisResourceConstraintError &&
+        (error.retryable ?? error.resource === "capacity")),
     remediation: {
       action: analysisErrorRemediationAction(error),
     },
+    ...(recovery === undefined ? {} : { recovery }),
     ...(Object.keys(details).length === 0 ? {} : { details }),
   };
+};
+
+const errorRecovery = (
+  error: AnalysisError,
+): AnalysisErrorRecovery | undefined => {
+  if (error instanceof AnalysisInputError)
+    return {
+      kind: "inspect_input_contract",
+      operation: error.operation,
+    };
+  if (error instanceof AnalysisTimeoutError)
+    return {
+      kind: "inspect_timeout_state",
+      operation: error.operation,
+      timeout_ms: error.timeoutMs,
+    };
+  return undefined;
 };
 
 const underlyingErrorCode = (
@@ -101,7 +185,7 @@ const underlyingErrorCode = (
   if (error instanceof BrowserObservationError)
     return error.userCategory === "cancelled"
       ? "cancelled"
-      : browserErrorCode(error.reason);
+      : BROWSER_ERROR_CODES[error.reason];
   if (error instanceof ArtifactOperationError)
     return artifactOperationCode(error);
   if (error instanceof BinaryTargetError)
@@ -117,21 +201,25 @@ const underlyingErrorCode = (
   return staticErrorCode(error._tag);
 };
 
-const browserErrorCode = (
-  reason: BrowserObservationError["reason"],
-): AnalysisErrorProjection["code"] => {
-  if (reason === "cancelled") return "cancelled";
-  if (reason === "timeout") return "provider_timeout";
-  if (reason === "payload_limit") return "truncated";
-  if (
-    reason === "target_not_found" ||
-    reason === "target_not_allowed" ||
-    reason === "target_changed"
-  )
-    return "target_unavailable";
-  if (reason === "endpoint_unreachable" || reason === "disconnected")
-    return "provider_unavailable";
-  return "unreadable_output";
+const BROWSER_ERROR_CODES: Readonly<
+  Record<BrowserObservationError["reason"], AnalysisErrorProjection["code"]>
+> = {
+  endpoint_unreachable: "provider_unavailable",
+  invalid_endpoint_response: "unreadable_output",
+  target_not_found: "target_unavailable",
+  target_not_allowed: "target_unavailable",
+  service_worker_blocked: "target_unavailable",
+  target_changed: "target_unavailable",
+  target_session_detached: "target_unavailable",
+  protocol_error: "unreadable_output",
+  disconnected: "provider_unavailable",
+  payload_limit: "truncated",
+  window_not_found: "unreadable_output",
+  window_metadata_missing: "unreadable_output",
+  process_ownership_unavailable: "unreadable_output",
+  cleanup_failed: "execution_failure",
+  cancelled: "cancelled",
+  timeout: "provider_timeout",
 };
 
 const artifactOperationCode = (
@@ -148,6 +236,7 @@ const evidenceFileCode = (
   reason: EvidenceFileError["reason"],
 ): AnalysisErrorProjection["code"] => {
   if (reason === "invalid-json") return "evidence_integrity_mismatch";
+  if (reason === "path-limit") return "resource_constraint";
   // A missing, non-file or already-existing path is the caller's selection.
   if (reason === "io") return "execution_failure";
   return "invalid_request";
@@ -156,8 +245,8 @@ const evidenceFileCode = (
 const unknownRegistryCode = (
   reason: UnknownRegistryError["reason"],
 ): AnalysisErrorProjection["code"] => {
-  if (reason === "revision-conflict" || reason === "already-exists")
-    return "revision_conflict";
+  if (reason === "revision-conflict") return "revision_conflict";
+  if (reason === "already-exists") return "invalid_request";
   if (reason === "limit") return "truncated";
   if (reason === "integrity") return "evidence_integrity_mismatch";
   return "execution_failure";
@@ -264,7 +353,13 @@ const requestErrorDetails = (
       boundary: "filesystem-read",
     };
   if (error instanceof AnalysisOutputError)
-    return { operation: error.operation, reason: error.reason };
+    return {
+      operation: error.operation,
+      reason: error.reason,
+      ...(error.diagnostics === undefined
+        ? {}
+        : { diagnostics: error.diagnostics }),
+    };
   if (error instanceof AnalysisInputError && error.issues.length > 0)
     return {
       operation: error.operation,
@@ -292,25 +387,38 @@ const artifactStateErrorDetails = (
   error: AnalysisError,
 ): Readonly<Record<string, JsonValue>> | undefined => {
   if (error instanceof ArtifactOperationError && error.artifactDetails)
-    return {
-      logical_path: error.artifactDetails.logicalPath,
-      declared_sha256: error.artifactDetails.declaredSha256,
-      calculated_sha256: error.artifactDetails.calculatedSha256,
-      unpacked: error.artifactDetails.unpacked,
-    };
+    return projectArtifactIntegrityDetails(error.artifactDetails);
   if (error instanceof ArtifactOperationError)
     return {
       operation: error.operation,
       reason: error.reason,
       ...(error.reason === "limit" ? { truncated: true } : {}),
       ...(error.detail === undefined ? {} : { detail: error.detail }),
+      ...(error.boundary === undefined ? {} : { boundary: error.boundary }),
+      ...(error.admission === undefined
+        ? {}
+        : {
+            admission: error.admission.kind,
+            maximum_header_bytes: error.admission.maximumBytes,
+            maximum_header_bytes_source: error.admission.source,
+            setting: "REA_ASAR_MAX_HEADER_BYTES",
+          }),
     };
   if (error instanceof UnknownRegistryError) return { reason: error.reason };
   if (error instanceof EvidenceFileError)
     return {
       operation: error.operation,
       reason: error.reason,
+      ...(error.reason === "path-limit" ? { boundary: "filesystem-path" } : {}),
       ...(error.path === undefined ? {} : { path: error.path }),
+      ...(error.contentIssues === undefined
+        ? {}
+        : {
+            content_issues: error.contentIssues.map((issue) => ({
+              ...issue,
+              path: [...issue.path],
+            })),
+          }),
       ...(error.published === undefined
         ? {}
         : {
@@ -354,9 +462,6 @@ const providerErrorDetails = (
             resources: [...error.cleanupResources],
           }
         : {}),
-      ...(error.diagnostics === undefined
-        ? {}
-        : { diagnostics: error.diagnostics }),
     };
   if (error instanceof BrowserObservationError) {
     const primaryReason = primaryBrowserFailureReason(error);
@@ -409,6 +514,9 @@ const providerErrorDetails = (
     return {
       stage: "launch",
       provider_state: "unknown",
+      ...(error.launchRejection === undefined
+        ? {}
+        : { launch_rejection: { ...error.launchRejection } }),
       retry_action: error.ownerRunId === undefined ? "retry" : "unknown",
       ...(error.ownerRunId === undefined
         ? {}
@@ -423,8 +531,9 @@ const providerErrorDetails = (
 const primaryBrowserFailureReason = (
   error: BrowserObservationError,
 ): string | undefined => {
-  if (!(error.cause instanceof AggregateError)) return undefined;
-  const primary = error.cause.errors[0];
+  const aggregate = error.cause instanceof AggregateError;
+  const primary =
+    error.cause instanceof AggregateError ? error.cause.errors[0] : error.cause;
   if (primary instanceof BrowserObservationError) return primary.reason;
   if (primary instanceof AnalysisCancelledError) return "cancelled";
   if (primary instanceof AnalysisTimeoutError) return "timeout";
@@ -432,7 +541,7 @@ const primaryBrowserFailureReason = (
     return typeof primary._tag === "string"
       ? primary._tag
       : "execution_failure";
-  return "execution_failure";
+  return aggregate ? "execution_failure" : undefined;
 };
 
 const lifecycleErrorDetails = (
@@ -441,8 +550,8 @@ const lifecycleErrorDetails = (
   if (error instanceof AnalysisCancelledError)
     return {
       operation: error.operation,
-      cleanup: error.cleanup === undefined ? "complete" : "incomplete",
-      ...(error.cleanup === undefined
+      cleanup: error.cleanupIncomplete ? "incomplete" : "complete",
+      ...(error.cleanup === undefined || !error.cleanupIncomplete
         ? {}
         : {
             cleanup_reason: error.cleanup.reason,
@@ -456,7 +565,7 @@ const lifecycleErrorDetails = (
     return {
       operation: error.operation,
       timeout_ms: error.timeoutMs,
-      ...(error.cleanup === undefined
+      ...(error.cleanup === undefined || !error.cleanupIncomplete
         ? {}
         : {
             cleanup: "incomplete",
@@ -524,7 +633,6 @@ const lifecycleErrorDetails = (
 
 const RETRYABLE_CODES: ReadonlySet<AnalysisErrorProjection["code"]> = new Set([
   "artifact_changed",
-  "invalid_request",
   "provider_timeout",
   "cancelled",
   "revision_conflict",
@@ -571,5 +679,6 @@ export interface AnalysisErrorProjection extends Readonly<
   readonly remediation: Readonly<{
     action: string;
   }>;
+  readonly recovery?: AnalysisErrorRecovery;
   readonly details?: Readonly<Record<string, JsonValue>>;
 }

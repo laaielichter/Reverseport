@@ -135,6 +135,92 @@ itWithCaptureCapability.each(["SIGINT", "SIGTERM"] as const)(
 );
 
 itWithCaptureCapability(
+  "preserves completed observations as partial evidence when SIGINT arrives during CLI cleanup",
+  async () => {
+    const root = await createTestTempDirectory("rea-process-cleanup-cancel-");
+    const scenario = join(root, "scenario.json");
+    const cleanupMarker = join(root, "cleanup.json");
+    await writeFile(
+      scenario,
+      JSON.stringify({
+        executable: process.execPath,
+        arguments: ["-e", "console.log('completed-before-cleanup')"],
+        timeout_ms: 5_000,
+      }),
+    );
+    const hook = fileURLToPath(
+      new URL("../../fixtures/processCleanupCancellation.mjs", import.meta.url),
+    );
+    for (const cancel of [false, true]) {
+      const cli = spawn(
+        process.execPath,
+        [
+          "--import",
+          hook,
+          "scripts/rea.mjs",
+          "capture-process",
+          scenario,
+          "--format",
+          "json",
+        ],
+        {
+          env: {
+            ...process.env,
+            TMPDIR: root,
+            REA_TEST_CANCEL_DURING_CLEANUP: cancel ? "1" : "0",
+            REA_TEST_CLEANUP_MARKER: cleanupMarker,
+          },
+          stdio: ["ignore", "pipe", "pipe"],
+        },
+      );
+      let stdout = "";
+      cli.stdout.on("data", (chunk: Buffer) => {
+        stdout += chunk.toString();
+      });
+      cli.stderr.resume();
+      const closed = new Promise<number | null>((resolve, reject) => {
+        cli.once("error", reject);
+        cli.once("close", resolve);
+      });
+      onTestFinished(async () => {
+        if (cli.exitCode === null && cli.signalCode === null)
+          cli.kill("SIGKILL");
+        await closed;
+      });
+      expect(await closed).toBe(cancel ? 130 : 0);
+      const marker = z
+        .object({ path: z.string(), removed: z.literal(true) })
+        .parse(JSON.parse(await readFile(cleanupMarker, "utf8")));
+      await expect(access(marker.path)).rejects.toMatchObject({
+        code: "ENOENT",
+      });
+      const output: unknown = JSON.parse(stdout);
+      if (cancel) {
+        expect(analysisCliErrorEnvelopeSchema.parse(output)).toMatchObject({
+          code: "cancelled",
+          details: {
+            cleanup: "complete",
+            partial_observation: {
+              capture: { exit: { code: 0 } },
+              cleanup: { temporary_root: { state: "cleaned" } },
+            },
+          },
+        });
+      } else {
+        expect(output).toMatchObject({
+          operation: "capture_process_scenario",
+          normalized_result: {
+            exit: { code: 0 },
+            cleanup: { temporary_root: "removed" },
+          },
+        });
+      }
+    }
+  },
+  30_000,
+);
+
+itWithCaptureCapability(
   "stops the owned descendant when an MCP request is cancelled during post-exit settlement",
   async () => {
     const root = await createTestTempDirectory(

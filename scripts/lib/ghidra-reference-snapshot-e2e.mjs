@@ -142,7 +142,7 @@ export async function verifyLegacyGhidraReferenceSnapshot(
     const retained = requireMcpEvidenceResult(
       await client.callTool({
         name: "analyze_function",
-        arguments: { procedure },
+        arguments: { procedure, detail: "complete" },
       }),
       "analyze_function",
     );

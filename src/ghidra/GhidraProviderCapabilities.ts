@@ -2,14 +2,17 @@ import type {
   CapabilityDescriptor,
   ProviderIdentity,
 } from "../application/AnalysisProvider.js";
-import type { RelationshipCoverage } from "../domain/relationshipCoverage.js";
 import {
-  hasWindowsNativeAuthority,
-  windowsNativeAuthorityUnavailableReason,
+  inspectWindowsNativeReadiness,
+  type WindowsNativeReadiness,
 } from "../process/WindowsAuthority.js";
 import { GHIDRA_FUNCTION_OPERATIONS } from "./GhidraFunctionValues.js";
 import { GHIDRA_INVENTORY_OPERATIONS } from "./GhidraInventoryValues.js";
 import { GHIDRA_MUTATING_OPERATIONS } from "./GhidraSessionValues.js";
+
+/** Target architectures admitted by the Windows P0 native PE boundary. */
+export const WINDOWS_P0_NATIVE_PE_ARCHITECTURES: readonly string[] =
+  Object.freeze(["x86", "x86_64", "arm", "arm64"]);
 
 /** Public identity committed by every Ghidra-backed observation. */
 export const GHIDRA_PROVIDER_IDENTITY: ProviderIdentity = Object.freeze({
@@ -18,11 +21,20 @@ export const GHIDRA_PROVIDER_IDENTITY: ProviderIdentity = Object.freeze({
   version: null,
 });
 
-/** Analyst operations implemented by the Ghidra inventory and function adapters. */
-export const GHIDRA_OPERATIONS = Object.freeze([
+/** Provider observations, including internal aggregates consumed by workflows. */
+const providerOperations = Object.freeze([
   ...GHIDRA_INVENTORY_OPERATIONS,
   ...GHIDRA_FUNCTION_OPERATIONS,
 ]);
+
+/** Public analyst tools backed by these observations; aggregates stay internal. */
+export const GHIDRA_OPERATIONS = Object.freeze(
+  providerOperations.map((operation) =>
+    operation === "read_binary_inventory_summary"
+      ? "binary_overview"
+      : operation,
+  ),
+);
 
 /** Health limitations shared by every Ghidra-backed capability. */
 export const healthLimitations = Object.freeze([
@@ -33,7 +45,7 @@ export const healthLimitations = Object.freeze([
 
 /** Additional limitations applied to the experimental Windows x64 P0 boundary. */
 export const windowsP0Limitations = Object.freeze([
-  "Windows Ghidra P0 accepts approved native x86 and x86-64 PE applications and DLLs; managed, hostile, sensitive, and mutable-path targets are unsupported.",
+  "Windows Ghidra P0 accepts native x86, x86-64, ARMNT (Thumb-2) and ARM64 PE applications and DLLs, and explicitly selected raw 6502 images; managed, hostile, sensitive, and mutable-path targets are unsupported.",
   "The Windows bridge uses authenticated IPv4 loopback because Node path-based IPC does not expose Java AF_UNIX sockets; the endpoint file contains no bearer token.",
   "Windows sessions require the matching packaged Windows x64 native addon, local NTFS targets and runtimes, and Windows 10 or later. Native handles enforce path admission, private DACLs, and Job Object ownership automatically.",
 ]);
@@ -44,20 +56,6 @@ const stringInventoryLimitation =
 const searchLimitation =
   "Regex mode uses Java Pattern semantics. Matcher or compiler stack exhaustion returns a resource constraint without closing the session; literal mode avoids regex recursion and returns complete matching values.";
 
-const resolvedCallReferenceLimitation =
-  "Only resolved Ghidra call references are returned; unresolved computed or indirect calls remain unknown, while function classifications distinguish thunks and externals.";
-
-/** Relationship-only caveats belong to each observed caller/callee result. */
-export const relationshipCoverageFor = (
-  operation: string,
-): RelationshipCoverage | undefined =>
-  operation === "procedure_callers" || operation === "procedure_callees"
-    ? {
-        status: "complete",
-        diagnostics: [resolvedCallReferenceLimitation],
-      }
-    : undefined;
-
 /** Limitation text for one admitted operation, including the common base. */
 export const limitationsFor = (operation: string): readonly string[] => {
   const common = [
@@ -65,6 +63,13 @@ export const limitationsFor = (operation: string): readonly string[] => {
     "Default-space addresses use lowercase 0x-prefixed hexadecimal; other address spaces use <percent-encoded-space>:0x<hex>.",
   ];
   switch (operation) {
+    case "read_binary_inventory_summary":
+      return [
+        ...common,
+        stringInventoryLimitation,
+        "Counts use the complete defined-string inventory and the same local/external function inventory as list_strings and list_procedures. They do not establish discovery of undefined strings or unidentified functions.",
+        "Memory-block end addresses are exclusive; segment lengths use those observed address coordinates.",
+      ];
     case "annotate_native_function":
       return [
         ...common,
@@ -83,12 +88,17 @@ export const limitationsFor = (operation: string): readonly string[] => {
     case "inspect_native_load_image":
       return [
         ...common,
-        "Independent verification supports DOS MZ and explicitly selected COM, including measured COM entry context. Measured source mappings use inclusive end addresses and complete region digests; no target execution or project mutation occurs.",
+        "Independent verification covers admitted DOS MZ, explicitly selected COM with measured entry context, and caller-supplied raw-binary imports. Measured source mappings use inclusive end addresses and complete region digests; no target execution or project mutation occurs.",
       ];
     case "read_bytes":
       return [
         ...common,
         "Bytes reflect Ghidra's initialized memory, including loader fixups. Reads stop at an unmapped or uninitialized byte and report completeness explicitly.",
+      ];
+    case "search_bytes":
+      return [
+        ...common,
+        "Searches initialized loader-adjusted memory independently per block, in provider address order. Bounds and page coverage ends are inclusive. Uninitialized blocks are listed separately. Overlapping matches are included; patterns never cross block boundaries. A cursor resumes the same target, profile and query. Cancellation discards the active search and returns no successful partial page.",
       ];
     case "address_to_file_offset":
       return [
@@ -171,7 +181,7 @@ export const limitationsFor = (operation: string): readonly string[] => {
         "The dossier combines Ghidra FunctionManager, Listing, ReferenceManager, BasicBlockModel, and decompiler observations; provider-specific pseudocode and assembly are not cross-provider text invariants.",
         "Resolved reference metadata identifies computed, indirect, external, call, jump, and data edges; unresolved targetless flows remain unknown, and function classifications distinguish thunks and externals.",
         "Synthetic Ghidra entry-point references without actionable memory sources are omitted.",
-        "The Java bridge serializes one function request per Program and lets each decompilation run until it completes or the caller cancels.",
+        "The Java bridge serializes one function request per Program. Decompilation runs until completion or caller cancellation unless REA_GHIDRA_DECOMPILE_TIMEOUT_SECONDS sets a per-function limit. That limit stops the requested decompile without requesting session closure; caller cancellation requests session closure.",
       ];
     default:
       return common;
@@ -180,7 +190,7 @@ export const limitationsFor = (operation: string): readonly string[] => {
 
 /** Provider-neutral capabilities advertised by every non-Windows Ghidra session. */
 export const CAPABILITIES: readonly CapabilityDescriptor[] = Object.freeze(
-  GHIDRA_OPERATIONS.map((operation) => {
+  providerOperations.map((operation) => {
     return Object.freeze({
       provider: GHIDRA_PROVIDER_IDENTITY,
       operation,
@@ -207,8 +217,9 @@ export const CAPABILITIES: readonly CapabilityDescriptor[] = Object.freeze(
 );
 
 /** Capabilities advertised for the experimental Windows x64 P0 boundary. */
-export const windowsP0Capabilities = (): readonly CapabilityDescriptor[] => {
-  const available = hasWindowsNativeAuthority("win32");
+export const windowsP0Capabilities = (
+  readiness: WindowsNativeReadiness = inspectWindowsNativeReadiness("win32"),
+): readonly CapabilityDescriptor[] => {
   return Object.freeze(
     CAPABILITIES.map((capability): CapabilityDescriptor => {
       const limitations = Object.freeze([
@@ -223,13 +234,13 @@ export const windowsP0Capabilities = (): readonly CapabilityDescriptor[] => {
           availabilityCode: "unsupported_host",
           limitations,
         });
-      return available
+      return readiness.available
         ? Object.freeze({ ...capability, limitations })
         : Object.freeze({
             ...capability,
             available: false,
-            reason: windowsNativeAuthorityUnavailableReason("win32"),
-            availabilityCode: "unsupported_host",
+            reason: readiness.reason,
+            availabilityCode: readiness.code,
             limitations,
           });
     }),

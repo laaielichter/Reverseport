@@ -8,9 +8,15 @@ import { spawnOwnedProviderProcess } from "../../dist/process/ProviderProcess.js
 import { createSystemProcessOwnershipHost } from "../../dist/process/ProcessOwnershipObservation.js";
 import { liveProcesses } from "../../dist/process/ProcessOwnershipProcessTree.js";
 import { CdpConnection } from "../../dist/browser/CdpConnection.js";
+import {
+  BROWSER_DEVTOOLS_STARTUP_TIMEOUT_MS,
+  waitForBrowserDevtoolsPort,
+} from "../../dist/browser/BrowserProcessStartup.js";
+import { requireOrdinaryWindowsVerifierCaller } from "./windows-ordinary-user-verifier.mjs";
 
-/** Launch only the synthetic fixture browser in its own verified process group. */
+/** Launch the synthetic fixture browser and await CDP in its own verified process group. */
 export async function startRuntimeFixtureBrowser(executable, origin) {
+  await requireOrdinaryWindowsVerifierCaller();
   const profile = await mkdtemp(join(tmpdir(), "rea-real-web-runtime-"));
   let owned;
   try {
@@ -38,9 +44,21 @@ export async function startRuntimeFixtureBrowser(executable, origin) {
       expectedCommand: null,
     });
     owned.process.stdout?.resume();
+    let stderr = "";
+    owned.process.stderr?.on("data", (chunk) => {
+      if (stderr.length < 65536) stderr += chunk;
+    });
+    const port = await waitForBrowserDevtoolsPort({
+      child: owned.process,
+      executable,
+      activePortPath: join(profile, "DevToolsActivePort"),
+      stderr: () => stderr,
+      // Match the broader real-browser verifier's allowance for cold Chrome
+      // startup on shared runners; early process failures still reject at once.
+      timeoutMs: BROWSER_DEVTOOLS_STARTUP_TIMEOUT_MS,
+    });
     return {
-      browser: owned.process,
-      profile,
+      port,
       close: async () => {
         await stopOwnedBrowser(owned, profile);
         await rm(profile, {
@@ -134,21 +152,4 @@ async function stopOwnedBrowser(owned, profile) {
       );
     await new Promise((resolve) => setTimeout(resolve, 25));
   }
-}
-
-/** Attempt every owned cleanup and retain the original verification failure if cleanup also fails. */
-export async function closeRuntimeFixtureResources(tasks, primaryError) {
-  const failures = [];
-  for (const task of tasks) {
-    try {
-      await task();
-    } catch (cause) {
-      failures.push(cause);
-    }
-  }
-  if (failures.length > 0)
-    throw new AggregateError(
-      primaryError === undefined ? failures : [primaryError, ...failures],
-      "Runtime fixture cleanup failed",
-    );
 }

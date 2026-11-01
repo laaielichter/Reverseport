@@ -19,12 +19,17 @@ import {
   electronMemberPath,
   type JavaScriptIntrinsicInvocation,
 } from "./javascriptElectronMemberWrites.js";
-import { resolveJavaScriptIntrinsicInvocation } from "./javascriptIntrinsicInvocation.js";
+import {
+  expandJavaScriptInvocationArguments,
+  resolveJavaScriptIntrinsicInvocation,
+} from "./javascriptIntrinsicInvocation.js";
 import { SemanticPropertyPathCoverage } from "./javascriptSemanticPropertyPaths.js";
 import {
   readExactJavaScriptLiteral,
+  runtimeFunctionParameters,
   unwrapJavaScriptExpression,
 } from "./javascriptAstValues.js";
+import { semanticKnownArrayIterationAt } from "./javascriptSemanticReferenceSources.js";
 
 // Match the complete Rolldown runtime operations, including its live getters.
 // Names and formatting are irrelevant; lexical roles, operators and keys are not.
@@ -74,7 +79,12 @@ interface InteropHelper {
 /** Prove one inert namespace conversion without relaxing general assignment semantics. */
 export const createSemanticModuleInterop = (
   state: JavaScriptSemanticAnalysisState,
+  options?: {
+    readonly intrinsicPath: (node: t.Node) => readonly string[] | undefined;
+  },
 ) => {
+  const nativeArrayIteration = (array: t.ArrayExpression) =>
+    semanticKnownArrayIterationAt(array, state);
   const helpers = new Map<string, InteropHelper | null>();
   const origins = new Map<string, InteropOrigin>();
   const calls = new WeakMap<t.Node, InteropOrigin>();
@@ -96,55 +106,57 @@ export const createSemanticModuleInterop = (
     return ["intrinsic"];
   };
 
-  const intrinsicPath = (node: t.Node): readonly string[] | undefined => {
-    let current = node;
-    const visited = new Set<string>();
-    const pending: { id: string; suffixLength: number }[] = [];
-    let suffix: readonly string[] = [];
-    const finish = (
-      path: readonly string[] | undefined,
-    ): readonly string[] | undefined => {
-      for (const binding of pending)
-        intrinsicBindings.set(
-          binding.id,
-          path === undefined
-            ? null
-            : path.slice(0, path.length - binding.suffixLength),
-        );
-      return path;
-    };
-    for (;;) {
-      const { root, members } = electronMemberPath(current);
-      if (members.some((member) => member === null)) return finish(undefined);
-      suffix = [...(members as readonly string[]), ...suffix];
-      for (const global of ["Object", "Function", "Reflect"])
-        if (isUnshadowedGlobal(root, state, global))
-          return finish(["intrinsic", global, ...suffix]);
-      for (const global of ["globalThis", "global", "window", "self"])
-        if (isUnshadowedGlobal(root, state, global))
-          return finish(["intrinsic", ...suffix]);
-      if (!t.isIdentifier(root)) return finish(undefined);
-      const binding = resolveSemanticBindingState(state, root, root.name);
-      const cached =
-        binding === undefined
-          ? undefined
-          : intrinsicBindings.get(binding.bindingId);
-      if (cached !== undefined)
-        return finish(cached === null ? undefined : [...cached, ...suffix]);
-      const initializer = semanticStableInitializer(binding, state);
-      if (
-        binding === undefined ||
-        initializer === undefined ||
-        initializer.projection.some((segment) => segment === null) ||
-        visited.has(binding.bindingId)
-      )
-        return finish(undefined);
-      visited.add(binding.bindingId);
-      pending.push({ id: binding.bindingId, suffixLength: suffix.length });
-      suffix = [...initializer.projection.map(String), ...suffix];
-      current = initializer.node;
-    }
-  };
+  const intrinsicPath =
+    options?.intrinsicPath ??
+    ((node: t.Node): readonly string[] | undefined => {
+      let current = node;
+      const visited = new Set<string>();
+      const pending: { id: string; suffixLength: number }[] = [];
+      let suffix: readonly string[] = [];
+      const finish = (
+        path: readonly string[] | undefined,
+      ): readonly string[] | undefined => {
+        for (const binding of pending)
+          intrinsicBindings.set(
+            binding.id,
+            path === undefined
+              ? null
+              : path.slice(0, path.length - binding.suffixLength),
+          );
+        return path;
+      };
+      for (;;) {
+        const { root, members } = electronMemberPath(current);
+        if (members.some((member) => member === null)) return finish(undefined);
+        suffix = [...(members as readonly string[]), ...suffix];
+        for (const global of ["Object", "Function", "Reflect"])
+          if (isUnshadowedGlobal(root, state, global))
+            return finish(["intrinsic", global, ...suffix]);
+        for (const global of ["globalThis", "global", "window", "self"])
+          if (isUnshadowedGlobal(root, state, global))
+            return finish(["intrinsic", ...suffix]);
+        if (!t.isIdentifier(root)) return finish(undefined);
+        const binding = resolveSemanticBindingState(state, root, root.name);
+        const cached =
+          binding === undefined
+            ? undefined
+            : intrinsicBindings.get(binding.bindingId);
+        if (cached !== undefined)
+          return finish(cached === null ? undefined : [...cached, ...suffix]);
+        const initializer = semanticStableInitializer(binding, state);
+        if (
+          binding === undefined ||
+          initializer === undefined ||
+          initializer.projection.some((segment) => segment === null) ||
+          visited.has(binding.bindingId)
+        )
+          return finish(undefined);
+        visited.add(binding.bindingId);
+        pending.push({ id: binding.bindingId, suffixLength: suffix.length });
+        suffix = [...initializer.projection.map(String), ...suffix];
+        current = initializer.node;
+      }
+    });
 
   // A nominal alias path is sufficient for conservative mutation lookup, but
   // helper proof also needs each read to follow initialization. An alias copy
@@ -263,7 +275,10 @@ export const createSemanticModuleInterop = (
       const { root, members } = electronMemberPath(current.callee);
       let bindTarget = root;
       let bindingArguments: JavaScriptIntrinsicInvocation["arguments"] =
-        current.arguments;
+        expandJavaScriptInvocationArguments(
+          current.arguments,
+          nativeArrayIteration,
+        );
       let captured = capturedIntrinsic(current.callee);
       let terminal = captured?.path.at(-1) === "bind";
       let path: readonly string[] | undefined = captured?.path.slice(0, -1);
@@ -278,6 +293,7 @@ export const createSemanticModuleInterop = (
           intrinsicPath,
           boundIntrinsic,
           intrinsicReadChanged,
+          nativeArrayIteration,
         );
         if (
           invocation?.kind !== "known" ||
@@ -545,7 +561,7 @@ export const createSemanticModuleInterop = (
       converted === undefined ||
       initial.projection.length !== 0 ||
       converted.projection.length !== 0 ||
-      state.conditionalInitializers.has(initial.node)
+      state.conditionallySkippedExpressions.has(initial.node)
     )
       return undefined;
     const call = converted.node;
@@ -609,12 +625,16 @@ export const createSemanticModuleInterop = (
     origin,
     callOrigin,
     intrinsicPath,
-    intrinsicInvocation: (node: t.CallExpression | t.OptionalCallExpression) =>
+    intrinsicInvocation: (
+      node: t.CallExpression | t.OptionalCallExpression,
+      callablePath = intrinsicPath,
+    ) =>
       resolveJavaScriptIntrinsicInvocation(
         node,
-        intrinsicPath,
+        callablePath,
         boundIntrinsic,
         intrinsicReadChanged,
+        nativeArrayIteration,
       ),
     boundIntrinsic,
     staticString,
@@ -654,10 +674,10 @@ const identityFunction = (
     !t.isFunction(node) ||
     node.async ||
     node.generator ||
-    node.params.length !== 1
+    runtimeFunctionParameters(node).length !== 1
   )
     return false;
-  const parameter = node.params[0];
+  const parameter = runtimeFunctionParameters(node)[0];
   const result = t.isBlockStatement(node.body)
     ? node.body.body.length === 1 && t.isReturnStatement(node.body.body[0])
       ? node.body.body[0].argument

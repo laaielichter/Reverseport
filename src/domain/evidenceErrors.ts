@@ -2,6 +2,7 @@ import {
   AnalysisError,
   type AnalysisErrorOptions,
 } from "./analysisErrorBase.js";
+import type { AnalysisInputIssue } from "./analysisErrorCore.js";
 
 /** Receipt retained when publication succeeded but staging cleanup did not. */
 export interface PublishedEvidenceFile {
@@ -51,6 +52,8 @@ export class EvidenceFileError extends AnalysisError {
   readonly path: string | undefined;
   /** Present only when a write committed before cleanup failed. */
   readonly published: PublishedEvidenceFile | undefined;
+  /** Schema issues relative to the selected file's JSON root, never the request envelope. */
+  readonly contentIssues: readonly AnalysisInputIssue[] | undefined;
 
   constructor(
     readonly operation: "read" | "write",
@@ -60,16 +63,19 @@ export class EvidenceFileError extends AnalysisError {
       | "wrong-kind"
       | "invalid-json"
       | "missing"
+      | "path-limit"
       | "io",
     options?: AnalysisErrorOptions & {
       readonly path?: string;
       readonly published?: PublishedEvidenceFile;
       readonly userMessage?: string;
+      readonly contentIssues?: readonly AnalysisInputIssue[];
     },
   ) {
     super(`Evidence bundle ${operation} failed: ${reason}`, options);
     this.path = options?.path;
     this.published = options?.published;
     this.userMessage = options?.userMessage;
+    this.contentIssues = options?.contentIssues;
   }
 }

@@ -1,3 +1,5 @@
+import { connectLocalToolsMcp } from "../fixtures/localToolsMcp.js";
+import { parseMcpToolError } from "../fixtures/mcpToolError.js";
 import { expect, onTestFinished } from "vitest";
 import { Client } from "@modelcontextprotocol/client";
 import {
@@ -5,7 +7,7 @@ import {
   getDefaultEnvironment,
 } from "@modelcontextprotocol/client/stdio";
 import { fileURLToPath } from "node:url";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { webSourceLocationFixture } from "../fixtures/webSourceLocation.js";
 import { createTestTempDirectory } from "../fixtures/temporaryDirectory.js";
@@ -18,9 +20,15 @@ cliTest(
     const fixture = webSourceLocationFixture();
     await mkdir(join(root, "files", "modules"), { recursive: true });
     await writeFile(join(root, "files", "modules", "main.js"), fixture.source);
-    const manifest = join(root, "manifest.json").replaceAll("\\", "/");
+    let manifest = join(root, "manifest.json").replaceAll("\\", "/");
     const map = join(root, "app.js.map");
     await writeFile(manifest, JSON.stringify(fixture.manifest));
+    if (process.platform !== "win32") {
+      await mkdir(join(root, "lexical"));
+      await mkdir(join(root, "nested"));
+      await symlink(join(root, "nested"), join(root, "lexical", "link"));
+      manifest = `${root}/lexical/link/../manifest.json`;
+    }
     await writeFile(map, fixture.sourceMap.text);
     const response = await cli.run({
       arguments: [
@@ -43,7 +51,14 @@ cliTest(
     expect(response.exitCode, response.stdout + response.stderr).toBe(0);
     expect(response.json).toMatchObject({
       normalized_result: {
-        source: { script_index: 0 },
+        manifest: {
+          path: manifest,
+          reported_output_directory: fixture.manifest.output_directory,
+        },
+        source: {
+          script_index: 0,
+          path: join(root, "files", "modules", "main.js"),
+        },
         source_map: { association: "caller-selected" },
         generated_offset: 0,
         execution: "unknown",
@@ -110,5 +125,197 @@ cliTest(
     });
   },
   // Allow cold CLI and MCP ownership preparation across the full parity sequence.
+  180_000,
+);
+
+cliTest(
+  "applies the shared version constraint to nested indexed maps through CLI and stdio MCP",
+  async ({ cli }) => {
+    const root = await createTestTempDirectory("rea-indexed-map-version-");
+    const fixture = webSourceLocationFixture();
+    await mkdir(join(root, "files", "modules"), { recursive: true });
+    await writeFile(join(root, "files", "modules", "main.js"), fixture.source);
+    const manifest = join(root, "manifest.json").replaceAll("\\", "/");
+    await writeFile(manifest, JSON.stringify(fixture.manifest));
+    const { call } = await connectLocalToolsMcp({
+      REA_BROWSER_EXECUTABLE: "relative-unconfigured-browser",
+    });
+    const leaf: unknown = JSON.parse(fixture.sourceMap.text);
+    for (const [index, version] of [3, 2, null, undefined, "3"].entries()) {
+      const text = JSON.stringify({
+        version: 3,
+        sections: [
+          {
+            offset: { line: 0, column: 0 },
+            map: {
+              version,
+              sections: [{ offset: { line: 0, column: 0 }, map: leaf }],
+            },
+          },
+        ],
+      });
+      const path = join(root, `nested-${index}.map`);
+      await writeFile(path, text);
+      const result = await cli.run({
+        arguments: [
+          "trace-web-source-location",
+          manifest,
+          "0",
+          path,
+          fixture.sourceMap.url,
+          "1",
+          "0",
+          "--json",
+        ],
+        environment: {
+          REA_LOG_LEVEL: "silent",
+          REA_BROWSER_EXECUTABLE: "relative-unconfigured-browser",
+        },
+        timeoutMs: 45_000,
+      });
+      const response = await call("trace_web_source_location", {
+        manifest_path: manifest,
+        script_index: 0,
+        source_map: { path, url: fixture.sourceMap.url },
+        generated_position: { line: 1, column: 0 },
+      });
+      if (version === 3) {
+        expect(result.exitCode, result.stderr).toBe(0);
+        expect(result.json).toMatchObject({
+          normalized_result: {
+            matches: [
+              {
+                state: "mapped",
+                section_path: [0, 0],
+                content: { text: "original" },
+              },
+            ],
+          },
+        });
+        expect(response.isError, JSON.stringify(response)).not.toBe(true);
+        expect(response.structuredContent).toEqual(result.json);
+      } else {
+        const failure = {
+          code: "invalid_request",
+          details: {
+            issues: [
+              {
+                path: ["source_map", "path"],
+                reason: "invalid_format",
+                message: expect.stringContaining(
+                  "not a version 3 map. Section path: [0].",
+                ),
+              },
+            ],
+          },
+        };
+        expect(result.exitCode).toBe(1);
+        expect(result.json).toMatchObject(failure);
+        expect(result.json).not.toHaveProperty("normalized_result");
+        expect(parseMcpToolError(response).error).toMatchObject(failure);
+        expect(response.structuredContent).toBeUndefined();
+      }
+    }
+  },
+  180_000,
+);
+
+cliTest(
+  "traces empty equal-offset sections while rejecting decreasing offsets and represented overlaps",
+  async ({ cli }) => {
+    const root = await createTestTempDirectory("rea-empty-indexed-map-");
+    const fixture = webSourceLocationFixture();
+    await mkdir(join(root, "files", "modules"), { recursive: true });
+    await writeFile(join(root, "files", "modules", "main.js"), fixture.source);
+    const manifest = join(root, "manifest.json").replaceAll("\\", "/");
+    await writeFile(manifest, JSON.stringify(fixture.manifest));
+    const { call } = await connectLocalToolsMcp();
+    const leaf: unknown = JSON.parse(fixture.sourceMap.text);
+    const empty = { version: 3, sources: [], names: [], mappings: "" };
+    const nestedEmpty = {
+      version: 3,
+      sections: [{ offset: { line: 0, column: 0 }, map: empty }],
+    };
+    for (const [index, sample] of [
+      { first: empty, firstColumn: 0, nextColumn: 0, succeeds: true },
+      { first: nestedEmpty, firstColumn: 0, nextColumn: 0, succeeds: true },
+      { first: empty, firstColumn: 0, nextColumn: 1, succeeds: true },
+      { first: leaf, firstColumn: 0, nextColumn: 0, succeeds: false },
+      { first: empty, firstColumn: 1, nextColumn: 0, succeeds: false },
+    ].entries()) {
+      const path = join(root, `empty-${index}.map`);
+      await writeFile(
+        path,
+        JSON.stringify({
+          version: 3,
+          sections: [
+            {
+              offset: { line: 0, column: sample.firstColumn },
+              map: sample.first,
+            },
+            { offset: { line: 0, column: sample.nextColumn }, map: leaf },
+          ],
+        }),
+      );
+      const result = await cli.run({
+        arguments: [
+          "trace-web-source-location",
+          manifest,
+          "0",
+          path,
+          fixture.sourceMap.url,
+          "1",
+          String(sample.nextColumn),
+          "--json",
+        ],
+        environment: { REA_LOG_LEVEL: "silent" },
+        timeoutMs: 45_000,
+      });
+      const response = await call("trace_web_source_location", {
+        manifest_path: manifest,
+        script_index: 0,
+        source_map: { path, url: fixture.sourceMap.url },
+        generated_position: { line: 1, column: sample.nextColumn },
+      });
+      if (sample.succeeds) {
+        expect(result.exitCode, result.stderr).toBe(0);
+        expect(result.json).toMatchObject({
+          normalized_result: {
+            lookup: {
+              matched_generated_position: {
+                line: 1,
+                column: sample.nextColumn,
+              },
+            },
+            matches: [
+              {
+                state: "mapped",
+                section_path: [1],
+                content: { text: "original" },
+              },
+            ],
+          },
+        });
+        expect(response.isError, JSON.stringify(response)).not.toBe(true);
+        expect(response.structuredContent).toEqual(result.json);
+      } else {
+        const failure = {
+          code: "invalid_request",
+          details: {
+            issues: [
+              {
+                path: ["source_map", "path"],
+                reason: "invalid_format",
+                message: expect.stringMatching(/overlap|nondecreasing/u),
+              },
+            ],
+          },
+        };
+        expect(result.exitCode).toBe(1);
+        expect(result.json).toMatchObject(failure);
+        expect(parseMcpToolError(response).error).toMatchObject(failure);
+      }
+    }
+  },
   180_000,
 );

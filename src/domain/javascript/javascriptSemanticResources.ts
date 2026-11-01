@@ -1,18 +1,25 @@
 import * as t from "@babel/types";
 
-import { semanticBuiltinNamespacePath } from "./javascriptSemanticProvenance.js";
-
+import {
+  BUILTIN_RESOURCE_SPECIFIERS,
+  BUILTIN_RESOURCE_METHODS,
+} from "./javascriptBuiltinResourceMethods.js";
 import type {
   JavaScriptSemanticCallable,
   JavaScriptSemanticResourceOperation,
 } from "./javascriptSemanticIr.js";
-import { semanticStaticPropertyName } from "./javascriptAstValues.js";
+import {
+  semanticStaticPropertyName,
+  unwrapJavaScriptExpression,
+} from "./javascriptAstValues.js";
+import { isUnmodifiedGlobalReference } from "./javascriptSemanticAmbientWrites.js";
 import {
   resolveSemanticBindingState,
   type JavaScriptSemanticAnalysisState,
   type JavaScriptSemanticBindingState,
 } from "./javascriptSemanticState.js";
 import {
+  builtinDataEffectMethod,
   dataEffectMemberCallee,
   outerDataEffectBinding,
   traverseDataEffects,
@@ -20,14 +27,6 @@ import {
 } from "./javascriptSemanticDataEffectHelpers.js";
 import { range } from "./javascriptStaticAnalysisHelpers.js";
 
-const ACQUIRE_METHODS = [
-  "open",
-  "openSync",
-  "createReadStream",
-  "createWriteStream",
-  "connect",
-  "createConnection",
-] as const;
 const RELEASE_METHODS = ["close", "destroy", "end"] as const;
 
 interface ResourceCandidate {
@@ -105,20 +104,57 @@ const collectReleases = (
     );
     const linked =
       binding === undefined ? [] : (byBinding.get(binding.bindingId) ?? []);
-    if (linked.length === 0) return;
+    if (binding === undefined || linked.length === 0) return;
     output.push({
       resourceId: `resource:release:${String(node.start ?? -1)}:${String(node.end ?? -1)}`,
       kind: "release",
       method,
       location: range(node),
       ownerCallableId: context.callableStack.at(-1) ?? null,
-      resultBindingId: binding?.bindingId ?? null,
+      resultBindingId: binding.bindingId,
       linkedResourceIds: linked.map(resourceCandidateId).sort(),
-      resolution: linked.length === 1 ? "complete" : "partial",
+      resolution:
+        linked.length === 1 &&
+        holdsOnlyAcquisitions(binding, linked, context.state)
+          ? "complete"
+          : "partial",
     });
   });
   return output;
 };
+
+/**
+ * A lexical handle identifies its acquisition only while every value written
+ * to the binding is that acquisition itself. Any replacement, even a
+ * conditional or later one, leaves the released resource a candidate. A
+ * nullish placeholder, as in `let h = null; try { h = open() } finally {
+ * h?.close() }`, releases nothing else: the call is skipped or throws.
+ */
+const holdsOnlyAcquisitions = (
+  binding: JavaScriptSemanticBindingState,
+  linked: readonly ResourceCandidate[],
+  state: JavaScriptSemanticAnalysisState,
+): boolean =>
+  [...binding.initializers, ...binding.referenceInitializers].every(
+    ({ node, projection }) => {
+      if (projection.length > 0) return false;
+      let value = unwrapJavaScriptExpression(node).node;
+      if (t.isAwaitExpression(value))
+        value = unwrapJavaScriptExpression(value.argument).node;
+      return (
+        isNullishPlaceholder(value, state) ||
+        linked.some((acquisition) => acquisition.node === value)
+      );
+    },
+  );
+
+const isNullishPlaceholder = (
+  value: t.Node,
+  state: JavaScriptSemanticAnalysisState,
+): boolean =>
+  t.isNullLiteral(value) ||
+  t.isUnaryExpression(value, { operator: "void" }) ||
+  isUnmodifiedGlobalReference(value, state, "undefined");
 
 const immutableAcquisition = (
   candidate: ResourceCandidate,
@@ -137,58 +173,19 @@ const acquisitionMethod = (
   callee: t.Node,
   state: JavaScriptSemanticAnalysisState,
 ): JavaScriptSemanticResourceOperation["method"] | null => {
-  if (t.isIdentifier(callee)) {
-    const binding = resolveSemanticBindingState(state, callee, callee.name);
-    return methodFromBinding(binding);
-  }
-  if (!t.isMemberExpression(callee) && !t.isOptionalMemberExpression(callee))
-    return null;
-  const method = ACQUIRE_METHODS.find(
-    (candidate) =>
-      candidate ===
-      semanticStaticPropertyName(callee.property, callee.computed),
-  );
-  if (method === undefined || !t.isIdentifier(callee.object)) return null;
-  const binding = resolveSemanticBindingState(
-    state,
-    callee.object,
-    callee.object.name,
-  );
-  return resourceNamespace(binding) ? method : null;
-};
-
-const methodFromBinding = (
-  binding: JavaScriptSemanticBindingState | undefined,
-): JavaScriptSemanticResourceOperation["method"] | null => {
-  for (const { specifier, importedPath } of binding?.directOrigins ?? []) {
-    if (!resourceModule(specifier)) continue;
-    const method = ACQUIRE_METHODS.find(
-      (candidate) => candidate === importedPath.at(-1),
-    );
-    if (method !== undefined) return method;
+  for (const specifier of BUILTIN_RESOURCE_SPECIFIERS) {
+    const method = builtinDataEffectMethod(callee, state, [specifier]);
+    if (
+      method !== null &&
+      (
+        BUILTIN_RESOURCE_METHODS[
+          specifier as keyof typeof BUILTIN_RESOURCE_METHODS
+        ] as readonly string[]
+      ).includes(method)
+    )
+      return method as JavaScriptSemanticResourceOperation["method"];
   }
   return null;
 };
-
-const resourceNamespace = (
-  binding: JavaScriptSemanticBindingState | undefined,
-): boolean =>
-  binding?.directOrigins.some(
-    ({ specifier, importedPath }) =>
-      resourceModule(specifier) && semanticBuiltinNamespacePath(importedPath),
-  ) ?? false;
-
-const resourceModule = (specifier: string): boolean =>
-  [
-    "fs",
-    "fs/promises",
-    "net",
-    "node:fs",
-    "node:fs/promises",
-    "node:net",
-    "node:tls",
-    "tls",
-  ].includes(specifier);
-
 const resourceCandidateId = (candidate: ResourceCandidate): string =>
   `resource:acquire:${String(candidate.node.start ?? -1)}:${String(candidate.node.end ?? -1)}`;
