@@ -279,26 +279,31 @@ export function graphMermaid(graph, max = 60) {
 export async function graphTool({ path: dir, limit, format = 'json' } = {}) {
   const g = await buildGraph(dir);
   // Small by default (portOrder and mostUsed already summarise the edges); an explicit limit asks for more.
-  const max = limit === undefined ? 80 : Math.max(10, Math.min(5000, limit));
-  const edgeMax = limit === undefined ? 40 : max * 3;
+  const small = limit === undefined;
+  const max = small ? 30 : Math.max(10, Math.min(5000, limit));
+  const edgeMax = small ? 15 : max * 3;
+  const listMax = small ? 20 : max; // entry points, orphans and externals
+  const cycleMax = small ? 5 : 20;
   const files = [...g.nodes.values()].map(n => ({ file: n.file, language: n.language, ...(n.lines != null ? { lines: n.lines } : {}), dependsOn: g.outEdges.get(n.file).length, usedBy: g.inDegree.get(n.file) }));
   files.sort((a, b) => b.usedBy - a.usedBy || b.dependsOn - a.dependsOn);
-  const ext = [...g.externals.entries()].sort((a, b) => b[1] - a[1]).slice(0, 50).map(([name, uses]) => ({ name, uses }));
+  const ext = [...g.externals.entries()].sort((a, b) => b[1] - a[1]).slice(0, listMax).map(([name, uses]) => ({ name, uses }));
   return {
     root: g.root, truncated: g.truncated, ...(g.unreadable?.length ? { unreadable: g.unreadable, warnings: [`${g.unreadable.length} folder(s) could not be read; the graph does not cover them.`] } : {}), fileCount: g.nodes.size, edgeCount: g.edges.length,
-    entryPoints: g.entryPoints, cycles: g.cycles.slice(0, 20).map(c => c.slice(0, 30)), orphans: g.orphans.slice(0, 100),
+    entryPoints: g.entryPoints.slice(0, listMax), ...(g.entryPoints.length > listMax ? { entryPointCount: g.entryPoints.length } : {}),
+    cycles: g.cycles.slice(0, cycleMax).map(c => c.slice(0, small ? 10 : 30)), ...(g.cycles.length > cycleMax ? { cycleCount: g.cycles.length } : {}),
+    orphans: g.orphans.slice(0, listMax), ...(g.orphans.length > listMax ? { orphanCount: g.orphans.length } : {}),
     ...(g.workspace ? { workspace: { packages: g.workspace.packages, resolvedByPackageName: g.workspace.workspaceEdges, resolvedByTsconfigPaths: g.workspace.aliasEdges, packageList: g.workspace.packageList.slice(0, max), packageEdges: g.workspace.packageEdges.slice(0, edgeMax) } } : {}),
-    mostUsed: files.slice(0, 25), externals: ext,
+    mostUsed: files.slice(0, small ? 12 : 25), externals: ext, ...(g.externals.size > ext.length ? { externalCount: g.externals.size } : {}),
     portOrder: g.order.slice(0, max), portOrderTruncated: g.order.length > max,
     edges: g.edges.slice(0, edgeMax), edgesTruncated: g.edges.length > edgeMax,
     ...(format === 'mermaid' || format === 'both' ? { mermaid: graphMermaid(g) } : {}),
-    next: g.edges.length > edgeMax
-      ? `Showing ${edgeMax} of ${g.edges.length} edges and ${Math.min(max, g.order.length)} of ${g.order.length} files in portOrder. More: re_graph ${JSON.stringify({ path: g.root, limit: Math.min(5000, Math.max(max * 2, 400)) })}. One area: re_symbols ${JSON.stringify({ path: g.root, match: '<name>' })}. To port: port_plan ${JSON.stringify({ source: g.root, to: '<engine>' })}.`
+    next: g.edges.length > edgeMax || g.order.length > max
+      ? `Showing ${Math.min(edgeMax, g.edges.length)} of ${g.edges.length} edges and ${Math.min(max, g.order.length)} of ${g.order.length} files in portOrder (lists are short by default). More: re_graph ${JSON.stringify({ path: g.root, limit: Math.min(5000, Math.max(max * 2, 400)) })}. One area: re_symbols ${JSON.stringify({ path: g.root, match: '<name>' })}. To port: port_plan ${JSON.stringify({ source: g.root, to: '<engine>' })}.`
       : `One area: re_symbols ${JSON.stringify({ path: g.root, match: '<name>' })}. To port: port_plan ${JSON.stringify({ source: g.root, to: '<engine>' })}.`,
   };
 }
 
-export async function symbolsTool({ path: target, match, limit = 60 } = {}) {
+export async function symbolsTool({ path: target, match, limit = 25 } = {}) {
   const st = await fs.stat(path.resolve(target ?? '')).catch(() => null);
   if (st?.isFile()) {
     const abs = path.resolve(target);
@@ -319,7 +324,8 @@ export async function symbolsTool({ path: target, match, limit = 60 } = {}) {
     const fns = n.sym.functions.filter(f => !want || want.test(f.name)).map(f => f.name);
     if (want && !cls.length && !fns.length && !want.test(n.file)) continue;
     if (!want && !cls.length && !fns.length && !n.sym.signals?.length) continue; // nothing to show for this file
-    out.push({ file: n.file, language: n.language, lines: n.lines, classes: cls.slice(0, 50), functions: fns.slice(0, 120), ...(n.sym.signals?.length ? { signals: n.sym.signals.map(s => s.name) } : {}), ...(n.sym.exports?.length ? { exported: n.sym.exports.slice(0, 50) } : {}), ...(n.sym.unreal ? { unreal: n.sym.unreal } : {}) });
+    const fnMax = want ? 120 : 40; // a match already narrows; without one, keep each file short
+    out.push({ file: n.file, language: n.language, lines: n.lines, classes: cls.slice(0, 50), functions: fns.slice(0, fnMax), ...(fns.length > fnMax ? { functionCount: fns.length } : {}), ...(n.sym.signals?.length ? { signals: n.sym.signals.map(s => s.name) } : {}), ...(n.sym.exports?.length ? { exported: n.sym.exports.slice(0, 50) } : {}), ...(n.sym.unreal ? { unreal: n.sym.unreal } : {}) });
   }
   const max = Math.max(1, Math.min(5000, limit));
   const truncated = out.length > max;
