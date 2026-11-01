@@ -107,14 +107,19 @@ Any vendor, any framework, any model size — the same tools through the door th
 
 Built for the agent's circumstances too:
 
-- **A short list by default.** About 45 tools are listed instead of almost 200. Every other tool is one call away:
-  `engine_tools` finds it and `engine_call` runs it.
+- **A short list by default.** About 57 tools are listed instead of more than 200. Every other tool is one call
+  away: `engine_tools` finds it and `engine_call` runs it.
 - **The list fits the agent.** Small or older models use `compact`, large-context agents use `full`, and an agent
   can switch itself with `set_tool_profile`.
 - **One error shape everywhere**, with a code, whether retrying helps, and the exact next step.
 - **A `next` field wherever there is an obvious next step** (graphs, truncated results, every porting step), with the exact call.
-- **Big results do not flood the context.** Answers over 256 KB are saved to `~/.reverseport/tool-output/`; the
-  agent gets a short version with the path. Slightly wrong input from smaller models is repaired where it is safe.
+- **Big results do not flood the context.** Lists are short by default. Answers over 256 KB are saved to
+  `~/.reverseport/tool-output/`; the agent gets a short version with the path and an MCP resource link. Slightly wrong input from smaller models is repaired where it is safe.
+- **Several steps, one call.** `run_batch` runs up to 20 calls and `select` keeps only the fields the agent needs.
+  The same failing call twice gets a plain "do not repeat it" instead of the same error again.
+- **Long work does not time out.** On MCP 2026-07-28 a call still running after a few seconds (a cold Ghidra
+  import, a big port plan) comes back as a task the client polls, with progress in its status; quick calls answer
+  directly. Older clients keep the classic handshake on the same server.
 - **Agents are heard.** `share_feedback` leaves a note for the maintainers; it stays on the user's machine until
   they share it.
 

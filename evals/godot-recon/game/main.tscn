@@ -1,0 +1,26 @@
+[gd_scene load_steps=5 format=3 uid="uid://main01"]
+
+[ext_resource type="PackedScene" uid="uid://player01" path="res://actors/player.tscn" id="1_pl"]
+[ext_resource type="PackedScene" uid="uid://enemy01" path="res://actors/enemy.tscn" id="2_en"]
+[ext_resource type="PackedScene" uid="uid://hud01" path="res://ui/hud.tscn" id="3_hu"]
+
+[node name="Main" type="Node3D"]
+
+[node name="Sun" type="DirectionalLight3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 0.707107, 0.707107, 0, -0.707107, 0.707107, 0, 10, 0)
+
+[node name="Camera3D" type="Camera3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2, 8)
+fov = 70.0
+
+[node name="Player" parent="." instance=ExtResource("1_pl")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0)
+
+[node name="Enemies" type="Node3D" parent="."]
+
+[node name="Enemy" parent="Enemies" instance=ExtResource("2_en")]
+transform = Transform3D(2, 0, 0, 0, 2, 0, 0, 0, 2, 5, 1, -10)
+
+[node name="HUD" parent="." instance=ExtResource("3_hu")]
+
+[connection signal="hit" from="Player" to="HUD" method="_on_player_hit"]

@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { RPError, writeJson, pascalCase, camelCase, snakeCase, kebabCase, statOrNull } from './util.mjs';
+import { RPError, writeJson, pascalCase, camelCase, snakeCase, kebabCase, statOrNull, nextFields } from './util.mjs';
 import { workspaceDir, isInside } from './workspace.mjs';
 import { ENGINES, normEngine } from './knowledge.mjs';
 import { scaffold } from './porters.mjs';
@@ -212,13 +212,13 @@ export async function blueprintTool({ lookupId, name, kind, genres = [], tags = 
   return {
     ...bp, method: undefined, cleanRoom: { never: KNOWLEDGE.cleanRoom.never, note: KNOWLEDGE.cleanRoom.note },
     parameters: parity.parameters.length, files: { blueprint: path.join(dir, 'BLUEPRINT.md'), parity: path.join(dir, 'parity.json'), project: projectDir, written: written.length },
-    next: [
+    ...nextFields([
       'Capture the original (BLUEPRINT.md → Capture) and fill parity.json "original" values',
       projectDir ? `Open ${projectDir} in ${tgt.name}; the systems/ stubs hold every numeric parameter as a tunable` : `Set up a ${tgt.name} project; mirror the systems list as modules`,
       ...(openSource.length ? ['Open-source work exists (openSource): check licenses; re_lookup {github, mirror:true} + port_plan if you may reuse it'] : []),
       ...(tgt.note ? ['port_convert for every measured transform/FOV (engines differ)'] : []),
       'Measure the rebuild the same way, fill "rebuild", and keep going until every parameter is within tolerance',
-    ],
+    ]),
   };
 }
 

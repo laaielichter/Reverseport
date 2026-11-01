@@ -1,5 +1,10 @@
 # Repository Guidelines
 
+> **Using ReversePort rather than changing it?** This file is for contributors. To use it: connect with
+> `reverseport mcp` (`reverseport connect <client>` prints the config for any agent), follow the server's
+> instructions and start with `re_scan {path}`. `skills/reverse-engineer/SKILL.md` covers recon,
+> `skills/port-project/SKILL.md` porting, and `skills/troubleshoot/SKILL.md` errors.
+
 ## Layout
 
 ReversePort is one package with two engines behind one CLI (`bin/reverseport.mjs`) and one MCP server

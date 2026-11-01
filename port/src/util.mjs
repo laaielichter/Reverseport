@@ -170,9 +170,29 @@ export async function readJson(file, fallback) {
   try { return JSON.parse(await fs.readFile(file, 'utf8')); } catch { return fallback; }
 }
 
+let tmpCount = 0;
+/** Write whole or not at all: a temp file of its own (two writers never share one), then one rename. */
 export async function writeJson(file, value) {
   await fs.mkdir(path.dirname(file), { recursive: true });
-  const tmp = `${file}.${process.pid}.tmp`;
-  await fs.writeFile(tmp, JSON.stringify(value, null, 2) + '\n');
-  await fs.rename(tmp, file);
+  const tmp = `${file}.${process.pid}.${++tmpCount}.${Math.random().toString(36).slice(2, 8)}.tmp`;
+  try {
+    await fs.writeFile(tmp, JSON.stringify(value, null, 2) + '\n');
+    await renameOver(tmp, file);
+  } catch (e) { await fs.rm(tmp, { force: true }).catch(() => {}); throw e; }
+}
+
+/** Windows refuses to replace a file another handle has open for a moment (EPERM/EACCES/EBUSY): wait and try again. */
+async function renameOver(from, to) {
+  for (let attempt = 0; ; attempt++) {
+    try { return await fs.rename(from, to); } catch (e) {
+      if (process.platform !== 'win32' || !['EPERM', 'EACCES', 'EBUSY'].includes(e.code) || attempt >= 20) throw e;
+      await new Promise(r => setTimeout(r, 10 * (attempt + 1)));
+    }
+  }
+}
+
+/** One shape for "what next": next is one line, nextSteps every option (only when there are several). */
+export function nextFields(steps) {
+  if (!steps.length) return {};
+  return { next: steps[0], ...(steps.length > 1 ? { nextSteps: steps } : {}) };
 }
