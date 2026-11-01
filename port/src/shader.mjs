@@ -199,7 +199,7 @@ export function shadertoyToGodot(text) {
   let body = text.replace(/\bmainImage\s*\(\s*out\s+vec4\s+(\w+)\s*,\s*(?:in\s+)?vec2\s+(\w+)\s*\)/, (m, color, coord) => `fragment()`).replace(/\biTime\b/g, 'TIME').replace(/\biTimeDelta\b/g, '(1.0 / 60.0)').replace(/\biFrame\b/g, 'int(TIME * 60.0)');
   const color = text.match(/mainImage\s*\(\s*out\s+vec4\s+(\w+)/)?.[1] ?? 'fragColor', coord = text.match(/mainImage\s*\([^,]+,\s*(?:in\s+)?vec2\s+(\w+)/)?.[1] ?? 'fragCoord';
   body = body.replace(new RegExp(`\\b${color}\\b`, 'g'), 'COLOR').replace(new RegExp(`\\b${coord}\\b`, 'g'), 'vec2(FRAGCOORD.x, iResolution.y - FRAGCOORD.y)');
-  body = body.replace(/\biResolution\.xy\b/g, 'iResolution').replace(/\biResolution\b(?!\.y)/g, 'iResolution').replace(/\biMouse\b/g, 'iMouse');
+  body = body.replace(/\biResolution\.xy\b/g, 'iResolution'); // iResolution and iMouse become uniforms of the same name
   const channels = [...new Set([...text.matchAll(/\biChannel(\d)\b/g)].map(m => m[1]))];
   const uniforms = ['uniform vec2 iResolution = vec2(1920.0, 1080.0); // set from script: material.set_shader_parameter("iResolution", size)', 'uniform vec4 iMouse = vec4(0.0);', ...channels.map(c => `uniform sampler2D iChannel${c} : repeat_enable, filter_linear;`)];
   if (/\btexelFetch\b|\biChannelResolution\b|\biDate\b|\biSampleRate\b/.test(text)) notes.push('texelFetch/iChannelResolution/iDate/iSampleRate need uniforms or TEXTURE_PIXEL_SIZE equivalents');

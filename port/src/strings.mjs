@@ -206,17 +206,35 @@ export function toCsv(entries) {
   return ['id,file,where,prop,kind,chars,source,translation', ...entries.map(e => [e.id, e.file, e.where, e.prop, e.kind, e.chars, e.text, ''].map(q).join(','))].join('\n') + '\n';
 }
 
+/** One pass over .po escapes, so "\\\\n" stays a backslash and an n. */
+const unPo = s => s.replace(/\\(.)/g, (m, c) => ({ n: '\n', t: '\t', r: '\r', '"': '"', '\\': '\\' })[c] ?? c);
+
+/**
+ * msgid → msgstr pairs from a .po file, line by line: an entry's strings may continue on following "…" lines.
+ * Entries with an empty msgid (the header) or an empty msgstr (not translated yet) are left out.
+ */
+export function parsePo(text) {
+  const pairs = [];
+  let entry = { msgid: null, msgstr: null }, current = null;
+  const flush = () => { if (entry.msgid && entry.msgstr) pairs.push([entry.msgid, entry.msgstr]); entry = { msgid: null, msgstr: null }; current = null; };
+  for (const raw of text.split('\n')) {
+    const line = raw.trim();
+    let m;
+    if ((m = /^msgid\s+"(.*)"$/.exec(line))) { flush(); entry.msgid = unPo(m[1]); current = 'msgid'; }
+    else if ((m = /^msgstr\s+"(.*)"$/.exec(line)) && entry.msgid !== null) { entry.msgstr = unPo(m[1]); current = 'msgstr'; }
+    else if ((m = /^"(.*)"$/.exec(line)) && current) entry[current] += unPo(m[1]);
+    else current = null; // a comment, msgid_plural, msgstr[n] or a blank line ends the strings being continued
+  }
+  flush();
+  return pairs;
+}
+
 /** Parse translations from .po (msgid→msgstr), CSV (id or source → translation) or JSON ({id|source: translation}). */
 export async function readTranslations(file) {
   const text = await fs.readFile(file, 'utf8');
   const map = new Map();
   if (file.endsWith('.po')) {
-    const un = s => s.replace(/\\n/g, '\n').replace(/\\"/g, '"').replace(/\\\\/g, '\\');
-    for (const m of text.matchAll(/msgid\s+"((?:[^"\\]|\\.)*)"((?:\s*\n\s*"(?:[^"\\]|\\.)*")*)\s*\nmsgstr\s+"((?:[^"\\]|\\.)*)"((?:\s*\n\s*"(?:[^"\\]|\\.)*")*)/g)) {
-      const id = un(m[1] + m[2].replace(/\s*\n\s*"/g, '').replace(/"$/g, '').replace(/"(?=\n|$)/g, ''));
-      const str = un(m[3] + m[4].replace(/\s*\n\s*"/g, '').replace(/"$/g, '').replace(/"(?=\n|$)/g, ''));
-      if (id && str) map.set(id, str);
-    }
+    for (const [id, str] of parsePo(text)) map.set(id, str);
   } else if (file.endsWith('.csv')) {
     const rows = parseCsv(text);
     const head = rows[0].map(h => h.toLowerCase());

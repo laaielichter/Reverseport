@@ -539,6 +539,23 @@ export function toolchainHints(text) {
 }
 
 // ---------------------------------------------------------------- entry point
+
+/**
+ * A constant-style name with a separator, such as GL_TEXTURE_2D or SDL_INIT.Video: an upper-case start, at least three
+ * of [A-Z0-9_], then one or more "_" or "." parts of [A-Za-z0-9_]. Checked by hand: the regular expression that says
+ * the same thing backtracks exponentially on long underscore runs.
+ */
+export function constantName(t) {
+  const parts = t.split('.');
+  if (!parts.every(p => /^[A-Za-z0-9_]+$/.test(p))) return false;
+  const head = parts[0];
+  const upper = /^[A-Z][A-Z0-9_]*/.exec(head)?.[0].length ?? 0;
+  if (upper < 3) return false;
+  // An underscore at index ≥ 3 inside the upper-case run, with something after it, starts an "_" part.
+  let underscorePart = false;
+  for (let k = 3; k < upper && !underscorePart; k++) if (head[k] === '_' && k < head.length - 1) underscorePart = true;
+  return parts.length > 1 ? upper === head.length || underscorePart : underscorePart;
+}
 export async function inspectBinary({ file, strings = {}, names = {}, maxTypes = 300 } = {}) {
   const { abs, size } = await requireFile(file);
   const buf = await readHead(abs, HEAD_LIMIT);
@@ -590,7 +607,7 @@ export async function inspectBinary({ file, strings = {}, names = {}, maxTypes =
   const want = compileMatcher(strings.match);
   // By default skip byte noise that only looks like text ("v@AY QI"); raw:true or a match shows everything.
   const meaningful = t => (t.match(/[A-Za-z0-9 ._\/:\\-]/g)?.length ?? 0) / t.length >= 0.75
-    && (/[a-z]{5,}/.test(t) && /[aeiou][^aeiou\s]|[^aeiou\s][aeiou]/i.test(t) || /^[A-Z][A-Z0-9_]{2,}(?:[._][A-Za-z0-9_]+)+$/.test(t) || /\.(dll|so|dylib|exe|pck|json|png|wasm|js)\b/i.test(t));
+    && (/[a-z]{5,}/.test(t) && /[aeiou][^aeiou\s]|[^aeiou\s][aeiou]/i.test(t) || constantName(t) || /\.(dll|so|dylib|exe|pck|json|png|wasm|js)\b/i.test(t));
   const shown = all.items.filter(s => s.text.length >= minLen && want(s.text) && (strings.raw || strings.match || meaningful(s.text)));
   const hintText = all.items.map(s => s.text).join('\n') + '\n' + (info?.imports ?? []).flatMap(i => [i.library, ...(i.libraries ?? [])]).join('\n');
   result.binary = info;
