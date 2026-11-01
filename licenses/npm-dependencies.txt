@@ -2695,11 +2695,11 @@ fast-string-width@3.0.2 | runtime | MIT
   Package: https://www.npmjs.com/package/fast-string-width/v/3.0.2
   Archive: https://registry.npmjs.org/fast-string-width/-/fast-string-width-3.0.2.tgz
   Integrity: sha512-gX8LrtNEI5hq8DVUfRQMbr5lpaS4nMIWV+7XEbXk2b8kiQIizgnlr12B4dA3ZEx3308ze0O4Q1R+cHts8kyUJg==
-fast-uri@3.1.8 | runtime | BSD-3-Clause
+fast-uri@3.1.9 | runtime | BSD-3-Clause
   Lockfile path: node_modules/fast-uri
-  Package: https://www.npmjs.com/package/fast-uri/v/3.1.8
-  Archive: https://registry.npmjs.org/fast-uri/-/fast-uri-3.1.8.tgz
-  Integrity: sha512-GZMtZUTNRpOVIECoXwLNZS5xUGE+mVNbTB8h/7Rwh2TFWcBQiPzTgyZi05BF9UMZKkLJv8XBRJTlU7zg8+ZfMg==
+  Package: https://www.npmjs.com/package/fast-uri/v/3.1.9
+  Archive: https://registry.npmjs.org/fast-uri/-/fast-uri-3.1.9.tgz
+  Integrity: sha512-hS/0Wt3Ya043oKXs0sIxrMpKQITXhMLIrVAKKXi4gozGC9v7YRWVnXIZzjNPTO02M9BdxLCWqK1yRXgNziVyJQ==
 fast-wrap-ansi@0.2.2 | runtime | MIT
   Lockfile path: node_modules/fast-wrap-ansi
   Package: https://www.npmjs.com/package/fast-wrap-ansi/v/0.2.2
@@ -4810,11 +4810,11 @@ yoctocolors@2.2.0 | development | MIT
   Package: https://www.npmjs.com/package/yoctocolors/v/2.2.0
   Archive: https://registry.npmjs.org/yoctocolors/-/yoctocolors-2.2.0.tgz
   Integrity: sha512-xYqdZFUK/VYazNl/oCDYN+3WloWQwMfZxBoiNt6qNyk+xfOdi598muWE42rNZFp1kNOiqW936q5RhUdnpqElSg==
-zod@4.4.3 | runtime | MIT
+zod@4.6.7 | runtime | MIT
   Lockfile path: node_modules/zod
-  Package: https://www.npmjs.com/package/zod/v/4.4.3
-  Archive: https://registry.npmjs.org/zod/-/zod-4.4.3.tgz
-  Integrity: sha512-ytENFjIJFl2UwYglde2jchW2Hwm4GJFLDiSXWdTrJQBIN9Fcyp7n4DhxJEiWNAJMV1/BqWfW/kkg71UDcHJyTQ==
+  Package: https://www.npmjs.com/package/zod/v/4.6.7
+  Archive: https://registry.npmjs.org/zod/-/zod-4.6.7.tgz
+  Integrity: sha512-g8W2D2kU6a8untc053fX1uVBKzM7yqAxW/3zwk83+6RyF2+SKOuV+c0wBDhUwzV1PaGapmZH+rmcUzPf+3CGwg==
 zwitch@2.0.4 | development | MIT
   Lockfile path: node_modules/zwitch
   Package: https://www.npmjs.com/package/zwitch/v/2.0.4
