@@ -10,6 +10,7 @@ const tools = [
   { name: 'ask_roots', description: 'fake', inputSchema: { type: 'object' } },
   { name: 're_scan', description: 'shadowed', inputSchema: { type: 'object' } },
   { name: 'crash', description: 'fake: exits the engine', inputSchema: { type: 'object' } },
+  { name: 'slow_ok', description: 'fake: answers after ms with progress', inputSchema: { type: 'object', properties: { ms: { type: 'integer' } } } },
 ];
 createInterface({ input: process.stdin }).on('line', line => {
   const m = JSON.parse(line);
@@ -26,6 +27,10 @@ createInterface({ input: process.stdin }).on('line', line => {
       return send({ id: m.id, result: { content: [{ type: 'text', text: `code at ${args.address}` }], isError: false } });
     }
     if (name === 'slow') return; // answered never; the client cancels it
+    if (name === 'slow_ok') {
+      if (_meta?.progressToken !== undefined) setTimeout(() => send({ method: 'notifications/progress', params: { progressToken: _meta.progressToken, progress: 1, total: 2, message: 'Importing' } }), Math.min(100, args.ms / 2));
+      return setTimeout(() => send({ id: m.id, result: { content: [{ type: 'text', text: `done after ${args.ms}` }], isError: false } }), args.ms);
+    }
     if (name === 'ask_roots') {
       const id = nextId++;
       waiting.set(id, r => send({ id: m.id, result: { content: [{ type: 'text', text: JSON.stringify(r.result) }], isError: false } }));

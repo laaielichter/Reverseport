@@ -75,6 +75,24 @@ The server answers only on localhost. Pages served from localhost may call it fr
 agents such as GPT Actions need a public HTTPS URL), set `REVERSEPORT_TOKEN`, `REVERSEPORT_HOST=0.0.0.0` and
 `REVERSEPORT_ALLOWED_HOSTS=<host names>`; without a token it refuses to listen beyond this machine.
 
+## MCP versions and long-running calls
+
+The server speaks both MCP eras on the same connection. Clients that open with `initialize` get the classic
+session (2025-11-25 and older). Clients on MCP 2026-07-28 send `server/discover` or any request with
+`io.modelcontextprotocol/protocolVersion` in `_meta` and are served without a handshake: every result carries
+`resultType`, list results carry `ttlMs` and `cacheScope`, and `tools/list` keeps a fixed order so prompt caches
+stay warm.
+
+A 2026-07-28 client that declares the `io.modelcontextprotocol/tasks` extension gets long calls as tasks: a
+`tools/call` still running after 2.5 seconds returns a task id instead of blocking, and `tasks/get` shows its status
+(progress from the engine becomes `statusMessage`) and, at the end, the normal tool result. `tasks/cancel` stops
+it. Quick calls answer directly, so nothing gets slower. Task ids last six hours and do not survive a restart of
+the server. `REVERSEPORT_TASK_AFTER_MS` changes the 2.5 seconds. Claude Code uses tasks in its CLI from v2.1.304.
+
+`subscriptions/listen` (stdio) delivers `notifications/tools/list_changed` when the engine starts, stops or the
+tool profile changes. Over HTTP the endpoint answers with JSON only, so a stream cannot stay open there; call
+`tools/list` again instead.
+
 ## Fit the tool list to the agent
 
 Every agent can reach every tool. What changes is how much is listed up front:

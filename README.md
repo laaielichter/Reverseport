@@ -115,6 +115,9 @@ Built for the agent's circumstances too:
 - **A `next` field wherever there is an obvious next step** (graphs, truncated results, every porting step), with the exact call.
 - **Big results do not flood the context.** Answers over 256 KB are saved to `~/.reverseport/tool-output/`; the
   agent gets a short version with the path. Slightly wrong input from smaller models is repaired where it is safe.
+- **Long work does not time out.** On MCP 2026-07-28 a call still running after a few seconds (a cold Ghidra
+  import, a big port plan) comes back as a task the client polls, with progress in its status; quick calls answer
+  directly. Older clients keep the classic handshake on the same server.
 - **Agents are heard.** `share_feedback` leaves a note for the maintainers; it stays on the user's machine until
   they share it.
 

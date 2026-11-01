@@ -8,6 +8,7 @@
 // other engine tool stays one call away through engine_tools (find) and engine_call (use). REVERSEPORT_TOOLS=all
 // lists everything, REVERSEPORT_TOOLS=port only ReversePort's own, or give a comma list of names and globs.
 import { spawn } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { StringDecoder } from 'node:string_decoder';
@@ -18,7 +19,26 @@ import { RPError } from './util.mjs';
 import { budgetValue, budgetMcpResult } from './budget.mjs';
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
+/** Legacy MCP revisions: an initialize handshake opens a session. */
 export const SUPPORTED_PROTOCOLS = ['2025-11-25', '2025-06-18', '2025-03-26', '2024-11-05'];
+/** Modern MCP revisions: stateless, every request carries its version, capabilities and client in _meta. */
+export const MODERN_PROTOCOLS = ['2026-07-28'];
+export const TASKS_EXTENSION = 'io.modelcontextprotocol/tasks';
+const META = {
+  version: 'io.modelcontextprotocol/protocolVersion',
+  capabilities: 'io.modelcontextprotocol/clientCapabilities',
+  client: 'io.modelcontextprotocol/clientInfo',
+  server: 'io.modelcontextprotocol/serverInfo',
+  logLevel: 'io.modelcontextprotocol/logLevel',
+  subscription: 'io.modelcontextprotocol/subscriptionId',
+};
+/** A modern tools/call still running after this long becomes a task the client polls (tasks extension). */
+const TASK_AFTER_MS = Math.max(0, Number(process.env.REVERSEPORT_TASK_AFTER_MS ?? 2500) || 0);
+const TASK_TTL_MS = 6 * 3600_000;
+const TASK_POLL_MS = 1000;
+const MAX_TASKS = 200;
+const LIST_TTL_MS = 300_000;
+const LIST_METHODS = new Set(['tools/list', 'prompts/list', 'resources/list', 'resources/read', 'resources/templates/list']);
 const ENGINE_START_TIMEOUT_MS = Number(process.env.REVERSEPORT_ENGINE_TIMEOUT_MS) || 60_000;
 const MAX_RESTARTS = 3;
 
@@ -279,19 +299,45 @@ export function createRelay(hooks = {}, options = {}) {
   const explicitTools = options.tools ?? process.env.REVERSEPORT_TOOLS;
   let profile = PROFILES[String(options.profile ?? process.env.REVERSEPORT_PROFILE ?? 'standard').toLowerCase()] ? String(options.profile ?? process.env.REVERSEPORT_PROFILE ?? 'standard').toLowerCase() : 'standard';
   let filter = toolFilter(explicitTools ?? PROFILES[profile].tools);
-  const state = { initialized: false, clientReady: false, engine: null, note: null, status: 'not-started', knownEngineTools: new Set(), restarts: 0, starting: null, initParams: null, clientInfo: null };
+  const state = { initialized: false, clientReady: false, engine: null, note: null, status: 'not-started', knownEngineTools: new Set(), restarts: 0, starting: null, initParams: null, clientInfo: null,
+    legacy: false, modernStart: null, modernLogLevel: null, subscriptions: new Map(), tasks: new Map(), requestKeys: new Map(), taskTokens: new Map() };
   let writerQueue = Promise.resolve();
+  let taskTokenCount = 0;
+
+  /** List changes reach a legacy client directly and modern clients only through their subscriptions/listen streams. */
+  function listChanged(kind) {
+    const method = `notifications/${kind}/list_changed`;
+    if (state.legacy && state.clientReady) hooks.notify?.({ method, params: {} });
+    const flag = { tools: 'toolsListChanged', prompts: 'promptsListChanged', resources: 'resourcesListChanged' }[kind];
+    for (const [id, sub] of state.subscriptions) if (sub.notifications[flag]) hooks.notify?.({ method, params: { _meta: { [META.subscription]: id } } });
+  }
 
   const engineHooks = {
-    onNotification: msg => { if (state.clientReady) hooks.notify?.({ method: msg.method, ...(msg.params === undefined ? {} : { params: msg.params }) }); },
-    onRequest: msg => hooks.request ? hooks.request({ method: msg.method, ...(msg.params === undefined ? {} : { params: msg.params }) }) : (msg.method === 'roots/list' ? { result: { roots: [] } } : { error: { code: -32601, message: `${msg.method} is not available over this connection.` } }),
+    onNotification: msg => {
+      const params = msg.params;
+      const kind = /^notifications\/(tools|prompts|resources)\/list_changed$/.exec(msg.method)?.[1];
+      if (kind) return listChanged(kind);
+      if (msg.method === 'notifications/progress' && state.taskTokens.has(params?.progressToken)) {
+        const task = state.taskTokens.get(params.progressToken);
+        if (task) { // the call became a task: progress goes into its status, not onto the wire
+          const amount = params.total ? `${params.progress}/${params.total}` : `${params.progress}`;
+          task.statusMessage = params.message ? `${params.message} (${amount})` : `Progress ${amount}`;
+          task.lastUpdatedAt = new Date().toISOString();
+        }
+        if (task || String(params.progressToken).startsWith('rp-task-')) return;
+      }
+      if (state.legacy) { if (state.clientReady) hooks.notify?.({ method: msg.method, ...(params === undefined ? {} : { params }) }); return; }
+      // Modern clients: request-scoped progress, and log messages only once they asked for a log level.
+      if (msg.method === 'notifications/progress' || (msg.method === 'notifications/message' && state.modernLogLevel)) hooks.notify?.({ method: msg.method, ...(params === undefined ? {} : { params }) });
+    },
+    onRequest: msg => (hooks.request && state.legacy) ? hooks.request({ method: msg.method, ...(msg.params === undefined ? {} : { params: msg.params }) }) : (msg.method === 'roots/list' ? { result: { roots: [] } } : { error: { code: -32601, message: `${msg.method} is not available over this connection.` } }),
     onExit: reason => {
       for (const t of state.engine?.tools ?? []) state.knownEngineTools.add(t.name);
       state.status = state.restarts >= MAX_RESTARTS ? 'limit' : 'stopped';
       state.note = state.status === 'limit'
         ? `The deep-analysis engine ${reason} and has stopped ${MAX_RESTARTS} times in a row, so it will not restart in this session. ReversePort's own tools still work.`
         : `The deep-analysis engine ${reason}. ReversePort's own tools still work; the next engine tool call restarts it.`;
-      if (state.clientReady) hooks.notify?.({ method: 'notifications/tools/list_changed', params: {} });
+      listChanged('tools');
     },
   };
 
@@ -322,7 +368,7 @@ export function createRelay(hooks = {}, options = {}) {
     if (!state.engine || state.restarts >= MAX_RESTARTS) { if (state.engine) state.status = 'limit'; return null; }
     if (!state.starting) {
       state.restarts++;
-      state.starting = startEngine(state.initParams).then(e => { if (e) state.engine = e; state.starting = null; if (e && state.clientReady) hooks.notify?.({ method: 'notifications/tools/list_changed', params: {} }); return e; });
+      state.starting = startEngine(state.initParams).then(e => { if (e) state.engine = e; state.starting = null; if (e) listChanged('tools'); return e; });
     }
     return state.starting;
   }
@@ -387,7 +433,7 @@ export function createRelay(hooks = {}, options = {}) {
       profile = wanted;
       if (!explicitTools) filter = toolFilter(PROFILES[profile].tools);
       const after = listedTools().length;
-      if (state.clientReady) hooks.notify?.({ method: 'notifications/tools/list_changed', params: {} });
+      listChanged('tools');
       return toolResult({ profile, about: PROFILES[profile].about, listedBefore: before, listedNow: after, ...(explicitTools ? { note: 'REVERSEPORT_TOOLS is set, so the tool selection follows it; only description length changed.' } : {}), next: 'Call tools/list again if your client does not refresh by itself. engine_tools/engine_call still reach every tool.' });
     }
     if (name === 'engine_tools') {
@@ -414,64 +460,237 @@ export function createRelay(hooks = {}, options = {}) {
     return callEngineTool(args.tool, args.arguments, params?._meta, clientKey);
   }
 
-  async function handle(msg) {
-    if (!msg || Array.isArray(msg) || msg.jsonrpc !== '2.0') return { jsonrpc: '2.0', id: msg?.id ?? null, error: { code: -32600, message: 'Invalid request: send one JSON-RPC 2.0 object per line.' } };
+  /** One tools/call (both eras). `key` identifies the request towards the engine, so cancellation finds it. */
+  async function toolsCall(params, key) {
+    const name = params?.name;
+    const engine = state.engine?.alive ? state.engine : null;
+    if (localToolDefs.some(t => t.name === name)) return runLocal(name, params.arguments);
+    if (META_TOOLS.some(t => t.name === name)) return meta(name, params.arguments, params, key);
+    if (engine?.tools.some(t => t.name === name) || state.knownEngineTools.has(name)) return callEngineTool(name, params.arguments, params._meta, key);
+    if (!engine && knownEngineToolNames().has(name)) return unavailable(name);
+    const names = [...localToolDefs.map(t => t.name), ...META_TOOLS.map(t => t.name), ...(engine ? engine.tools.map(t => t.name) : knownEngineToolNames())];
+    const near = closest(name, names, 3);
+    return toolError(new RPError('UNKNOWN_TOOL', `Unknown tool "${name}".${near ? ` Did you mean "${near}"?` : ''} tools/list shows the listed tools${state.engine ? '; engine_tools {query} finds the rest' : ''}.`));
+  }
+
+  /** tools/call with a request key that notifications/cancelled can find while the request is open. */
+  async function trackedCall(id, params) {
+    const key = { requestId: id };
+    state.requestKeys.set(id, key);
+    try { return await toolsCall(params, key); } finally { if (state.requestKeys.get(id) === key) state.requestKeys.delete(id); }
+  }
+
+  const serverInfo = () => ({ name: 'reverseport', title: 'ReversePort', version: VERSION });
+  const instructions = () => [INSTRUCTIONS, state.note].filter(Boolean).join('\n\n');
+
+  // ------------------------------------------------------------------------------------------ modern MCP (2026-07-28)
+  function modernCapabilities() {
+    const engineCaps = state.engine?.initResult?.capabilities ?? { prompts: {}, resources: {}, completions: {} };
+    const { logging, experimental, tools, ...rest } = engineCaps; // logging is deprecated in 2026-07-28
+    return { ...rest, tools: { ...(tools ?? {}), listChanged: true }, extensions: { [TASKS_EXTENSION]: {} } };
+  }
+
+  /** Start the engine once for modern clients; concurrent first requests share the start. */
+  function ensureModern(meta) {
+    if (state.initialized) return state.modernStart ?? Promise.resolve();
+    state.initialized = true;
+    state.clientReady = true;
+    state.clientInfo = meta?.[META.client] ?? null;
+    // The engine keeps the legacy handshake with us; it gets no client capabilities, so it never asks for roots.
+    state.initParams = { protocolVersion: SUPPORTED_PROTOCOLS[0], capabilities: {}, clientInfo: state.clientInfo ?? { name: 'reverseport-modern-client', version: '0' } };
+    state.modernStart = startEngine(state.initParams).then(e => { state.engine = e; if (!e) state.restarts = MAX_RESTARTS; });
+    return state.modernStart;
+  }
+
+  function decorate(result, method) {
+    const out = { ...result, resultType: result?.resultType ?? 'complete', _meta: { ...(result?._meta ?? {}), [META.server]: serverInfo() } };
+    if (LIST_METHODS.has(method)) { out.ttlMs ??= LIST_TTL_MS; out.cacheScope ??= 'private'; }
+    return out;
+  }
+
+  const taskView = task => {
+    const { record, key, token, ...view } = task;
+    for (const k of Object.keys(view)) if (view[k] === undefined) delete view[k];
+    return view;
+  };
+
+  function purgeTasks(now = Date.now()) {
+    for (const [taskId, task] of state.tasks) {
+      const terminal = ['completed', 'failed', 'cancelled'].includes(task.status);
+      if (terminal && now - Date.parse(task.createdAt) > task.ttlMs) state.tasks.delete(taskId);
+    }
+    if (state.tasks.size <= MAX_TASKS) return;
+    for (const [taskId, task] of state.tasks) {
+      if (state.tasks.size <= MAX_TASKS) break;
+      if (['completed', 'failed', 'cancelled'].includes(task.status)) state.tasks.delete(taskId);
+    }
+  }
+
+  /** tools/call for a client that accepts tasks: answer directly when quick, else hand back a task to poll. */
+  async function callAsTask(id, params) {
+    const ownToken = params?._meta?.progressToken;
+    const token = ownToken ?? `rp-task-${++taskTokenCount}`;
+    const forwarded = { ...params, _meta: { ...(params?._meta ?? {}), progressToken: token } };
+    if (ownToken === undefined) state.taskTokens.set(token, null); // ours: progress is folded into the task only
+    const key = { requestId: id };
+    state.requestKeys.set(id, key);
+    const work = toolsCall(forwarded, key);
+    const later = Symbol('later');
+    let timer;
+    const first = await Promise.race([work, new Promise(r => { timer = setTimeout(() => r(later), TASK_AFTER_MS); })]);
+    clearTimeout(timer);
+    if (first !== later) {
+      state.requestKeys.delete(id);
+      if (ownToken === undefined) state.taskTokens.delete(token);
+      return decorate(first, 'tools/call');
+    }
+    purgeTasks();
+    const now = new Date().toISOString();
+    const task = { taskId: randomUUID(), status: 'working', statusMessage: `${params?.name ?? 'The tool'} is still running.`, createdAt: now, lastUpdatedAt: now, ttlMs: TASK_TTL_MS, pollIntervalMs: TASK_POLL_MS, key, token };
+    state.tasks.set(task.taskId, task);
+    state.taskTokens.set(token, task);
+    state.requestKeys.delete(id); // from now on tasks/cancel, not notifications/cancelled, ends it
+    const settle = update => {
+      state.taskTokens.delete(token);
+      if (task.status !== 'working') return; // cancelled meanwhile: the late result is dropped
+      Object.assign(task, update, { lastUpdatedAt: new Date().toISOString() });
+    };
+    work.then(result => settle({ status: 'completed', statusMessage: result?.isError ? 'Finished with a tool error; see the result.' : 'Finished.', result: decorate(result, 'tools/call') }),
+      e => settle({ status: 'failed', statusMessage: e?.message ?? String(e), error: { code: -32603, message: e?.message ?? String(e) } }));
+    return { resultType: 'task', ...taskView(task), _meta: { [META.server]: serverInfo() } };
+  }
+
+  function taskRequest(method, params, caps) {
+    if (!caps?.extensions?.[TASKS_EXTENSION]) return { error: { code: -32021, message: `Missing required client capability: ${method} needs the ${TASKS_EXTENSION} extension in this request's io.modelcontextprotocol/clientCapabilities.`, data: { required: { extensions: { [TASKS_EXTENSION]: {} } } } } };
+    purgeTasks();
+    const task = state.tasks.get(params?.taskId);
+    if (!task) return { error: { code: -32602, message: `Failed to retrieve task: Task not found (${String(params?.taskId ?? '')}). Task ids last ${TASK_TTL_MS / 3600_000} hours and do not survive a server restart; call the tool again.` } };
+    if (method === 'tasks/get') return { result: { ...taskView(task), resultType: 'complete' } };
+    if (method === 'tasks/update') return { result: { resultType: 'complete' } }; // ReversePort tasks never wait for input
+    if (task.status === 'working') { // tasks/cancel
+      const engine = state.engine?.alive ? state.engine : null;
+      const engineId = engine?.idFor(task.key);
+      if (engineId !== undefined) {
+        engine.write({ method: 'notifications/cancelled', params: { requestId: engineId, reason: 'The client cancelled the task.' } });
+        const pending = engine.pending.get(engineId); // the engine sends nothing more for it: settle it here
+        engine.pending.delete(engineId);
+        pending?.resolve(toolError(new RPError('CANCELLED', 'The client cancelled this task.')));
+      }
+      Object.assign(task, { status: 'cancelled', statusMessage: 'Cancelled by the client.', lastUpdatedAt: new Date().toISOString() });
+      state.taskTokens.delete(task.token);
+    }
+    return { result: { resultType: 'complete' } };
+  }
+
+  async function listen(id, params) {
+    if (!hooks.notify) return { error: { code: -32601, message: 'subscriptions/listen needs a streaming connection (stdio). This HTTP endpoint answers with JSON only: call tools/list again when a result says the list changed.' } };
+    const wanted = params?.notifications ?? {};
+    const notifications = {};
+    for (const flag of ['toolsListChanged', 'promptsListChanged', 'resourcesListChanged']) if (wanted[flag] === true) notifications[flag] = true;
+    const sub = { notifications };
+    const ended = new Promise(resolve => { sub.end = resolve; });
+    state.subscriptions.set(id, sub);
+    hooks.notify({ method: 'notifications/subscriptions/acknowledged', params: { _meta: { [META.subscription]: id }, notifications } });
+    const how = await ended;
+    state.subscriptions.delete(id);
+    return how === 'client' ? null : { result: { resultType: 'complete', _meta: { [META.subscription]: id } } };
+  }
+
+  async function handleModern(msg, version) {
     const { id, method, params } = msg;
+    const reply = result => ({ jsonrpc: '2.0', id, result: decorate(result, method) });
+    const fail = (code, message, data) => ({ jsonrpc: '2.0', id, error: { code, message, ...(data === undefined ? {} : { data }) } });
+    if (!MODERN_PROTOCOLS.includes(version)) return fail(-32022, 'Unsupported protocol version', { supported: [...MODERN_PROTOCOLS, ...SUPPORTED_PROTOCOLS], requested: version });
+    const metaIn = params._meta;
+    const caps = metaIn[META.capabilities] ?? {};
+    if (metaIn[META.logLevel]) state.modernLogLevel = metaIn[META.logLevel];
+    if (method === 'ping' || method === 'logging/setLevel') return fail(-32601, `Method not found: ${method} is not part of MCP ${version}.`);
+    await ensureModern(metaIn);
+    if (method === 'subscriptions/listen') {
+      const r = await listen(id, params);
+      if (!r) return undefined; // cancelled by the client: nothing more is sent for it
+      return r.error ? fail(r.error.code, r.error.message) : { jsonrpc: '2.0', id, result: r.result };
+    }
+    if (method === 'tasks/get' || method === 'tasks/update' || method === 'tasks/cancel') {
+      const r = taskRequest(method, params, caps);
+      return r.error ? fail(r.error.code, r.error.message, r.error.data) : { jsonrpc: '2.0', id, result: { ...r.result, _meta: { [META.server]: serverInfo() } } };
+    }
+    if (method === 'tools/call') {
+      if (caps?.extensions?.[TASKS_EXTENSION]) return { jsonrpc: '2.0', id, result: await callAsTask(id, params) };
+      return reply(await trackedCall(id, params));
+    }
+    const res = await legacyRequest({ id, method, params });
+    return res?.error ? res : reply(res.result);
+  }
+
+  // ------------------------------------------------------------------------------------------ requests (both eras)
+  async function legacyRequest({ id, method, params }) {
     const reply = result => ({ jsonrpc: '2.0', id, result });
     const fail = (code, message, data) => ({ jsonrpc: '2.0', id, error: { code, message, ...(data === undefined ? {} : { data }) } });
     const engine = state.engine?.alive ? state.engine : null;
-
-    if (id === undefined) { // notifications
-      if (method === 'notifications/initialized') { state.clientReady = true; return; }
-      if (method === 'notifications/cancelled' && params?.requestId !== undefined) {
-        const engineId = engine?.idFor(params.requestId);
-        if (engineId !== undefined) engine.write({ method, params: { ...params, requestId: engineId } });
-        return;
-      }
-      if (engine) engine.write({ method, ...(params === undefined ? {} : { params }) });
-      return;
-    }
-
-    if (method === 'initialize') {
-      if (!state.initialized) {
-        state.initialized = true;
-        state.initParams = params ?? {};
-        state.clientInfo = params?.clientInfo ?? null;
-        state.engine = await startEngine(state.initParams);
-        if (!state.engine) state.restarts = MAX_RESTARTS; // nothing to restart
-      }
-      const wanted = params?.protocolVersion;
-      const protocolVersion = state.engine?.initResult?.protocolVersion ?? (SUPPORTED_PROTOCOLS.includes(wanted) ? wanted : SUPPORTED_PROTOCOLS[0]);
-      const engineCaps = state.engine?.initResult?.capabilities ?? {};
-      const capabilities = { logging: {}, ...engineCaps, tools: { ...(engineCaps.tools ?? {}), listChanged: true } };
-      // The engine's own instructions repeat the routing above, so they are not sent twice.
-      const instructions = [INSTRUCTIONS, state.note].filter(Boolean).join('\n\n');
-      return reply({ protocolVersion, capabilities, serverInfo: { name: 'reverseport', title: 'ReversePort', version: VERSION }, instructions });
-    }
-    if (method === 'ping') return reply({});
-    if (!state.initialized) return fail(-32002, 'Server not initialized: send initialize first.');
-
     if (method === 'tools/list') return reply({ tools: params?.cursor ? [] : listedTools() });
-    if (method === 'tools/call') {
-      const name = params?.name;
-      if (localToolDefs.some(t => t.name === name)) return reply(await runLocal(name, params.arguments));
-      if (META_TOOLS.some(t => t.name === name)) return reply(await meta(name, params.arguments, params, id));
-      if (engine?.tools.some(t => t.name === name) || state.knownEngineTools.has(name)) return reply(await callEngineTool(name, params.arguments, params._meta, id));
-      if (!engine && knownEngineToolNames().has(name)) return reply(unavailable(name));
-      const names = [...localToolDefs.map(t => t.name), ...META_TOOLS.map(t => t.name), ...(engine ? engine.tools.map(t => t.name) : knownEngineToolNames())];
-      const near = closest(name, names, 3);
-      return reply(toolError(new RPError('UNKNOWN_TOOL', `Unknown tool "${name}".${near ? ` Did you mean "${near}"?` : ''} tools/list shows the listed tools${state.engine ? '; engine_tools {query} finds the rest' : ''}.`)));
-    }
+    if (method === 'tools/call') return reply(await trackedCall(id, params));
     if (method === 'logging/setLevel' && !engine) return reply({});
     if (engine) {
-      const res = await engine.forward(method, params, id);
-      return res.error ? { jsonrpc: '2.0', id, error: res.error } : reply(res.result);
+      const key = { requestId: id };
+      state.requestKeys.set(id, key);
+      try {
+        const res = await engine.forward(method, params, key);
+        return res.error ? { jsonrpc: '2.0', id, error: res.error } : reply(res.result);
+      } finally { if (state.requestKeys.get(id) === key) state.requestKeys.delete(id); }
     }
     if (method === 'prompts/list') return reply({ prompts: [] });
     if (method === 'resources/list') return reply({ resources: [] });
     if (method === 'resources/templates/list') return reply({ resourceTemplates: [] });
     if (method === 'completion/complete') return reply({ completion: { values: [], hasMore: false } });
     return fail(-32601, `Method not found: ${method}`);
+  }
+
+  async function handle(msg) {
+    if (!msg || Array.isArray(msg) || msg.jsonrpc !== '2.0') return { jsonrpc: '2.0', id: msg?.id ?? null, error: { code: -32600, message: 'Invalid request: send one JSON-RPC 2.0 object per line.' } };
+    const { id, method, params } = msg;
+    const reply = result => ({ jsonrpc: '2.0', id, result });
+    const fail = (code, message, data) => ({ jsonrpc: '2.0', id, error: { code, message, ...(data === undefined ? {} : { data }) } });
+
+    if (id === undefined) { // notifications
+      const engine = state.engine?.alive ? state.engine : null;
+      if (method === 'notifications/initialized') { state.clientReady = true; return; }
+      if (method === 'notifications/cancelled' && params?.requestId !== undefined) {
+        const sub = state.subscriptions.get(params.requestId);
+        if (sub) return sub.end('client');
+        const key = state.requestKeys.get(params.requestId);
+        const engineId = key ? engine?.idFor(key) : undefined;
+        if (engineId !== undefined) engine.write({ method, params: { ...params, requestId: engineId } });
+        return;
+      }
+      if (engine && state.legacy) engine.write({ method, ...(params === undefined ? {} : { params }) });
+      return;
+    }
+
+    // MCP 2026-07-28: discovery, and every request that carries its protocol version in _meta.
+    if (method === 'server/discover') return reply({ resultType: 'complete', supportedVersions: [...MODERN_PROTOCOLS, ...SUPPORTED_PROTOCOLS], capabilities: modernCapabilities(), _meta: { [META.server]: serverInfo() }, instructions: instructions(), ttlMs: LIST_TTL_MS, cacheScope: 'private' });
+    const modern = params?._meta?.[META.version];
+    if (modern !== undefined && method !== 'initialize') return handleModern(msg, modern);
+
+    if (method === 'initialize') {
+      state.legacy = true;
+      if (!state.initialized) {
+        state.initialized = true;
+        state.initParams = params ?? {};
+        state.clientInfo = params?.clientInfo ?? null;
+        state.engine = await startEngine(state.initParams);
+        if (!state.engine) state.restarts = MAX_RESTARTS; // nothing to restart
+      } else if (state.modernStart) await state.modernStart;
+      const wanted = params?.protocolVersion;
+      const protocolVersion = state.engine?.initResult?.protocolVersion ?? (SUPPORTED_PROTOCOLS.includes(wanted) ? wanted : SUPPORTED_PROTOCOLS[0]);
+      const engineCaps = state.engine?.initResult?.capabilities ?? {};
+      const capabilities = { logging: {}, ...engineCaps, tools: { ...(engineCaps.tools ?? {}), listChanged: true } };
+      // The engine's own instructions repeat the routing above, so they are not sent twice.
+      return reply({ protocolVersion, capabilities, serverInfo: serverInfo(), instructions: instructions() });
+    }
+    if (method === 'ping') return reply({});
+    if (!state.initialized) return fail(-32002, `Server not initialized: send initialize first, or send MCP ${MODERN_PROTOCOLS[0]} requests with io.modelcontextprotocol/protocolVersion in _meta.`);
+    return legacyRequest(msg);
   }
 
   return {
@@ -488,6 +707,8 @@ export function createRelay(hooks = {}, options = {}) {
       if (res.error) return toolError(new RPError('UNKNOWN_TOOL', res.error.message));
       return res.result;
     },
+    /** End open subscriptions/listen streams gracefully (shutdown). */
+    endSubscriptions() { for (const sub of state.subscriptions.values()) sub.end('server'); },
     info: () => ({ engine: state.engine?.alive ? 'running' : 'unavailable', note: state.note, profile, toolset: filter.label, listed: listedTools().length, engineTools: engineTools().length }),
     close() { if (state.engine?.alive) { try { state.engine.child.stdin.end(); } catch {} } },
   };
