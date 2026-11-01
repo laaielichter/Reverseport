@@ -118,8 +118,43 @@ always do. The server still validates the full schema.
 Over MCP and HTTP, a tool result larger than 256 KB is saved whole to `~/.reverseport/tool-output/` (or under
 `REVERSEPORT_HOME`). The agent gets a shortened result: the longest lists keep their first items, long text keeps its
 first lines, and `outputTruncated` (or a closing line for plain text) says what was shortened and where the full
-result is. Saved results are removed after 7 days. `REVERSEPORT_MAX_OUTPUT_BYTES` sets another limit (at least 4096
-bytes), or `off`. The CLI always prints the full result.
+result is. Over MCP the result also carries a `resource_link` to `reverseport://tool-output/<file>`, so clients
+without file access read the complete result with `resources/read`. Saved results are removed after 7 days.
+`REVERSEPORT_MAX_OUTPUT_BYTES` sets another limit (at least 4096 bytes), or `off`. The CLI always prints the full
+result.
+
+Most results stay far below that limit: `re_scan`, `re_graph` and `re_symbols` return short lists by default, with
+counts (`orphanCount`, `cycleCount`, `functionCount`…) for what was left out, and `limit`/`match` for more.
+
+## Several steps in one call
+
+`run_batch` runs up to 20 tool calls in order and answers once. `select` keeps only the fields an agent needs from
+each result, which saves context and round trips:
+
+```json
+{
+  "calls": [
+    {
+      "tool": "re_scan",
+      "arguments": { "path": "/games/demo" },
+      "select": ["primary.id", "entryPoints[*].file"]
+    },
+    {
+      "tool": "re_graph",
+      "arguments": { "path": "/games/demo" },
+      "select": ["cycleCount", "portOrder"]
+    },
+    {
+      "tool": "port_map",
+      "arguments": { "from": "godot", "to": "unity" },
+      "select": ["summary"]
+    }
+  ]
+}
+```
+
+It stops at the first error and says which call to fix and where to resume; `continueOnError: true` runs the rest.
+Engine tools work too. In strict function-calling formats, `arguments` is a JSON object written as a string.
 
 ## Errors look the same everywhere
 
@@ -145,6 +180,10 @@ and `remediation`. An unknown tool name is a tool result with `UNKNOWN_TOOL` and
 errors exit with 2 and other failures with 1; the error is JSON on stderr (at an interactive terminal the
 `reverseport` command prints plain text instead). Over HTTP the status follows the code: 400 for input, 404 for an
 unknown tool, 503 when the engine or a public source is unavailable, 500 for unexpected failures.
+
+When the exact same call fails twice in a row (three times for errors marked `retryable`), the error comes back
+with `repeated` and `retryable: false` and says plainly not to send it unchanged again: change the input, use another
+tool, or tell the user what is blocking. Any other call, or a success, does not count against it.
 
 The engine states are distinct, so the next step is always right: `ENGINE_UNAVAILABLE` (not built — install it),
 `ENGINE_OFF` (turned off — unset `REVERSEPORT_ENGINE`), `ENGINE_STOPPED` (crashed — call again once; it restarts),

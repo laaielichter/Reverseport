@@ -146,7 +146,7 @@ export async function detectEngines(root, files) {
     const starts = [...(typeof pkg.bin === 'string' ? [pkg.bin] : Object.values(pkg.bin ?? {})), ...['start', 'dev', 'serve'].map(k => scriptEntry(pkg.scripts?.[k])).filter(Boolean)];
     // `bun run --cwd packages/cli src/index.ts` at the root starts a file in another package.
     for (let i = 0; i < starts.length; i++) if (typeof starts[i] === 'string' && starts[i].startsWith('\0')) starts[i] = path.posix.relative(pkgDir || '.', starts[i].slice(1)) || starts[i].slice(1);
-    add({ id: 'node', name: `Node.js package${found.length ? ` (${[...new Set(found)].join(', ')})` : ''}`, kind: 'project', root: path.posix.dirname(f.rel) === '.' ? '' : path.posix.dirname(f.rel), evidence: [f.rel], details: { name: pkg.name, main: pkg.main, bin: pkg.bin, starts: [...new Set(starts)], scripts: Object.keys(pkg.scripts ?? {}), frameworks: [...new Set(found)] } });
+    add({ id: 'node', name: `Node.js package${found.length ? ` (${[...new Set(found)].join(', ')})` : ''}`, kind: 'project', root: path.posix.dirname(f.rel) === '.' ? '' : path.posix.dirname(f.rel), evidence: [f.rel], details: { name: pkg.name, main: pkg.main, bin: pkg.bin, starts: [...new Set(starts)], ...packageScripts(pkg.scripts), frameworks: [...new Set(found)] } });
   }
   if (pkgFiles.length > 1 || rels.some(r => /^(turbo|nx|lerna|rush)\.json$|^pnpm-workspace\.yaml$/.test(r))) {
     let rootPkg = {};
@@ -224,6 +224,14 @@ export async function scanProject({ path: dir, maxFiles = 50000 } = {}) {
     entryPoints, biggest, binaries,
     next: nextSteps(engines, binaries, abs),
   };
+}
+
+/** The scripts an agent runs first (start, dev, build, test…), then the rest, at most 20; the total is kept. */
+function packageScripts(scripts = {}) {
+  const names = Object.keys(scripts ?? {});
+  const key = /^(start|dev|build|test|serve|preview|lint|typecheck|check|format)(?::|$)/;
+  const ordered = [...names.filter(n => key.test(n)), ...names.filter(n => !key.test(n))];
+  return { scripts: ordered.slice(0, 20), ...(names.length > 20 ? { scriptCount: names.length } : {}) };
 }
 
 function nextSteps(engines, binaries, root) {

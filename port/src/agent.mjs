@@ -106,7 +106,19 @@ export function formatTools(tools, format = 'mcp') {
 /** Strict when the schema allows it; otherwise the portable schema with strict:false for that one tool. */
 function strictOrPortable(schema) {
   const portable = portableSchema(schema);
-  return strictCompatible(portable) ? { parameters: strictSchema(portable), strict: true } : { parameters: portable, strict: false };
+  if (strictCompatible(portable)) return { parameters: strictSchema(portable), strict: true };
+  // A free-form object (tool arguments for engine_call or run_batch) cannot be strict; as a JSON string it can,
+  // and ReversePort parses such strings back.
+  const stringly = freeformAsString(portable);
+  return strictCompatible(stringly) ? { parameters: strictSchema(stringly), strict: true } : { parameters: portable, strict: false };
+}
+
+function freeformAsString(s, depth = 0) {
+  if (!s || typeof s !== 'object' || depth > 6) return s;
+  if (s.type === 'object' && depth > 0 && !Object.keys(s.properties ?? {}).length) return { type: 'string', description: `${s.description ?? ''} Give a JSON object as a string, e.g. {"path":"/game"}.`.trim() };
+  if (s.type === 'object') return { ...s, properties: Object.fromEntries(Object.entries(s.properties ?? {}).map(([k, v]) => [k, freeformAsString(v, depth + 1)])) };
+  if (s.type === 'array') return { ...s, items: freeformAsString(s.items, depth + 1) };
+  return s;
 }
 
 function strictCompatible(s, depth = 0) {
