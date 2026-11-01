@@ -71,7 +71,10 @@ cliTest.for([false, true])(
       child.once("error", reject);
       child.once("close", () => resolve());
     });
-    child.stdin.end(`[${"[],".repeat(1_400_000)}[]]`);
+    // 6 MB (under the 8 MiB stdin cap) needs about 430 MB of headroom. With a 256 MB old space Node reports about
+    // 315 MB in total (more on Node 24), so the 4.2 MB input used before (about 302 MB) passed or failed depending
+    // on how much heap the runtime had already used.
+    child.stdin.end(`[${"[],".repeat(2_000_000)}[]]`);
     expect(await waitForExit(child, 10_000), stderr).toBe(true);
     await closed;
     if (writeFailure !== undefined)
