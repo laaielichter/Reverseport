@@ -1,7 +1,18 @@
 import { describe, expect, it } from "vitest";
 
-import { AnalysisCancelledError } from "../domain/analysisErrorCore.js";
+import {
+  CPU,
+  LC,
+  dylibCommand,
+  fatImage,
+  machoImage,
+} from "../artifacts/apple/MachoImage.fixture.js";
+import {
+  AnalysisCancelledError,
+  AnalysisOutputError,
+} from "../domain/analysisErrorCore.js";
 import { err, ok } from "../domain/result.js";
+import { parseMachoLayout, selectMachoSlice } from "./AppleMachoSelection.js";
 import type { NativeCommandCapture } from "./CommandRunner.js";
 import { inspectNativeMacho } from "./NativeMachoInspection.js";
 import {
@@ -42,7 +53,6 @@ const inspect = async (lipo: string, architecture: "x86" | "arm64") => {
     run: (tool, args) => {
       commands.push({ tool, args });
       if (tool === "lipo") return Promise.resolve(ok(capture(tool, lipo)));
-      if (tool === "file") return Promise.resolve(ok(capture(tool, "Mach-O")));
       return Promise.resolve(err(new AnalysisCancelledError("inspect_native")));
     },
     invocation: () => {
@@ -61,7 +71,7 @@ describe("Mach-O tool architecture selection", () => {
       _tag: "AnalysisOutputError",
       reason: "lipo did not list i386; refusing to read another slice",
     });
-    expect(commands.map(({ tool }) => tool)).toEqual(["file", "lipo"]);
+    expect(commands.map(({ tool }) => tool)).toEqual(["lipo"]);
   });
 
   it("passes the arm64e slice lipo listed for an arm64 target", async () => {
@@ -74,6 +84,152 @@ describe("Mach-O tool architecture selection", () => {
       "arm64e",
       "/fixture/app",
     ]);
+  });
+
+  it.each([
+    { names: ["arm64v8", "arm64e"], selected: "arm64e" },
+    { names: ["arm64e", "arm64v8"], selected: "arm64e" },
+    { names: ["arm64v8", "arm64e", "arm64"], selected: "arm64" },
+    { names: ["arm64v8"], selected: "arm64v8" },
+    { names: ["arm64v8", "arm64e.x1"], selected: "arm64v8" },
+    { names: ["arm64e.x1", "arm64v8"], selected: "arm64v8" },
+    { names: ["arm64v8", "arm64e.v1"], selected: "arm64e.v1" },
+    { names: ["arm64e.v1", "arm64v8"], selected: "arm64e.v1" },
+  ] as const)(
+    "keeps inspection and dispatch on $selected for FAT order $names",
+    async ({ names, selected }) => {
+      const cpus = {
+        arm64: CPU.arm64,
+        arm64v8: { type: CPU.arm64.type, subtype: 1 },
+        arm64e: CPU.arm64e,
+        "arm64e.x1": { type: CPU.arm64.type, subtype: 0x8000000c },
+        "arm64e.v1": { type: CPU.arm64.type, subtype: 0x81000002 },
+      };
+      const slices = names.map((name) => {
+        const cpu = cpus[name];
+        return {
+          cpu,
+          bytes: machoImage({
+            cpu,
+            commands: [dylibCommand(LC.LOAD_DYLIB, `/fixture/${name}.dylib`)],
+          }),
+        };
+      });
+      const fat = Buffer.from(fatImage(slices));
+      const lipo = names
+        .map(
+          (name, index) =>
+            `architecture ${name}\n cputype ${cpus[name].type}\n cpusubtype ${cpus[name].subtype}\n offset ${(index + 1) * 4096}\n size ${slices[index]?.bytes.length}\n align 2^12\n`,
+        )
+        .join("");
+      const { commands } = await inspect(lipo, "arm64");
+      expect(commands.find(({ tool }) => tool === "otool")?.args).toEqual([
+        "-h",
+        "-l",
+        "-arch",
+        selected.split(".")[0],
+        "/fixture/app",
+      ]);
+      expect(commands.find(({ tool }) => tool === "dyld_info")?.args).toContain(
+        selected,
+      );
+      expect(selectMachoSlice(fat, "arm64").slice).toBe(
+        (names.findIndex((name) => name === selected) + 1) * 4096,
+      );
+      expect(parseMachoLayout(fat, "arm64").fixups.dylibs).toEqual([
+        `/fixture/${selected}.dylib`,
+      ]);
+    },
+  );
+});
+
+describe("Mach-O inspection container format", () => {
+  const runInspection = async (lipo: string) => {
+    const runner = new NativeFixtureRunner({ lipo });
+    return inspectNativeMacho({
+      target: nativeMachoTarget("/fixture/app"),
+      run: (tool, args) => runner.run(tool, args),
+      invocation: (capture) => ({
+        tool: capture.tool,
+        command: [capture.executable, ...capture.arguments],
+        tool_version: capture.toolVersion,
+        version_reason: capture.versionReason,
+        executable_sha256: capture.executableSha256,
+        exit: { code: capture.exitCode, signal: capture.signal },
+        stdout_bytes: capture.stdoutBytes,
+        stderr_bytes: capture.stderrBytes,
+      }),
+    });
+  };
+
+  it.each([
+    {
+      framing: "one-slice FAT",
+      lipo: `Fat header in: /fixture/app\nfat_magic 0xcafebabe\nnfat_arch 1\narchitecture arm64\n cputype CPU_TYPE_ARM64\n cpusubtype CPU_SUBTYPE_ARM64_ALL\n offset 4096\n size 128\n align 2^12\n`,
+      expected: "mach-o-universal",
+    },
+    {
+      framing: "thin",
+      lipo: "Non-fat file: /fixture/app is architecture: arm64\n",
+      expected: "mach-o",
+    },
+  ] as const)("reports parsed $framing framing", async ({ lipo, expected }) => {
+    const result = await runInspection(lipo);
+    if (!result.ok) throw result.error;
+    expect(result.value.result).toMatchObject({ format: expected });
+  });
+
+  it("does not call a lazy-info payload dependency exhaustive", async () => {
+    const runner = new NativeFixtureRunner({
+      lipo: "Non-fat file: /fixture/app is architecture: arm64\n",
+      "otool:-h": withOtoolMachHeader(
+        [
+          "Load command 0",
+          "      cmd LC_LOAD_DYLIB",
+          "  cmdsize 56",
+          "         name /usr/lib/libSystem.B.dylib (offset 24)",
+          "   time stamp 2 Thu Jan  1 00:00:02 1970",
+          "      current version 1.0.0",
+          "compatibility version 1.0.0",
+          "Load command 1",
+          "      cmd LC_LAZY_LOAD_DYLIB_INFO",
+          "  cmdsize 16",
+          "    dataoff 49304",
+          "   datasize 56",
+        ].join("\n"),
+      ),
+    });
+    const result = await inspectNativeMacho({
+      target: nativeMachoTarget("/fixture/app"),
+      run: (tool, args) => runner.run(tool, args),
+      invocation: (captured) => ({
+        tool: captured.tool,
+        command: [captured.executable, ...captured.arguments],
+        tool_version: captured.toolVersion,
+        version_reason: captured.versionReason,
+        executable_sha256: captured.executableSha256,
+        exit: { code: captured.exitCode, signal: captured.signal },
+        stdout_bytes: captured.stdoutBytes,
+        stderr_bytes: captured.stderrBytes,
+      }),
+    });
+    if (!result.ok) throw result.error;
+    expect(result.value.result).toMatchObject({
+      load_commands: {
+        items: [{ kind: "LC_LOAD_DYLIB" }, { kind: "LC_LAZY_LOAD_DYLIB_INFO" }],
+      },
+      dependencies: {
+        exhaustive: false,
+        total: null,
+        items: [
+          {
+            path: "/usr/lib/libSystem.B.dylib",
+            kind: "LC_LOAD_DYLIB",
+          },
+        ],
+        limitations: [expect.stringContaining("1 LC_LAZY_LOAD_DYLIB_INFO")],
+      },
+    });
   });
 });
 
@@ -186,3 +342,112 @@ describe("Mach-O UUID reconciliation", () => {
     );
   });
 });
+
+describe("Mach-O slice command scheduling", () => {
+  const SLICE_TOOLS = ["otool", "nm", "dyld_info", "dyld_info", "dwarfdump"];
+
+  /** Finish later-launched slice commands first and record overlap. */
+  const reorderingRunner = (failing: ReadonlySet<string> = new Set()) => {
+    const fixtures = new NativeFixtureRunner();
+    let inFlight = 0;
+    let maxInFlight = 0;
+    let launched = 0;
+    const run = async (tool: string, args: readonly string[]) => {
+      if (tool === "lipo") return fixtures.run(tool, args);
+      const order = launched++;
+      inFlight += 1;
+      maxInFlight = Math.max(maxInFlight, inFlight);
+      for (let turn = 0; turn < 12 - order * 2; turn += 1)
+        await new Promise((resolve) => setImmediate(resolve));
+      inFlight -= 1;
+      if (failing.has(tool))
+        return err(new AnalysisOutputError("inspect_macho", `${tool} failed`));
+      return fixtures.run(tool, args);
+    };
+    return { run, maxInFlight: () => maxInFlight };
+  };
+
+  const inspectWith = (run: ReturnType<typeof reorderingRunner>["run"]) =>
+    inspectNativeMacho({
+      target: nativeMachoTarget("/fixture/app"),
+      run,
+      invocation: (capture) => ({
+        tool: capture.tool,
+        command: [capture.executable, ...capture.arguments],
+        tool_version: capture.toolVersion,
+        version_reason: capture.versionReason,
+        executable_sha256: capture.executableSha256,
+        exit: { code: capture.exitCode, signal: capture.signal },
+        stdout_bytes: capture.stdoutBytes,
+        stderr_bytes: capture.stderrBytes,
+      }),
+    });
+
+  it("runs independent slice commands together and keeps provenance in declared order", async () => {
+    const runner = reorderingRunner();
+    const result = await inspectWith(runner.run);
+    if (!result.ok) throw result.error;
+    expect(runner.maxInFlight()).toBe(SLICE_TOOLS.length + 1);
+    expect(result.value.result).toMatchObject({
+      provenance: ["lipo", ...SLICE_TOOLS, "vtool"].map((tool) => ({
+        tool,
+      })),
+    });
+  });
+
+  it("reports the first failing slice command in declared order", async () => {
+    const runner = reorderingRunner(new Set(["nm", "dwarfdump"]));
+    const result = await inspectWith(runner.run);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error).toMatchObject({ reason: "nm failed" });
+  });
+});
+
+it.each(["10", "DSYM", "2"])(
+  "classifies the unbacked-text dyld refusal using observed file type %s",
+  async (fileType) => {
+    const diagnostic =
+      "section '__TEXT/__text' has offset=0 but is not a zero-fill section type\n";
+    const runner = new NativeFixtureRunner({
+      otool: [
+        "Mach header",
+        "magic cputype cpusubtype caps filetype ncmds sizeofcmds flags",
+        `0xfeedfacf 16777228 0 0x00 ${fileType} 0 0 0x0`,
+      ].join("\n"),
+    });
+    const result = await inspectNativeMacho({
+      target: nativeMachoTarget("/fixture/debug-companion"),
+      run: async (tool, args, _signal, acceptNonZeroIf) => {
+        const captured = await runner.run(tool, args);
+        if (!captured.ok || tool !== "dyld_info") return captured;
+        const refused = {
+          ...captured.value,
+          stdout: diagnostic,
+          stdoutBytes: Buffer.byteLength(diagnostic),
+          exitCode: 1,
+        };
+        if (acceptNonZeroIf?.(refused)) return ok(refused);
+        return err(
+          new AnalysisOutputError("inspect_macho", "unaccepted native failure"),
+        );
+      },
+      invocation: () => {
+        throw new Error(
+          "Refused target does not produce inspection provenance",
+        );
+      },
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error._tag).toBe(
+      fileType === "2"
+        ? "AnalysisOutputError"
+        : "AnalysisUnsupportedTargetError",
+    );
+    expect(result.error.capturedOutput).toMatchObject({
+      stdout: diagnostic,
+      exit_code: 1,
+    });
+  },
+);

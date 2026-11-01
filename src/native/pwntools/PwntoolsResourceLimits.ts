@@ -7,20 +7,16 @@ import {
 } from "./PwntoolsRelease.js";
 import { z } from "zod";
 import { PWNTOOLS_LIMITS } from "./PwntoolsRelease.js";
+import type { ArtifactResourceScope } from "../../artifacts/ArtifactResourceScope.js";
 
 /** Actual limits reported by the owned bridge after lowering inherited soft limits. */
 export const pwntoolsResourceLimitsSchema = z.strictObject({
   address_space_bytes: z
-    .number()
     .int()
     .nonnegative()
     .max(PWNTOOLS_LIMITS.addressSpaceBytes),
-  cpu_seconds: z.number().int().nonnegative().max(PWNTOOLS_LIMITS.cpuSeconds),
-  file_size_bytes: z
-    .number()
-    .int()
-    .nonnegative()
-    .max(PWNTOOLS_LIMITS.outputBytes),
+  cpu_seconds: z.int().nonnegative().max(PWNTOOLS_LIMITS.cpuSeconds),
+  file_size_bytes: z.int().nonnegative().max(PWNTOOLS_LIMITS.outputBytes),
 });
 
 /** A missing or invalid report leaves limits unknown and retains its read failure. */
@@ -42,6 +38,7 @@ export interface PwntoolsFailureEvidence {
 export const readPwntoolsFailureEvidence = async (
   cause: unknown,
   rootPath?: string,
+  resources?: ArtifactResourceScope,
 ): Promise<PwntoolsFailureEvidence> => {
   let limitReport: PwntoolsLimitReport | undefined;
   let marker: PwntoolsFailureEvidence["marker"];
@@ -56,6 +53,9 @@ export const readPwntoolsFailureEvidence = async (
       const reported = await readStableArtifact(
         join(rootPath, "resource.failure"),
         1,
+        undefined,
+        undefined,
+        resources,
       );
       const expected =
         cause.snapshot.exitCode === PWNTOOLS_MEMORY_FAILURE_EXIT ? "M" : "F";
@@ -90,6 +90,9 @@ export const readPwntoolsFailureEvidence = async (
       const reported = await readStableArtifact(
         join(rootPath, "limits.json"),
         4096,
+        undefined,
+        undefined,
+        resources,
       );
       limitReport = {
         limits: pwntoolsResourceLimitsSchema.parse(

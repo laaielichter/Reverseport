@@ -1,7 +1,8 @@
-import { addressedValue } from "../contracts/toolOutputSchemaPrimitives.js";
+import { addressedValueSchema } from "../domain/native/nativeInventory.js";
 import type { AnalysisError } from "../domain/analysisErrorBase.js";
 import {
   AnalysisCapabilityUnavailableError,
+  AnalysisCancelledError,
   AnalysisInputError,
   AnalysisOutputError,
 } from "../domain/analysisErrorCore.js";
@@ -23,9 +24,38 @@ export const resolveXrefsAddress = async (
   )
     return ok(selector);
 
-  const inventory = await analysis.execute("list_names", {}, { signal });
+  const named = await resolveXrefsName(analysis, selector, signal);
+  if (!named.ok) return named;
+  return named.value !== null
+    ? ok(named.value)
+    : err(
+        new AnalysisInputError("xrefs", undefined, [
+          {
+            path: ["address"],
+            reason: "invalid_value",
+            message: `Unknown analyzed symbol name ${JSON.stringify(selector)}. Use an exact analyzed name or a hexadecimal address.`,
+          },
+        ]),
+      );
+};
+
+/** Exact name resolution has one ambiguity owner for enhanced tools and CLI fallback. */
+export const resolveXrefsName = async (
+  analysis: AnalysisOperationPort,
+  selector: string,
+  signal?: AbortSignal,
+  operation: "xrefs" | "find_xrefs_to_name" = "xrefs",
+): Promise<Result<string | null, AnalysisError>> => {
+  if (signal?.aborted)
+    return err(new AnalysisCancelledError(operation, { cause: signal.reason }));
+  const inventory = await analysis.execute(
+    "list_names",
+    {},
+    signal === undefined ? {} : { signal },
+  );
   if (!inventory.ok) {
     if (
+      operation === "xrefs" &&
       inventory.error instanceof AnalysisCapabilityUnavailableError &&
       inventory.error.operation === "list_names" &&
       !inventory.error.cleanupIncomplete
@@ -44,6 +74,8 @@ export const resolveXrefsAddress = async (
       );
     return inventory;
   }
+  if (signal?.aborted)
+    return err(new AnalysisCancelledError(operation, { cause: signal.reason }));
   if (!Array.isArray(inventory.value.result))
     return err(
       new AnalysisOutputError(
@@ -54,7 +86,7 @@ export const resolveXrefsAddress = async (
 
   const addresses = new Set<string>();
   for (const [index, item] of inventory.value.result.entries()) {
-    const parsed = addressedValue.safeParse(item);
+    const parsed = addressedValueSchema.safeParse(item);
     if (!parsed.success || parsed.data.address.length === 0)
       return err(
         new AnalysisOutputError(
@@ -65,16 +97,13 @@ export const resolveXrefsAddress = async (
     if (parsed.data.value === selector) addresses.add(parsed.data.address);
   }
   const [address] = addresses;
-  if (addresses.size === 1 && address !== undefined) return ok(address);
+  if (addresses.size <= 1) return ok(address ?? null);
   return err(
-    new AnalysisInputError("xrefs", undefined, [
+    new AnalysisInputError(operation, undefined, [
       {
-        path: ["address"],
+        path: [operation === "xrefs" ? "address" : "name"],
         reason: "invalid_value",
-        message:
-          addresses.size === 0
-            ? `Unknown analyzed symbol name ${JSON.stringify(selector)}. Use an exact analyzed name or a hexadecimal address.`
-            : `Analyzed symbol name ${JSON.stringify(selector)} is ambiguous at ${[...addresses].join(", ")}. Select an exact address.`,
+        message: `Analyzed symbol name ${JSON.stringify(selector)} is ambiguous at ${[...addresses].sort().join(", ")}. Select an exact address.`,
       },
     ]),
   );

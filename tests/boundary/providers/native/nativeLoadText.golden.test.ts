@@ -16,12 +16,10 @@ it.each([
       await nativeFixture(`load-command-text-values/${slug}.txt`),
     ),
   );
-  expect(load.dependencies).toContainEqual({
-    path: name,
-    kind: "LC_ID_DYLIB",
-    current_version: "0.0.0",
-    compatibility_version: "0.0.0",
-  });
+  // The image's own install name is identity, not a dependency.
+  expect(load.dependencies.map(({ kind }) => kind)).not.toContain(
+    "LC_ID_DYLIB",
+  );
   expect(
     load.commands.find((command) => command.kind === "LC_ID_DYLIB")?.fields
       .name,

@@ -13,16 +13,17 @@ import { createDirectAnalysis } from "../../src/composition/directAnalysis.js";
 import type { AnalysisError } from "../../src/domain/analysisErrorBase.js";
 import { type Evidence, parseEvidence } from "../../src/domain/evidence.js";
 import type { Result } from "../../src/domain/result.js";
+import type { InventoryProjectionEvidenceResult } from "../../src/application/InventoryProjectionEvidence.js";
 import { createTestTempDirectory } from "../fixtures/temporaryDirectory.js";
 
 const { runProviderAnalysis } = createDirectAnalysis({});
 
 /** Assert a projection succeeded and return its Evidence for schema parsing. */
 export const requireSuccessfulProjection = (
-  result: Result<Evidence, AnalysisError>,
+  result: Result<InventoryProjectionEvidenceResult, AnalysisError>,
 ): Evidence => {
   if (!result.ok) throw result.error;
-  return result.value;
+  return result.value.evidence;
 };
 
 /** Write one synthetic ZIP application package from literal entries. */
@@ -61,7 +62,7 @@ export const inventoryApplicationPackage = async (
 export const requireDeterministicProjection = <Schema extends z.ZodType>(
   project: (input: {
     inventory_evidence: readonly Evidence[];
-  }) => Result<Evidence, AnalysisError>,
+  }) => Result<InventoryProjectionEvidenceResult, AnalysisError>,
   inventory: Evidence,
   schema: Schema,
 ): z.output<Schema> => {

@@ -1,3 +1,4 @@
+import { ArtifactResourceScope } from "../artifacts/ArtifactResourceScope.js";
 import { createHash } from "node:crypto";
 import {
   mkdtemp,
@@ -23,11 +24,14 @@ import {
   type GhidraSeedCommitment,
   type GhidraSeedReport,
 } from "./GhidraAnalysisSeeds.js";
-import type { GhidraInstallationHost } from "./GhidraInstallation.js";
+import { ghidraProfileInstallationHost as host } from "./GhidraInstallation.fixture.js";
 import { GhidraProvider } from "./GhidraProvider.js";
 
 const directories: string[] = [];
+let resources = new ArtifactResourceScope();
 afterEach(async () => {
+  await resources.close();
+  resources = new ArtifactResourceScope();
   for (const directory of directories.splice(0))
     await rm(directory, { recursive: true, force: true });
 });
@@ -92,7 +96,7 @@ describe("Ghidra seed commitment", () => {
     const directory = await workspace();
     const path = join(directory, "seeds.tsv");
     await writeFile(path, SEEDS);
-    const resolved = await resolveGhidraAnalysisSeeds(path);
+    const resolved = await resolveGhidraAnalysisSeeds(path, resources);
     if (!resolved.ok) throw resolved.error;
     const commitment = resolved.value;
     if (commitment === undefined) throw new Error("Expected a commitment");
@@ -103,12 +107,16 @@ describe("Ghidra seed commitment", () => {
       entries: { function: 2, code: 1, label: 1 },
     });
     const runtime = await workspace();
-    const snapshot = await snapshotGhidraAnalysisSeeds(commitment, runtime);
+    const snapshot = await snapshotGhidraAnalysisSeeds(
+      commitment,
+      runtime,
+      resources,
+    );
     expect(await readFile(snapshot, "utf8")).toBe(CANONICAL);
   });
 
   it("is absent when no seed file is configured", async () => {
-    const resolved = await resolveGhidraAnalysisSeeds(undefined);
+    const resolved = await resolveGhidraAnalysisSeeds(undefined, resources);
     expect(resolved.ok && resolved.value).toBeUndefined();
   });
 
@@ -116,13 +124,20 @@ describe("Ghidra seed commitment", () => {
     const directory = await workspace();
     const path = join(directory, "seeds.tsv");
     await writeFile(path, SEEDS);
-    const resolved = await resolveGhidraAnalysisSeeds(path);
+    const resolved = await resolveGhidraAnalysisSeeds(path, resources);
     if (!resolved.ok || resolved.value === undefined)
       throw new Error("Expected a commitment");
     await writeFile(path, `${SEEDS}0x401100\tcode\n`);
     await expect(
-      snapshotGhidraAnalysisSeeds(resolved.value, await workspace()),
-    ).rejects.toThrow(/changed after the analysis profile was committed/u);
+      snapshotGhidraAnalysisSeeds(resolved.value, await workspace(), resources),
+    ).rejects.toMatchObject({
+      _tag: "ProviderAdapterError",
+      diagnostics: {
+        reason: expect.stringMatching(
+          /changed after the analysis profile was committed/u,
+        ),
+      },
+    });
   });
 
   it("commits the resolved path behind a configured symbolic link", async () => {
@@ -131,7 +146,7 @@ describe("Ghidra seed commitment", () => {
     await writeFile(path, SEEDS);
     const link = join(directory, "link.tsv");
     await symlink(path, link);
-    const resolved = await resolveGhidraAnalysisSeeds(link);
+    const resolved = await resolveGhidraAnalysisSeeds(link, resources);
     if (!resolved.ok || resolved.value === undefined)
       throw new Error("Expected a commitment");
     expect(resolved.value.path).toBe(await realpath(path));
@@ -140,6 +155,7 @@ describe("Ghidra seed commitment", () => {
   it("reports an unreadable seed file as a provider error", async () => {
     const resolved = await resolveGhidraAnalysisSeeds(
       join(await workspace(), "absent.tsv"),
+      resources,
     );
     if (resolved.ok) throw new Error("Expected an error");
     expect(projectAnalysisError(resolved.error)).toMatchObject({
@@ -193,19 +209,6 @@ describe("Ghidra seed session verification", () => {
 });
 
 describe("Ghidra seed profile", () => {
-  const host: GhidraInstallationHost = {
-    platform: "linux",
-    architecture: "x64",
-    readText: () => "application.version=12.1.4\n",
-    executable: () => true,
-    probeJava: () => ({
-      version: "21.0.11",
-      major: 21,
-      home: "/jdk-21",
-      bits: 64,
-      runtime: "jdk",
-    }),
-  };
   const pe: BinaryTarget = {
     path: "/fixture.exe",
     sha256: "a".repeat(64),

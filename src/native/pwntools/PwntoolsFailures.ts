@@ -1,3 +1,7 @@
+import {
+  artifactFileCancellationCause,
+  bindArtifactFileCleanup,
+} from "../../artifacts/ArtifactFileOperation.js";
 import { ArtifactReaderFailure } from "../../artifacts/ArtifactReader.js";
 import {
   AnalysisError,
@@ -18,6 +22,7 @@ import { ProviderCleanupError } from "../../domain/providerCleanupError.js";
 import { ProviderSelectionError } from "../../domain/providerSelectionError.js";
 import { OwnedCommandFailure } from "../../process/OwnedCommand.js";
 import type { PwntoolsFailureEvidence } from "./PwntoolsResourceLimits.js";
+import { nativeDeadlineRecovery } from "../../domain/native/nativeDeadlines.js";
 import {
   PWNTOOLS_PROVIDER_IDENTITY,
   PWNTOOLS_LIMITS,
@@ -30,7 +35,22 @@ export interface PwntoolsFailureContext {
   readonly operation: string;
   readonly providerId: string;
   readonly precedingOutput?: AnalysisCapturedOutput;
+  readonly configurationKey?: string;
+  readonly timeoutMs?: number;
 }
+
+const fixedPwntoolsBudgets = `cpuSeconds is ${String(PWNTOOLS_LIMITS.cpuSeconds)}. The output allowance is ${String(PWNTOOLS_LIMITS.outputBytes)} bytes, the diagnostic allowance is ${String(PWNTOOLS_LIMITS.diagnosticBytes)} bytes, and the address-space allowance is ${String(PWNTOOLS_LIMITS.addressSpaceBytes)} bytes. This release has no runtime override for those budgets. pwntools_timeout_ms does not raise them. Artifact admission stays REA_PWNTOOLS_MAX_INPUT_BYTES (default ${String(PWNTOOLS_LIMITS.inputBytes)} bytes).`;
+
+/** Name the file-size cap and any reported effective limit, not address space. */
+const fileSizeAllowance = (reportedBytes: number | undefined): string => {
+  const cap = String(PWNTOOLS_LIMITS.outputBytes);
+  const inherited =
+    "A tighter inherited limit is retained. This release has no runtime override. pwntools_timeout_ms does not raise the file-size allowance.";
+  return reportedBytes === undefined
+    ? `The file-size cap is ${cap} bytes (outputBytes). The effective file_size_bytes limit was not reported. ${inherited}`
+    : `The effective file-size allowance is ${String(reportedBytes)} bytes (file_size_bytes). The file-size cap is ${cap} bytes (outputBytes). ${inherited}`;
+};
+
 const DEFAULT_CONTEXT = {
   operation: "inspect_binary_layout",
   providerId: PWNTOOLS_PROVIDER_IDENTITY.id,
@@ -90,26 +110,41 @@ export const pwntoolsDecoderFailure = (
         { operation: context.operation, cause },
       );
     if (cause.reason === "cancelled")
-      return new AnalysisCancelledError(context.operation, outputOptions);
-    if (cause.reason === "timeout")
-      return new AnalysisTimeoutError(
-        context.operation,
-        PWNTOOLS_LIMITS.timeoutMs,
-        outputOptions,
-      );
+      return new AnalysisCancelledError(context.operation, {
+        ...outputOptions,
+        cause:
+          cause.cancellation === undefined
+            ? cause.cause
+            : cause.cancellation.reason,
+      });
+    if (cause.reason === "timeout") {
+      const timeoutMs = context.timeoutMs ?? PWNTOOLS_LIMITS.timeoutMs;
+      return new AnalysisTimeoutError(context.operation, timeoutMs, {
+        ...outputOptions,
+        ...nativeDeadlineRecovery({
+          timeoutMs,
+          setting: "pwntools_timeout_ms",
+          cliFlag: "--pwntools-timeout-ms",
+          defaultMs: PWNTOOLS_LIMITS.timeoutMs,
+          phase: "pwntools command deadline",
+          unchanged: fixedPwntoolsBudgets,
+        }),
+      });
+    }
     if (cause.reason === "output-limit")
-      return new AnalysisOutputError(
-        context.operation,
-        cause.message,
-        outputOptions,
-      );
+      return new AnalysisOutputError(context.operation, cause.message, {
+        ...outputOptions,
+        userMessage: `${cause.message} ${fixedPwntoolsBudgets}`,
+        remediationAction: fixedPwntoolsBudgets,
+      });
     if (
       cause.reason === "process" &&
       (cause.snapshot?.signal === "SIGXFSZ" ||
         (failureEvidence.marker?.resource === "file-size" &&
           cause.snapshot?.exitCode === PWNTOOLS_FILE_SIZE_FAILURE_EXIT &&
           cause.snapshot.signal === null))
-    )
+    ) {
+      const allowance = fileSizeAllowance(limitReport?.limits?.file_size_bytes);
       return new AnalysisResourceConstraintError(
         context.operation,
         "file-size",
@@ -118,10 +153,15 @@ export const pwntoolsDecoderFailure = (
           : "The owned Python bridge reported EFBIG while writing a file; the exact write failure cause is unknown.") +
           (limitReport?.failure === null || limitReport === undefined
             ? ""
-            : ` Effective limit report unavailable: ${limitReport.failure}`),
+            : ` Effective limit report unavailable: ${limitReport.failure}`) +
+          ` ${allowance}`,
         limitReport?.limits ?? null,
-        outputOptions,
+        {
+          ...outputOptions,
+          remediationAction: `Review the reported worker file-size limits and write failure. ${allowance} Repeating the unchanged request fails the same way.`,
+        },
       );
+    }
     if (cause.reason === "process" && cause.snapshot?.signal === "SIGXCPU")
       return new AnalysisResourceConstraintError(
         context.operation,
@@ -129,9 +169,13 @@ export const pwntoolsDecoderFailure = (
         "Owned Python terminated with SIGXCPU; the exact signal cause is unknown." +
           (limitReport?.failure === null || limitReport === undefined
             ? ""
-            : ` Effective limit report unavailable: ${limitReport.failure}`),
+            : ` Effective limit report unavailable: ${limitReport.failure}`) +
+          ` cpuSeconds is ${String(PWNTOOLS_LIMITS.cpuSeconds)}. This release has no runtime override.`,
         limitReport?.limits ?? null,
-        outputOptions,
+        {
+          ...outputOptions,
+          remediationAction: `Review the reported worker CPU limits and observed signal. cpuSeconds is ${String(PWNTOOLS_LIMITS.cpuSeconds)}. This release has no runtime override. pwntools_timeout_ms does not raise it. Repeating the unchanged request fails the same way.`,
+        },
       );
     if (
       cause.reason === "process" &&
@@ -145,9 +189,13 @@ export const pwntoolsDecoderFailure = (
         "The owned Python bridge reported a memory allocation failure without a structured reply; the exact allocation cause is unknown." +
           (limitReport?.failure === null || limitReport === undefined
             ? ""
-            : ` Effective limit report unavailable: ${limitReport.failure}`),
+            : ` Effective limit report unavailable: ${limitReport.failure}`) +
+          ` The address-space allowance is ${String(PWNTOOLS_LIMITS.addressSpaceBytes)} bytes. This release has no runtime override.`,
         limitReport?.limits ?? null,
-        outputOptions,
+        {
+          ...outputOptions,
+          remediationAction: `Review the reported worker memory limits and available host memory. ${fixedPwntoolsBudgets}`,
+        },
       );
   }
   if (
@@ -174,20 +222,43 @@ export const pwntoolsDecoderFailure = (
           cause,
         },
       );
-    if (cause.reason === "cancelled")
-      return new AnalysisCancelledError(context.operation);
+    if (cause.reason === "cancelled") {
+      const error = new AnalysisCancelledError(context.operation, {
+        cause: artifactFileCancellationCause(cause),
+        cleanup: cause.cleanup,
+        partialObservation: cause.partialObservation,
+        capturedOutput: context.precedingOutput,
+      });
+      bindArtifactFileCleanup(cause, error);
+      return error;
+    }
     if (
       cause.reason === "limit" ||
       cause.reason === "path" ||
       cause.reason === "format"
     )
-      return new AnalysisInputError(context.operation, { cause }, [
+      return new AnalysisInputError(
+        context.operation,
         {
-          path: ["path"],
-          reason: cause.reason === "limit" ? "out_of_range" : "invalid_format",
-          message: cause.message,
+          cause,
+          ...(cause.reason === "limit"
+            ? {
+                userMessage: `${cause.message} Admitted artifact bytes use REA_PWNTOOLS_MAX_INPUT_BYTES (default ${String(PWNTOOLS_LIMITS.inputBytes)} bytes, maximum 1073741824). The 1073741824-byte maximum has no runtime override. Restart REA after changing the environment value. pwntools_timeout_ms does not raise this allowance. ${fixedPwntoolsBudgets}`,
+              }
+            : {}),
         },
-      ]);
+        [
+          {
+            path: ["path"],
+            reason:
+              cause.reason === "limit" ? "out_of_range" : "invalid_format",
+            message:
+              cause.reason === "limit"
+                ? `${cause.message} REA_PWNTOOLS_MAX_INPUT_BYTES defaults to ${String(PWNTOOLS_LIMITS.inputBytes)} bytes.`
+                : cause.message,
+          },
+        ],
+      );
   }
   if (cause instanceof Error && "code" in cause) {
     if (phase === "configuration")
@@ -264,6 +335,7 @@ export const pwntoolsUnavailable = (
 ): ProviderSelectionError =>
   new ProviderSelectionError({
     ...(capturedOutput === undefined ? {} : { capturedOutput }),
+    userMessage: reason,
     operation: context.operation,
     reason: "provider_unavailable",
     requestedProviderId: context.providerId,
@@ -274,7 +346,7 @@ export const pwntoolsUnavailable = (
         code: "provider_unavailable",
         reason,
         diagnostics: {
-          configuration_key: "REA_PWNTOOLS_PYTHON",
+          configuration_key: context.configurationKey ?? "REA_PWNTOOLS_PYTHON",
           executable_path: path,
           ...(systemCode === undefined ? {} : { system_code: systemCode }),
         },

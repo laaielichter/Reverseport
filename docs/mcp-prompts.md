@@ -61,6 +61,11 @@ The server advertises `listChanged: true`. Updating a registered guided prompt
 emits `notifications/prompts/list_changed`, allowing clients to refresh their
 cached prompt catalog.
 
+Schema-invalid parameters to `prompts/get`, `prompts/list`,
+`completion/complete`, and `tools/list` return JSON-RPC `-32602` with field
+diagnostics. Correct the named fields and retry on the same connection.
+Unexpected handler failures retain JSON-RPC `-32603`.
+
 ## Session-aware completion
 
 MCP `completion/complete` completes guided-prompt arguments; it does not define
@@ -91,6 +96,12 @@ identifiers only; they do not retrieve or replace the inline Evidence result.
 
 Completion sources are live projections of the current session:
 
+Document and procedure completion in a binary session reads an already-ready
+provider; it does not start analysis. A cold provider, a target transition, or
+unavailable inventory can return no suggestions. Run an analysis query first
+when you need inventory from a provider that supplies it. An empty completion
+list does not establish that the target has no procedures.
+
 | Argument family     | Source and filtering                                                                                                                                 |
 | ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Document            | Current provider `list_documents` result.                                                                                                            |
@@ -102,11 +113,17 @@ Completion sources are live projections of the current session:
 | Artifact occurrence | Occurrence IDs present in schema-valid retained artifact inventory pages.                                                                            |
 | Residual unknown    | Current non-resolved unknown heads only.                                                                                                             |
 
-Suggestions are Unicode-normalized, case-insensitive prefix matches. The server
-deduplicates them and sorts by code point for deterministic results. Procedure
-completion derives candidates from the complete inventory, so a name is offered
-only when it identifies one address in that inventory. Completion returns all
-matching values; it does not expose paging controls.
+Prefix matching is Unicode-normalized and case-insensitive; suggestions retain
+their original spelling. The server deduplicates them and sorts by code point
+for deterministic results. Procedure completion derives candidates from the
+complete inventory, so a name is offered only when it identifies one address in
+that inventory. Every name at a shared address participates in this check,
+including later rows that establish ambiguity. A completion reply carries at
+most 100 values, the MCP limit. `total` counts every match and
+`hasMore` is `true` when values were omitted. Completion has no paging
+controls. A longer prefix reaches an omitted value only when it excludes other
+matches; matching uses normalized, case-insensitive forms, so a value can stay
+unreachable when more than 100 matches share its normalized prefix.
 
 ## Lifecycle and safety
 

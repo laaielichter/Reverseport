@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { jsonObjectSchema } from "../jsonValue.js";
 import { localPathStringSchema } from "../localPath.js";
 
 const hexSchema = z.string().regex(/^0x[0-9a-f]+$/u);
@@ -18,7 +19,7 @@ const functionBreakpoint = {
   name: nativeString
     .min(1)
     .describe(
-      "Exact symbol name, such as `open`, a C++ or mangled Swift symbol, or `-[NSString length]`.",
+      "Exact LLDB runtime symbol name, such as `open`, a C++ or mangled Swift symbol, or `-[NSString length]`. Darwin C symbol-table `_main` may be exposed by LLDB as `main`; REA preserves the selected name without translating it.",
     ),
 };
 
@@ -28,6 +29,15 @@ const objcMethodBreakpoint = {
     "Selector such as `dataTaskWithRequest:completionHandler:`.",
   ),
 };
+
+/** Outcome labels shared by the LLDB bridge and observed Evidence. */
+export const nativeCallProcessOutcomeSchema = z.enum([
+  "exited",
+  "duration-elapsed",
+  "event-limit",
+  "stop-limit",
+  "resource-limit",
+]);
 
 /** One function or Objective-C method whose entries are observed. */
 export const nativeCallBreakpointSchema = z.discriminatedUnion("kind", [
@@ -49,6 +59,37 @@ export const nativeCallBreakpointSchema = z.discriminatedUnion("kind", [
   }),
 ]);
 
+const environmentNameSchema = z
+  .string()
+  .min(1)
+  .regex(/^[^=\x00]+$/u, "Environment names cannot contain '=' or NUL");
+const environmentValueSchema = z
+  .string()
+  .regex(/^[^\x00]*$/u, "Environment values cannot contain NUL");
+const environmentRecordProjection = z.record(
+  environmentNameSchema,
+  environmentValueSchema,
+);
+
+// z.record skips __proto__. Own the JSON map before validating entries so every
+// selected environment name survives input parsing, readback and partial Evidence.
+const nativeCallEnvironmentSchema = jsonObjectSchema
+  .superRefine((value, context) => {
+    for (const [name, entry] of Object.entries(value)) {
+      for (const parsed of [
+        environmentNameSchema.safeParse(name),
+        environmentValueSchema.safeParse(entry),
+      ]) {
+        if (!parsed.success)
+          for (const issue of parsed.error.issues)
+            context.addIssue({ ...issue, path: [name, ...issue.path] });
+      }
+    }
+  })
+  .transform((value) => value as Record<string, string>);
+nativeCallEnvironmentSchema._zod.toJSONSchema = () =>
+  z.toJSONSchema(environmentRecordProjection, { io: "input" });
+
 /**
  * Launch the active Mach-O as an owned process under LLDB and observe calls.
  * Duration and event bounds keep runtime observation finite.
@@ -56,19 +97,11 @@ export const nativeCallBreakpointSchema = z.discriminatedUnion("kind", [
 export const nativeCallObservationInputSchema = z.strictObject({
   breakpoints: z.array(nativeCallBreakpointSchema).min(1),
   arguments: z.array(nativeString).default([]),
-  environment: z
-    .record(
-      z
-        .string()
-        .min(1)
-        .regex(/^[^=\x00]+$/u, "Environment names cannot contain '=' or NUL"),
-      z.string().regex(/^[^\x00]*$/u, "Environment values cannot contain NUL"),
-    )
+  environment: nativeCallEnvironmentSchema
     .default({})
     .describe("Overrides on top of the environment REA runs with."),
   working_directory: localPathStringSchema.optional(),
   duration_ms: z
-    .number()
     .int()
     .min(100)
     .max(600_000)
@@ -77,7 +110,6 @@ export const nativeCallObservationInputSchema = z.strictObject({
       "Observation window; the process is killed if it is still running.",
     ),
   max_events: z
-    .number()
     .int()
     .min(1)
     .max(100_000)
@@ -86,7 +118,6 @@ export const nativeCallObservationInputSchema = z.strictObject({
       "Stop observing and kill the process after this many recorded entries.",
     ),
   argument_registers: z
-    .number()
     .int()
     .min(0)
     .max(8)
@@ -95,7 +126,6 @@ export const nativeCallObservationInputSchema = z.strictObject({
       "Integer argument registers to record per entry (arm64 has 8, x86_64 has 6).",
     ),
   backtrace_frames: z
-    .number()
     .int()
     .min(0)
     .max(64)
@@ -118,10 +148,10 @@ export const nativeCodeLocationSchema = z.strictObject({
 
 /** One observed entry into a requested function or method. */
 export const nativeCallEventSchema = z.strictObject({
-  sequence: z.number().int().nonnegative(),
+  sequence: z.int().nonnegative(),
   elapsed_ms: z.number().nonnegative(),
-  thread_id: z.number().int().nonnegative(),
-  breakpoint_index: z.number().int().nonnegative(),
+  thread_id: z.int().nonnegative(),
+  breakpoint_index: z.int().nonnegative(),
   ...nativeCodeLocationSchema.shape,
   /** Dynamic class of an instance-method receiver, read without running code. */
   receiver_class: z.string().nullable(),
@@ -135,7 +165,7 @@ export const nativeCallEventSchema = z.strictObject({
 export const nativeCapturedOutputSchema = z.strictObject({
   text: z.string(),
   /** Bytes observed by the bridge, not a total when complete is false. */
-  bytes: z.number().int().nonnegative(),
+  bytes: z.int().nonnegative(),
   truncated: z.boolean(),
   complete: z.boolean(),
 });
@@ -147,7 +177,7 @@ export const nativeCallObservationResultSchema = z.strictObject({
     sha256: z.string().regex(/^[0-9a-f]{64}$/u),
     architecture: z.string(),
     arguments: z.array(z.string()),
-    environment: z.record(z.string(), z.string()),
+    environment: nativeCallEnvironmentSchema,
     working_directory: z.string().nullable(),
     launch_identity: z.strictObject({
       /** A pathname hash does not verify the bytes mapped into the process. */
@@ -169,15 +199,9 @@ export const nativeCallObservationResultSchema = z.strictObject({
     version: z.string().nullable(),
   }),
   process: z.strictObject({
-    pid: z.number().int().positive(),
-    outcome: z.enum([
-      "exited",
-      "duration-elapsed",
-      "event-limit",
-      "stop-limit",
-      "resource-limit",
-    ]),
-    exit_status: z.number().int().nullable(),
+    pid: z.int().positive(),
+    outcome: nativeCallProcessOutcomeSchema,
+    exit_status: z.int().nullable(),
     exit_description: z.string().nullable(),
     /** REA confirmed the process is gone when observation ended. */
     terminated: z.boolean(),
@@ -189,7 +213,7 @@ export const nativeCallObservationResultSchema = z.strictObject({
   }),
   breakpoints: z.array(
     z.strictObject({
-      index: z.number().int().nonnegative(),
+      index: z.int().nonnegative(),
       request: z.discriminatedUnion("kind", [
         z.strictObject({
           ...functionBreakpoint,
@@ -201,7 +225,7 @@ export const nativeCallObservationResultSchema = z.strictObject({
           method_type: z.enum(["instance", "class", "any"]),
         }),
       ]),
-      location_count: z.number().int().nonnegative(),
+      location_count: z.int().nonnegative(),
       locations: z.array(nativeCodeLocationSchema),
     }),
   ),
@@ -213,7 +237,7 @@ export const nativeCallObservationResultSchema = z.strictObject({
     /** Aggregate breakpoint-location metadata exhausted its retained-byte budget. */
     breakpoint_locations_truncated: z.boolean().optional(),
     /** Requests that matched no code in any image loaded while observing. */
-    unresolved_breakpoints: z.array(z.number().int().nonnegative()),
+    unresolved_breakpoints: z.array(z.int().nonnegative()),
   }),
   limitations: z.array(z.string()),
 });

@@ -2,15 +2,107 @@ import { Client, InMemoryTransport } from "@modelcontextprotocol/client";
 import { Ajv2020 } from "ajv/dist/2020.js";
 import { expect, it, onTestFinished } from "vitest";
 
-import type { JebAnalysisPort } from "../../../src/application/jeb/JebAnalysisPort.js";
+import type {
+  JebAnalysisPort,
+  JebAnalysisAvailability,
+} from "../../../src/application/jeb/JebAnalysisPort.js";
 import { createAnalysisExecution } from "../../../src/application/AnalysisProvider.js";
 import { toolContract } from "../../../src/contracts/toolContracts.js";
 import { parseEvidence } from "../../../src/domain/evidence.js";
 import { ok } from "../../../src/domain/result.js";
 import { createServer } from "../../../src/server/createServer.js";
 import { createTestBinarySession } from "../../fixtures/binarySession.js";
+import { expandToolAvailability } from "../../../src/contracts/toolOutputSchemaPrimitives.js";
+
+import { JebProvider } from "../../../src/jeb/JebProvider.js";
+import {
+  startJebMcpFixture,
+  jebPrimaryResponses,
+} from "../../fixtures/jebMcp.js";
 
 const identity = { id: "jeb", name: "JEB", version: "5.48.0" } as const;
+
+it("discovers current JEB operation support and recovery through binary_session", async () => {
+  let availability: JebAnalysisAvailability = {
+    status: "unavailable",
+    code: "not_configured",
+    reason: "Start JEB at REA_JEB_MCP_URL",
+    diagnostics: {},
+  };
+  let probes = 0;
+  const provider: JebAnalysisPort = {
+    async inspectAvailability() {
+      probes += 1;
+      return availability;
+    },
+    async close() {},
+    async execute() {
+      throw new Error("Status must not execute analysis");
+    },
+  };
+  const session = createTestBinarySession(() => {
+    throw new Error("Status must not start a deep provider");
+  });
+  const server = createServer(
+    { kind: "session", session },
+    { environment: {}, jebAnalysis: provider },
+  );
+  const client = new Client({ name: "jeb-availability", version: "1" });
+  onTestFinished(async () => {
+    await client.close();
+    await server.close();
+    await session.close();
+  });
+  const [clientTransport, serverTransport] =
+    InMemoryTransport.createLinkedPair();
+  await server.connect(serverTransport);
+  await client.connect(clientTransport);
+  const read = async () => {
+    const result = await client.callTool({
+      name: "binary_session",
+      arguments: {},
+    });
+    const status = toolContract("binary_session").outputSchema.parse(
+      result.structuredContent,
+    ).result;
+    return expandToolAvailability(status.tool_availability).filter(
+      (tool) => tool.surface === "jeb-provider",
+    );
+  };
+  const unavailable = await read();
+  expect(unavailable).toHaveLength(4);
+  expect(
+    unavailable.every(
+      (tool) => !tool.available && tool.remediation === availability.reason,
+    ),
+  ).toBe(true);
+  availability = {
+    status: "available",
+    code: null,
+    reason: null,
+    diagnostics: {},
+    supportedOperations: [
+      "inspect_jeb_client",
+      "list_jeb_units",
+      "decompile_jeb_item",
+    ],
+  };
+  const recovered = await read();
+  expect(
+    recovered
+      .filter((tool) => tool.available)
+      .map((tool) => tool.name)
+      .sort(),
+  ).toEqual(["decompile_jeb_item", "inspect_jeb_client", "list_jeb_units"]);
+  expect(
+    recovered.find((tool) => tool.name === "open_jeb_project"),
+  ).toMatchObject({
+    available: false,
+    reason: "provider_unavailable",
+    remediation: expect.stringContaining("does not advertise"),
+  });
+  expect(probes).toBe(2);
+});
 
 it("advertises exact valid JEB schemas and records inline evidence through MCP", async () => {
   const execution = createAnalysisExecution(
@@ -28,7 +120,17 @@ it("advertises exact valid JEB schemas and records inline evidence through MCP",
   );
   const provider: JebAnalysisPort = {
     async inspectAvailability() {
-      return { status: "available", code: null, reason: null, diagnostics: {} };
+      return {
+        status: "available",
+        code: null,
+        reason: null,
+        diagnostics: {},
+        supportedOperations: [
+          "inspect_jeb_client",
+          "list_jeb_units",
+          "decompile_jeb_item",
+        ],
+      };
     },
     async close() {},
     async execute() {
@@ -81,7 +183,17 @@ it("preserves JEB provider failure reasons through the MCP boundary", async () =
   const contract = toolContract("list_jeb_units");
   const provider: JebAnalysisPort = {
     async inspectAvailability() {
-      return { status: "available", code: null, reason: null, diagnostics: {} };
+      return {
+        status: "available",
+        code: null,
+        reason: null,
+        diagnostics: {},
+        supportedOperations: [
+          "inspect_jeb_client",
+          "list_jeb_units",
+          "decompile_jeb_item",
+        ],
+      };
     },
     async close() {},
     async execute() {
@@ -141,3 +253,141 @@ it("preserves JEB provider failure reasons through the MCP boundary", async () =
   expect(text).toContain("ECONNREFUSED");
   expect(text).toContain("REA_JEB_MCP_URL");
 });
+
+it("keeps the MCP server usable when REA_JEB_MCP_URL is invalid", async () => {
+  const session = createTestBinarySession(() => {
+    throw new Error("deep provider must not start");
+  });
+  const server = createServer(
+    { kind: "session", session },
+    { environment: { REA_JEB_MCP_URL: "http://localhost:8425/mcp" } },
+  );
+  const client = new Client({ name: "jeb-invalid-endpoint", version: "1" });
+  onTestFinished(async () => {
+    await client.close();
+    await server.close();
+    await session.close();
+  });
+  const [clientTransport, serverTransport] =
+    InMemoryTransport.createLinkedPair();
+  await server.connect(serverTransport);
+  await client.connect(clientTransport);
+  expect((await client.listTools()).tools.length).toBeGreaterThan(0);
+  const failed = await client.callTool({
+    name: "inspect_jeb_client",
+    arguments: {},
+  });
+  expect(failed.isError).toBe(true);
+  const text = (failed.content ?? [])
+    .map((block) => (block.type === "text" ? block.text : ""))
+    .join("");
+  expect(JSON.parse(text)).toMatchObject({
+    error: {
+      code: "configuration_invalid",
+      details: {
+        settings: [
+          {
+            setting: "REA_JEB_MCP_URL",
+            constraint: expect.stringContaining("loopback"),
+          },
+        ],
+      },
+    },
+  });
+});
+
+it.each(
+  [
+    { operation: "list_jeb_units", tool: "list_units", input: { count: 2 } },
+    {
+      operation: "decompile_jeb_item",
+      tool: "decompile_code_item",
+      input: {
+        item_address: "LSample;->value()I",
+        item_kind: "method",
+        unit_path: "sample.dex",
+      },
+    },
+    {
+      operation: "open_jeb_project",
+      tool: "open_project",
+      input: { path: "sample.apk" },
+    },
+  ].flatMap((request) =>
+    ["refusal", "unknown-version"].map((metadata) => ({
+      ...request,
+      metadata,
+    })),
+  ),
+)(
+  "preserves requested $operation through MCP with metadata $metadata",
+  async ({ operation, tool, input, metadata }) => {
+    let informationCalls = 0;
+    const fixture = await startJebMcpFixture((name) => {
+      if (name !== "get_client_information") return jebPrimaryResponses[name]!;
+      informationCalls++;
+      return metadata === "refusal" || informationCalls > 1
+        ? { success: false, message: "Client information temporarily refused" }
+        : { success: true, gui_client: false };
+    });
+    const provider = new JebProvider({
+      environment: { REA_JEB_MCP_URL: fixture.endpoint },
+    });
+    const session = createTestBinarySession(() => {
+      throw new Error("JEB must not start a deep provider");
+    });
+    const server = createServer(
+      { kind: "session", session },
+      { jebAnalysis: provider, environment: {} },
+    );
+    const client = new Client({ name: "jeb-attribution", version: "1" });
+    try {
+      const [clientTransport, serverTransport] =
+        InMemoryTransport.createLinkedPair();
+      await server.connect(serverTransport);
+      await client.connect(clientTransport);
+      const call = () => client.callTool({ name: operation, arguments: input });
+      if (metadata === "unknown-version") {
+        for (let attempt = 0; attempt < 2; attempt++) {
+          const called = await call();
+          expect(called.isError).not.toBe(true);
+          const text = called.content
+            .map((block) => (block.type === "text" ? block.text : ""))
+            .join("");
+          const evidence = parseEvidence(JSON.parse(text));
+          expect(evidence.provider.version).toBeNull();
+          expect(evidence.normalized_result).toMatchObject({
+            engine: { version: null, gui_client: false },
+          });
+          expect(evidence.raw_result).toEqual(jebPrimaryResponses[tool]);
+        }
+        expect(fixture.calls).toEqual([tool, "get_client_information", tool]);
+      } else {
+        const failed = await client.callTool({
+          name: operation,
+          arguments: input,
+        });
+        expect(failed.isError).toBe(true);
+        const text = failed.content
+          .map((block) => (block.type === "text" ? block.text : ""))
+          .join("");
+        expect(JSON.parse(text)).toMatchObject({
+          error: {
+            code: "unsupported_target",
+            details: {
+              operation,
+              reason: "Client information temporarily refused",
+            },
+          },
+        });
+        expect(fixture.calls).toEqual([tool, "get_client_information"]);
+      }
+    } finally {
+      await client.close();
+      await server.close();
+      await session.close();
+      await provider.close();
+      await fixture.close();
+    }
+  },
+);

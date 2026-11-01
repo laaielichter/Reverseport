@@ -61,7 +61,7 @@ describe("target-bound provider routing", () => {
     expect(session.activeTarget()).toBeUndefined();
 
     expect((await session.open(target, { providerId: "alpha" })).ok).toBe(true);
-    expect(bindingStatus(session)).toMatchObject({
+    expect(await bindingStatus(session)).toMatchObject({
       analysis_provider_binding: {
         provider: { id: "alpha", version: "1" },
         selection_source: "request",
@@ -100,7 +100,7 @@ describe("target-bound provider routing", () => {
 
     alpha.available = false;
     expect((await session.open(target)).ok).toBe(true);
-    expect(bindingStatus(session)).toMatchObject({
+    expect(await bindingStatus(session)).toMatchObject({
       analysis_provider_binding: { provider: { id: "alpha" } },
     });
 
@@ -108,7 +108,7 @@ describe("target-bound provider routing", () => {
     expect(unknown.ok).toBe(false);
     if (!unknown.ok)
       expect(unknown.error).toMatchObject({ reason: "unknown_provider" });
-    expect(bindingStatus(session)).toMatchObject({
+    expect(await bindingStatus(session)).toMatchObject({
       analysis_provider_binding: { provider: { id: "alpha" } },
     });
 
@@ -119,7 +119,7 @@ describe("target-bound provider routing", () => {
     expect(failed.ok).toBe(false);
     if (!failed.ok) expect(failed.error._tag).toBe("ProviderAdapterError");
     expect(alpha.clients[0]?.calls).toEqual(["address_name"]);
-    expect(bindingStatus(session)).toMatchObject({
+    expect(await bindingStatus(session)).toMatchObject({
       analysis_provider_binding: { provider: { id: "beta" } },
     });
 
@@ -178,7 +178,7 @@ describe("target-bound provider routing", () => {
     });
     expect(alpha.clients[0]?.closed).toBe(false);
     expect(beta.clients).toHaveLength(0);
-    expect(bindingStatus(session)).toMatchObject({
+    expect(await bindingStatus(session)).toMatchObject({
       analysis_provider_binding: { provider: { id: "alpha" } },
     });
 
@@ -199,7 +199,7 @@ describe("selected provider capability provenance", () => {
 
     expect((await session.open(target, { providerId: "alpha" })).ok).toBe(true);
     const resolved = { id: "alpha", name: "alpha provider", version: "1" };
-    const status = bindingStatus(session);
+    const status = await bindingStatus(session);
     expect(status).toMatchObject({
       analysis_provider_binding: { provider: resolved },
       analysis_provider_candidates: [
@@ -391,14 +391,14 @@ const databaseTarget = async (): Promise<string> => {
   return path;
 };
 
-const bindingStatus = (session: BinarySession) =>
+const bindingStatus = async (session: BinarySession) =>
   z
     .object({
       analysis_provider_binding: z.unknown(),
       analysis_provider_candidates: z.array(z.unknown()),
     })
     .passthrough()
-    .parse(session.status());
+    .parse(await session.status());
 
 interface Deferred<Value> {
   readonly promise: Promise<Value>;

@@ -1,4 +1,5 @@
 import { lstatSync, readFileSync, realpathSync, statSync } from "node:fs";
+import { userInfo, type UserInfo } from "node:os";
 import {
   basename,
   dirname,
@@ -60,6 +61,33 @@ const expandedDirectory = (
     (platform === "win32" && expanded.startsWith("~\\"))
   )
     return join(home, expanded.slice(2));
+  if (expanded.startsWith("~")) {
+    // Named POSIX homes come from the account database, not HOME/USERPROFILE.
+    // Only the current account has a portable Node API; unresolved names must
+    // not become writable relative paths in the caller's working directory.
+    if (platform !== "win32") {
+      const separator = expanded.indexOf("/");
+      const username = expanded.slice(1, separator < 0 ? undefined : separator);
+      let account: UserInfo<string>;
+      try {
+        account = userInfo();
+      } catch {
+        throw new HermesClientPathError(
+          override,
+          "Cannot resolve the OS account for this named Hermes home. Set an absolute HERMES_HOME before configuring Hermes.",
+        );
+      }
+      if (account.username === username && isAbsolute(account.homedir))
+        return join(
+          account.homedir,
+          separator < 0 ? "" : expanded.slice(separator + 1),
+        );
+    }
+    throw new HermesClientPathError(
+      override,
+      "Cannot resolve this named Hermes home. Set an absolute HERMES_HOME before configuring Hermes.",
+    );
+  }
   return resolve(expanded);
 };
 const physicalPath = (path: string): string => {
@@ -140,7 +168,9 @@ export const resolveHermesClientHome = (
       join(stickyRoot, "active_profile"),
       `Invalid saved Hermes profile ${JSON.stringify(name)}. Run 'hermes profile use default' or repair active_profile.`,
     );
-  const selected = join(root, "profiles", canonical);
+  // Hermes resolves both sticky selection and named profiles from its default
+  // root (including overrides beneath the native home), never mixed roots.
+  const selected = join(stickyRoot, "profiles", canonical);
   if (!liveProfile(selected))
     throw new HermesClientPathError(
       selected,

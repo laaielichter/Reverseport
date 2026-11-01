@@ -9,7 +9,20 @@ import { TOOL_CONTRACTS } from "../../../src/contracts/toolContracts.js";
 import { emptyArraySchema } from "../../../src/domain/emptyArraySchema.js";
 import { processScenarioSchema } from "../../../src/domain/process/processScenario.js";
 import { GENERATED_MCP_TOOL_CATALOG } from "../../fixtures/mcpToolCatalog.js";
+import {
+  arrayItemSchemaError,
+  unsupportedInputLiteralSchemaError,
+} from "../../fixtures/mcpClientSchemaConstraints.js";
 import { toolRegistrationOptions } from "../../../src/server/toolRegistrationOptions.js";
+import { servedCatalog } from "../../../src/application/environment/environmentState.js";
+import { servedFrom } from "../../fixtures/environmentStateServing.js";
+import type { TimedCaptureRow } from "../../fixtures/analysisView.js";
+import {
+  BOOK_INIT_ROWS,
+  BOOK_NOT_FOUND,
+  FIRST_BOOK,
+  THIRD_BOOK,
+} from "../../fixtures/environmentStateWrites.js";
 
 interface ToolSchemas {
   readonly name: string;
@@ -35,6 +48,18 @@ function schemaErrors(tools: readonly ToolSchemas[]): string[] {
         if (!ajv.validateSchema(schema))
           return [`${tool.name}.${kind}: ${ajv.errorsText(ajv.errors)}`];
         ajv.compile(schema);
+        const clientError = arrayItemSchemaError(
+          schema,
+          `${tool.name}.${kind}`,
+        );
+        if (clientError !== undefined) return [clientError];
+        if (kind === "inputSchema") {
+          const literalError = unsupportedInputLiteralSchemaError(
+            schema,
+            `${tool.name}.${kind}`,
+          );
+          if (literalError !== undefined) return [literalError];
+        }
         return [];
       } catch (cause: unknown) {
         return [
@@ -113,11 +138,23 @@ function expectKnownAuthorityHints(tools: readonly ToolSchemas[]): void {
       idempotentHint: false,
       openWorldHint: false,
     },
+    start_gdb_session: {
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: false,
+      openWorldHint: true,
+    },
     export_web_scripts: {
       readOnlyHint: false,
       destructiveHint: false,
       idempotentHint: false,
       openWorldHint: false,
+    },
+    analyze_javascript_application: {
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: true,
     },
     capture_process_scenario: {
       readOnlyHint: false,
@@ -143,6 +180,12 @@ function expectKnownAuthorityHints(tools: readonly ToolSchemas[]): void {
     import_evidence_bundle: {
       readOnlyHint: false,
       destructiveHint: false,
+    },
+    execute_rizin_command: {
+      readOnlyHint: false,
+      destructiveHint: true,
+      idempotentHint: false,
+      openWorldHint: true,
     },
   } as const;
 
@@ -250,6 +293,85 @@ function recursiveReferences(tools: readonly ToolSchemas[]): string[] {
   );
 }
 
+const schemaMapKeywords = new Set([
+  "$defs",
+  "definitions",
+  "properties",
+  "patternProperties",
+  "dependentSchemas",
+  "dependencies",
+]);
+const schemaArrayKeywords = new Set(["allOf", "anyOf", "oneOf", "prefixItems"]);
+const schemaChildKeywords = new Set([
+  "items",
+  "additionalItems",
+  "contains",
+  "additionalProperties",
+  "unevaluatedProperties",
+  "unevaluatedItems",
+  "propertyNames",
+  "not",
+  "if",
+  "then",
+  "else",
+]);
+
+function localInputReferences(tools: readonly ToolSchemas[]): string[] {
+  return tools.flatMap((tool) => {
+    const references: string[] = [];
+    const visit = (node: unknown, path: string): void => {
+      if (!isRecord(node)) return;
+      if (typeof node.$ref === "string") references.push(`${path}.$ref`);
+      for (const [key, value] of Object.entries(node)) {
+        if (schemaMapKeywords.has(key) && isRecord(value)) {
+          for (const [name, schema] of Object.entries(value))
+            visit(schema, `${path}.${key}.${name}`);
+        } else if (schemaArrayKeywords.has(key) && Array.isArray(value)) {
+          value.forEach((schema, index) =>
+            visit(schema, `${path}.${key}[${index}]`),
+          );
+        } else if (schemaChildKeywords.has(key)) {
+          if (Array.isArray(value))
+            value.forEach((schema, index) =>
+              visit(schema, `${path}.${key}[${index}]`),
+            );
+          else visit(value, `${path}.${key}`);
+        }
+      }
+    };
+    visit(tool.inputSchema, `${tool.name}.inputSchema`);
+    return references;
+  });
+}
+
+it("finds references only in input schema positions, not literal data", () => {
+  const schema = {
+    type: "object",
+    properties: {
+      $ref: { type: "string" },
+      default: { type: "array", items: { type: "string" } },
+    },
+    default: { $ref: "literal data" },
+    examples: [{ $defs: { field: { $ref: "literal data" } } }],
+  };
+  expect(
+    localInputReferences([{ name: "literal", inputSchema: schema }]),
+  ).toEqual([]);
+  expect(
+    localInputReferences([
+      {
+        name: "nested",
+        inputSchema: {
+          type: "object",
+          properties: {
+            default: { type: "array", items: { $ref: "#/definitions/value" } },
+          },
+        },
+      },
+    ]),
+  ).toEqual(["nested.inputSchema.properties.default.items.$ref"]);
+});
+
 const advertiseAndEnforceProcessEnvironmentKeyConstraint =
   async (): Promise<void> => {
     const contract = TOOL_CONTRACTS.find(
@@ -320,6 +442,59 @@ const advertiseAndEnforceProcessEnvironmentKeyConstraint =
     }
   };
 
+describe("served environment catalogs", () => {
+  it("advertises served environment catalogs in schemas clients accept: bulk bodies, pinned queries and fixed members", () => {
+    const edition = { format: "HC", featured: 1 };
+    const stored = { ...THIRD_BOOK, ...edition };
+    const captures: readonly (readonly TimedCaptureRow[])[] = [
+      [
+        ...BOOK_INIT_ROWS,
+        ["DELETE", "/api/books", [{ id: 2 }], 200, [{ id: 2 }]],
+        ["GET", "/api/books/2", BOOK_NOT_FOUND, 404],
+        ["GET", "/api/books", [FIRST_BOOK]],
+      ],
+      [
+        ["GET", "/api/books", [{ ...FIRST_BOOK, ...edition }]],
+        ["GET", "/api/books/1", { ...FIRST_BOOK, ...edition }],
+        [
+          "POST",
+          "/api/books?notify=quiet",
+          stored,
+          201,
+          {
+            books: [
+              { name: "Third Book", format: "hardcover", featured: true },
+            ],
+          },
+        ],
+        ["GET", "/api/books/3", stored],
+      ],
+    ];
+    const tools = captures.flatMap((rows) => {
+      const served = servedFrom(rows);
+      const catalog = servedCatalog(served.source, served.state, "books");
+      if (!catalog.ok) throw catalog.error;
+      return catalog.value.tools;
+    });
+    const create = tools.find((tool) => tool.name === "post_books");
+    expect(create?.inputSchema.properties["notify"]).toMatchObject({
+      enum: ["quiet"],
+    });
+    expect(JSON.stringify(create?.inputSchema)).toContain(
+      '"const":"hardcover"',
+    );
+    expect(tools.some((tool) => tool.name === "delete_books")).toBe(true);
+    expect(
+      schemaErrors(
+        tools.map((tool) => ({
+          name: tool.name,
+          inputSchema: tool.inputSchema as unknown as Record<string, unknown>,
+        })),
+      ),
+    ).toEqual([]);
+  });
+});
+
 describe("MCP JSON Schema validity", () => {
   it("preserves empty-array validation in the advertised representation", () => {
     const schema = z.toJSONSchema(emptyArraySchema);
@@ -361,9 +536,39 @@ describe("MCP JSON Schema validity", () => {
         TOOL_CONTRACTS.map(({ name }) => name).sort(),
       );
       expect(schemaErrors(tools)).toEqual([]);
+      expect(localInputReferences(tools)).toEqual([]);
       expect(recursiveReferences(tools)).toEqual([]);
       expectKnownAuthorityHints(tools);
       const byName = new Map(tools.map((tool) => [tool.name, tool]));
+      for (const side of ["before", "after"])
+        expect(byName.get("compare_web_captures")?.inputSchema).toHaveProperty(
+          [
+            "properties",
+            side,
+            "properties",
+            "inspection",
+            "properties",
+            "scripts",
+            "properties",
+            "items",
+            "items",
+            "properties",
+            "source",
+            "anyOf",
+          ],
+          expect.arrayContaining([
+            expect.objectContaining({
+              properties: expect.objectContaining({
+                reason: { type: "string" },
+              }),
+            }),
+            expect.objectContaining({
+              properties: expect.objectContaining({
+                artifact: expect.objectContaining({ type: "object" }),
+              }),
+            }),
+          ]),
+        );
       const catalogProjection = tools.map((tool) => ({
         name: tool.name,
         title: tool.title,
@@ -454,6 +659,39 @@ describe("MCP root input schemas", () => {
       }
 
       expectStrictInputSchemaParity(tools, ajv);
+
+      for (const name of ["inspect_web_page", "analyze_web_bundle"]) {
+        const contract = TOOL_CONTRACTS.find((tool) => tool.name === name);
+        const tool = advertised.get(name);
+        if (contract === undefined || tool === undefined)
+          throw new Error(`${name} was not advertised`);
+        const validate = ajv.compile(tool.inputSchema);
+        const base = {
+          cdp_endpoint: "http://127.0.0.1:9222",
+          target_id: "target",
+        };
+        for (const flag of [undefined, false, true, "false", null]) {
+          const input =
+            flag === undefined
+              ? base
+              : { ...base, include_script_sources: flag };
+          const accepted =
+            flag === undefined ||
+            flag === true ||
+            (name === "inspect_web_page" && flag === false);
+          const parsed = contract.inputSchema.safeParse(input);
+          expect(parsed.success, `${name}: ${String(flag)}`).toBe(accepted);
+          // The advertisement relaxes Boolean literals; the canonical parser
+          // still rejects false when this operation requires script sources.
+          expect(validate(input), `${name}: ${String(flag)}`).toBe(
+            flag === undefined || typeof flag === "boolean",
+          );
+          if (parsed.success && flag === undefined)
+            expect(parsed.data).toMatchObject({
+              include_script_sources: name === "analyze_web_bundle",
+            });
+        }
+      }
 
       const nativeObservation = TOOL_CONTRACTS.find(
         ({ name }) => name === "observe_native_ui",
@@ -646,6 +884,10 @@ it("ships nonrecursive input and output schemas in the generated catalog", () =>
   expect(recursiveReferences(GENERATED_MCP_TOOL_CATALOG)).toEqual([]);
 });
 
+it("ships input schemas without local references in the generated catalog", () => {
+  expect(localInputReferences(GENERATED_MCP_TOOL_CATALOG)).toEqual([]);
+});
+
 it("rejects unresolved output-schema references even for uncalled tools", () => {
   const errors = schemaErrors([
     {
@@ -676,6 +918,57 @@ it("validates each tool independently when output schema IDs repeat", () => {
   expect(errors).toHaveLength(1);
   expect(errors[0]).toContain("broken.outputSchema");
   expect(errors[0]).toContain("missing");
+});
+
+it("checks client array constraints in schema positions while preserving literal metadata", () => {
+  const schema = {
+    type: "object",
+    properties: { examples: { type: "array", items: { type: "string" } } },
+    examples: [{ type: "array" }],
+    default: { type: "array" },
+    const: { type: "array" },
+    enum: [{ type: "array" }],
+  };
+  expect(arrayItemSchemaError(schema, "literal")).toBeUndefined();
+  expect(
+    arrayItemSchemaError(
+      { ...schema, properties: { examples: { type: "array" } } },
+      "broken",
+    ),
+  ).toBe(
+    "broken.properties.examples: tool parameters array type must have items",
+  );
+  const booleanMetadata = {
+    type: "object",
+    properties: { default: { type: "boolean", const: false } },
+    default: { const: true },
+    examples: [{ enum: [false] }],
+  };
+  expect(
+    unsupportedInputLiteralSchemaError(
+      { ...booleanMetadata, properties: {} },
+      "literal",
+    ),
+  ).toBeUndefined();
+  expect(unsupportedInputLiteralSchemaError(booleanMetadata, "literal")).toBe(
+    "literal.properties.default.const is boolean",
+  );
+  for (const [literal, reason] of [
+    [{ const: "" }, "const is an empty string"],
+    [{ enum: ["named", ""] }, "enum contains an empty string"],
+  ] as const) {
+    expect(
+      unsupportedInputLiteralSchemaError(
+        {
+          type: "object",
+          properties: { value: literal },
+          default: { const: "" },
+          examples: [{ enum: [""] }],
+        },
+        "literal",
+      ),
+    ).toBe(`literal.properties.value.${reason}`);
+  }
 });
 
 it.each([false, true])(

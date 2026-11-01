@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { parseBinaryTarget } from "../../../dist/application/BinaryTargetResolver.js";
+import { ArtifactResourceScope } from "../../../dist/artifacts/ArtifactResourceScope.js";
 import { inspectAppleDispatchMetadata } from "../../../dist/native/AppleDispatchMetadata.js";
 import {
   artifactCliEvidence,
@@ -29,7 +30,7 @@ const LINK_MODES = [
   {
     mode: "dyld-info",
     flags: ["-Wl,-no_fixup_chains"],
-    fixups: "LC_DYLD_INFO rebase opcodes were not decoded",
+    fixups: "LC_DYLD_INFO rebase opcodes",
     swift: true,
   },
   { mode: "chained", flags: [], fixups: "chained fixups:", swift: true },
@@ -52,13 +53,24 @@ const fixupCoverage = (metadata) =>
 const inspect = async (path) => {
   const target = await parseBinaryTarget(path);
   if (!target.ok) throw target.error;
-  return {
-    target: target.value,
-    metadata: (await inspectAppleDispatchMetadata(target.value, 5000)).result,
-  };
+  const resources = new ArtifactResourceScope();
+  try {
+    return {
+      target: target.value,
+      metadata: (
+        await resources.run(() =>
+          inspectAppleDispatchMetadata(target.value, 5000, resources),
+        )
+      ).result,
+    };
+  } finally {
+    // Retry any descriptor whose close failed, surfacing unresolved cleanup.
+    await resources.close();
+  }
 };
 
 const checkObjc = (metadata, mode) => {
+  assert.equal(fixupCoverage(metadata)?.status, "complete");
   const fixture = metadata.objc_classes.find(
     ({ name, is_meta_class: meta }) => name === "ReaDispatchFixture" && !meta,
   );
@@ -88,6 +100,12 @@ const checkObjc = (metadata, mode) => {
   const protocol = metadata.objc_protocols.find(
     ({ name }) => name === "ReaDispatchProtocol",
   );
+  const protocolProperty = protocol?.properties.find(
+    ({ name }) => name === "fixtureName",
+  );
+  assert.equal(protocolProperty?.name, "fixtureName");
+  assert.equal(protocolProperty?.type_encoding, '@"NSString"');
+  assert.equal(protocolProperty?.atomicity, "nonatomic");
   assert.equal(protocol?.methods[0]?.is_required, true);
   assert.equal(protocol?.methods[0]?.is_optional, false);
   assert.equal(protocol?.optional_methods[0]?.is_required, false);
@@ -148,6 +166,32 @@ const checkObjc = (metadata, mode) => {
 };
 
 const checkSwift = (metadata, mode) => {
+  assert.equal(fixupCoverage(metadata)?.status, "complete");
+  for (const context of ["ReaNestedA", "ReaNestedB"]) {
+    const type = `${context}.Implementation`;
+    const protocol = `${context}.Requirement`;
+    assert.ok(
+      metadata.swift_conformances.some(
+        (item) =>
+          item.type_name === type &&
+          item.protocol_name === protocol &&
+          item.module === "ReaWitnessFixture" &&
+          item.decode.status === "decoded",
+      ),
+      `Nested Swift conformance ${type}: ${protocol} missing (${mode.mode})`,
+    );
+    assert.ok(
+      metadata.swift_dispatch_slots.some(
+        (item) =>
+          item.table_kind === "witness_table" &&
+          item.owner === `${type}: ${protocol}` &&
+          item.implementation_address !== null &&
+          item.decode.status === "decoded",
+      ),
+      `Nested Swift witness ${type}: ${protocol} missing (${mode.mode})`,
+    );
+  }
+
   if (
     !metadata.swift_dispatch_slots.some(
       (slot) =>
@@ -180,6 +224,76 @@ const checkSwift = (metadata, mode) => {
     throw new Error(
       `Swift metadata fixture drifted (${mode.mode}): ${JSON.stringify(metadata)}`,
     );
+};
+
+/** Declarations from dispatch.swift that survive stripping unchanged. */
+const EXPECTED_SWIFT_DECLS = [
+  ["struct", "ReaWitnessFixture", false],
+  ["class", "ReaVtableFixture", false],
+  ["enum", "ReaDeclFixtureEnum", false],
+  ["struct", "ReaDeclFixtureOuter", false],
+  ["struct", "ReaDeclFixtureOuter.Inner", false],
+  ["struct", "ReaDeclFixtureGeneric", true],
+  ["actor", "ReaDeclFixtureActor", false],
+  ["enum", "ReaNestedA", false],
+  ["struct", "ReaNestedA.Implementation", false],
+  ["enum", "ReaNestedB", false],
+  ["struct", "ReaNestedB.Implementation", false],
+];
+
+/** Stable declaration facts compared across the symbols and stripped builds. */
+const swiftDeclarations = (metadata) =>
+  metadata.swift_decls.map((item) => ({
+    kind: item.kind,
+    qualified_name: item.qualified_name,
+    module: item.module,
+    generic: item.generic,
+    descriptor: item.location.address,
+    accessor: item.accessor_address,
+    status: item.decode.status,
+  }));
+
+const checkSwiftDeclarations = (metadata, mode) => {
+  const declarations = swiftDeclarations(metadata);
+  for (const [kind, qualifiedName, generic] of EXPECTED_SWIFT_DECLS)
+    assert.ok(
+      declarations.some(
+        (item) =>
+          item.kind === kind &&
+          item.qualified_name === qualifiedName &&
+          item.module === "ReaWitnessFixture" &&
+          item.generic === generic &&
+          item.accessor !== null &&
+          item.status === "decoded",
+      ),
+      `Swift declaration ${qualifiedName} missing (${mode.mode}): ${JSON.stringify(declarations)}`,
+    );
+  assert.equal(
+    metadata.coverage.find(({ facet }) => facet === "swift_declarations")
+      ?.status,
+    "complete",
+  );
+  return declarations;
+};
+
+/** Descriptor and accessor addresses must be the compiler's Mn/Ma symbols. */
+const checkSwiftSymbolAddresses = async (path, declarations) => {
+  const { stdout } = await exec("/usr/bin/nm", ["--defined-only", path]);
+  const symbols = (suffix) =>
+    new Set(
+      stdout.split("\n").flatMap((line) => {
+        const [address, , name] = line.trim().split(/\s+/u);
+        return name?.endsWith(suffix) === true
+          ? [`0x${BigInt(`0x${address}`).toString(16)}`]
+          : [];
+      }),
+    );
+  const descriptors = symbols("Mn");
+  const accessors = symbols("Ma");
+  for (const item of declarations) {
+    assert.ok(descriptors.has(item.descriptor), JSON.stringify(item));
+    assert.ok(accessors.has(item.accessor), JSON.stringify(item));
+  }
 };
 
 const root = await mkdtemp(join(tmpdir(), "rea-dispatch-"));
@@ -236,6 +350,8 @@ try {
     await exec("/usr/bin/xcrun", [
       "swiftc",
       "-emit-library",
+      "-module-name",
+      "ReaWitnessFixture",
       "-O",
       ...mode.flags
         .map((flag) => flag.replace(/^-Wl,/u, "-Xlinker\0"))
@@ -244,14 +360,41 @@ try {
       "-o",
       swiftPath,
     ]);
+    let unstrippedDeclarations;
     for (const variant of ["symbols", "stripped"]) {
       if (variant === "stripped")
         await exec("/usr/bin/strip", ["-x", swiftPath]);
       const { target, metadata } = await inspect(swiftPath);
       checkSwift(metadata, mode);
+      const declarations = checkSwiftDeclarations(metadata, mode);
+      if (variant === "symbols") {
+        await checkSwiftSymbolAddresses(swiftPath, declarations);
+        unstrippedDeclarations = declarations;
+      } else assert.deepEqual(declarations, unstrippedDeclarations);
+      if (mode.mode === "chained" && variant === "stripped") {
+        const cli = await artifactCliEvidence(
+          "inspect-native-dispatch-metadata",
+          swiftPath,
+        );
+        const cliResult = nativeDispatchMetadataResultSchema.parse(
+          cli.normalized_result,
+        );
+        assert.equal(cliResult.target_sha256, target.sha256);
+        checkSwift(cliResult.result, mode);
+        await withArtifactMcp(swiftPath, async (client) => {
+          const mcpResult = nativeDispatchMetadataResultSchema.parse(
+            await artifactMcpResult(client, "inspect_native_dispatch_metadata"),
+          );
+          assert.equal(mcpResult.target_sha256, target.sha256);
+          checkSwift(mcpResult.result, mode);
+          assert.deepEqual(mcpResult.result, cliResult.result);
+        });
+      }
+
       results.push({
         variant: `swift-${mode.mode}-${variant}`,
         target_sha256: target.sha256,
+        declarations: declarations.length,
         conformances: metadata.swift_conformances.length,
         slots: metadata.swift_dispatch_slots.length,
         fixups: fixupCoverage(metadata)?.reason,

@@ -22,20 +22,21 @@ it("retains native re-export dependencies alongside ordinary and identity comman
   expect(result.value.result).toMatchObject({
     dependencies: {
       exhaustive: true,
-      total: 3,
-      items: expect.arrayContaining([
+      total: 2,
+      items: [
         expect.objectContaining({
           kind: "LC_REEXPORT_DYLIB",
           path: "@rpath/libLeaf.dylib",
         }),
         expect.objectContaining({
-          kind: "LC_ID_DYLIB",
-          path: "/owned/libOuter.dylib",
-        }),
-        expect.objectContaining({
           kind: "LC_LOAD_DYLIB",
           path: "/usr/lib/libSystem.B.dylib",
         }),
+      ],
+    },
+    load_commands: {
+      items: expect.arrayContaining([
+        expect.objectContaining({ kind: "LC_ID_DYLIB" }),
       ]),
     },
   });

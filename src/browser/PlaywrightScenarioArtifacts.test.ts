@@ -2,7 +2,7 @@ import { expect, it } from "vitest";
 import type { BrowserContext, Page } from "playwright-core";
 
 import { browserScenarioSchema } from "../domain/browserScenario.js";
-import { BrowserScenarioSecrets } from "./BrowserScenarioSecrets.js";
+import { resolveScenarioSecrets } from "../../tests/fixtures/browserScenarioSecrets.js";
 import { capturePlaywrightStepArtifacts } from "./PlaywrightScenarioArtifacts.js";
 
 const scenario = browserScenarioSchema.parse({
@@ -13,9 +13,7 @@ const scenario = browserScenarioSchema.parse({
   start_url: { url: "https://app.example.test/" },
   actions: [{ step_id: "wait", action: "wait_for_timeout", duration_ms: 1 }],
 });
-const secrets = BrowserScenarioSecrets.resolve(scenario, {});
-if (secrets === undefined)
-  throw new Error("Expected resolved scenario secrets");
+const secrets = resolveScenarioSecrets(scenario, {});
 
 it("returns a complete requested text artifact beyond the former inline ceiling", async () => {
   const page = {
@@ -57,14 +55,9 @@ it("redacts declared secrets from current and historical URL artifacts", async (
     ],
     capture: { at_end: ["url", "history"] },
   });
-  const scenarioSecrets = BrowserScenarioSecrets.resolve(
-    scenarioWithSecretUrl,
-    {
-      REA_URL_TOKEN: secretValue,
-    },
-  );
-  if (scenarioSecrets === undefined)
-    throw new Error("Expected resolved URL secret");
+  const scenarioSecrets = resolveScenarioSecrets(scenarioWithSecretUrl, {
+    REA_URL_TOKEN: secretValue,
+  });
   const query = new URLSearchParams([["token", secretValue]]).toString();
   const url = `https://app.example.test/?${query}#${encodeURIComponent(secretValue)}`;
   const page = {
@@ -121,11 +114,9 @@ it("redacts a declared secret used as a cookie or storage name", async () => {
       { secret_id: "storage_key", environment_variable: "REA_STORAGE_KEY" },
     ],
   });
-  const scenarioSecrets = BrowserScenarioSecrets.resolve(scenarioWithSecret, {
+  const scenarioSecrets = resolveScenarioSecrets(scenarioWithSecret, {
     REA_STORAGE_KEY: secretValue,
   });
-  if (scenarioSecrets === undefined)
-    throw new Error("Expected resolved storage secret");
   const page = {
     url: () => "https://app.example.test/",
     evaluate: async () => ({

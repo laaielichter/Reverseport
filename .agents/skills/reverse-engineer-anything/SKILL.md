@@ -1,8 +1,8 @@
 ---
 name: reverse-engineer-anything
-description: Reverse engineer and port anything with ReversePort — native, managed, Android, Electron/JavaScript, packaged, firmware and browser targets with evidence (decompile, trace, compare versions), game projects and exported builds (engine, scenes, packs), recon from public sources without files, clean-room rebuild specs, and ports between Godot, Unity, Unreal, three.js and languages.
+description: Reverse engineer and port anything with ReversePort — native, managed, Android, Electron/JavaScript, packaged, firmware and browser targets with evidence (decompile, trace, compare versions), game projects and exported builds (engine, scenes, packs), recon from public sources without files, clean-room rebuild specs, agent environments (AgentEnv bundles) of web apps, and ports between Godot, Unity, Unreal, three.js and languages.
 metadata:
-  version: "40"
+  version: "50"
 ---
 
 # ReversePort
@@ -31,13 +31,65 @@ unavailable, read [connection and recovery](references/connection-and-recovery.m
 Diagnose the observed blocker, continue useful supported work, and resume the
 original task after repair. Client approval, shell PATH, registration and engine
 availability have different remedies; avoid repeating setup for all of them.
+If the host times out without a ReversePort result, do not repeat the unchanged call or
+assume work stopped. Read the recovery guide's deadline distinction before retrying.
+If the MCP connection drops, retry that call once only when it is safe to
+repeat or known not to have started. If it may already have changed the
+target, or it fails again, tell the user and ask them to restart the MCP
+client. If ReversePort could not start its connection, retry once, then tell the user
+and ask them to restart the MCP client. Do not retry a startup failure that
+returns the same unchanged result. Run `reverseport doctor` when ReversePort could not start
+or tools stay missing after that restart. For `cleanup_incomplete`, a retryable
+capacity limit, or `configuration_invalid`, follow the recovery guide's ladder
+before asking for a restart. Read that guide before a second repair attempt.
 
+1. Diagnose without changing ReversePort or client configuration. `npx` may download
+   the package and write to npm's cache. For Codex, run
+   `npx -y reverseport@latest doctor --client codex --json`. Substitute the current
+   supported client: `claude_code`, `claude_desktop`, `codex`, `cursor`,
+   `gemini_cli`, `windsurf`, `devin`, `opencode`, `antigravity`, `copilot_cli`,
+   `commandcode`, `vscode`, `grok_build`, `omp`, or `grok_bot`. `grok_bot` has no local
+   file registration: doctor reports the Grok Bot chat step, and setup does not
+   write `mcp.json`. If the client is unknown, use `doctor --json` and
+   inspect its registration results before choosing a setup scope.
+2. Distinguish the reason. Missing, malformed, or stale registration needs a
+   scoped configuration repair. An aligned registration with no tools in the
+   active session needs a restart/reconnection; doctor cannot prove that the
+   current agent has connected. A missing provider affects only tasks requiring
+   that provider: static JavaScript inspection needs neither Hopper nor Ghidra,
+   and Android inspection has separate bring-your-own JADX/Java prerequisites.
+3. For a configuration repair, prepare the read-only plan:
+   `npx -y reverseport@latest setup --client codex --dry-run --json`.
+   Use the current client's ID, show its exact proposed paths, backups, and
+   changes, and obtain approval before setup writes configuration or installs
+   Hopper. Setup normally installs the matching bundled skill too; include that
+   replacement in the reviewed plan. After approval, apply the same scope with
+   `npx -y reverseport@latest setup --client codex --yes`. Add `--install-hopper`
+   only if that separate installation was needed and explicitly approved.
+4. Restart/reconnect the affected agent. Verify that ReversePort tools actually appear
+   in the session, then resume the original investigation. If they remain
+   absent, inspect the client's MCP launch error rather than repeating setup.
+
+ReversePort setup never installs or upgrades Node.js, npm, Homebrew, Java, Ghidra, IDA,
+JADX, Kuna, Binwalk, or Unblob. Use existing prerequisites; do not install unrelated
+software to repair MCP registration. For an unsupported client, use manual stdio
+registration with a version-pinned `reverseport` package or continue through the CLI.
+
+A concrete CLI fallback for an operator-supplied JavaScript tree or ASAR is:
+
+```bash
+npx -y reverseport@latest analyze-javascript-application /absolute/path/to/app --json
+```
+
+No MCP registration or native engine is required. Read the returned Evidence,
+graph, limitations, and unknowns with the same care as an MCP result; the CLI
+returns the Evidence record directly. This fallback does not establish that
+MCP is configured. Native CLI tasks still require their selected engine.
 Prefer an existing `reverseport` CLI. When none is installed and ReversePort package acquisition
 is within the authorized scope, use `npx -y reverseport@latest` in its place.
 Configuration repair starts with a read-only setup plan; show paths, backups and
 skill replacement before applying authorized changes. Preserve existing approval
-and target-execution boundaries. ReversePort setup never installs or upgrades unrelated
-software, including Node.js, npm, Homebrew, Java, Ghidra, IDA, JADX, Binwalk or Unblob.
+and target-execution boundaries.
 
 ## Recon, rebuild and port
 
@@ -81,23 +133,49 @@ explicit path or endpoint and do not need it.
 
 - ASAR or extracted JavaScript/Electron tree:
   `analyze_javascript_application`.
-- Archive or pack members (zip/apk/jar/asar, Godot .pck, Ren'Py .rpa, GameMaker
-  data.win, FMOD/Wwise banks, Unreal .pak, Flash .swf): `re_archive` to list
-  or extract. IPA/MSIX/AppX/DMG, or when you need Evidence IDs and integrity
-  findings: `open_binary` with the local path, then `inspect_artifact`.
+- Archive or pack members: `re_archive` lists or extracts zip/apk/jar/asar,
+  Godot .pck, Ren'Py .rpa, GameMaker data.win, FMOD/Wwise banks, Unreal .pak and
+  Flash .swf. For IPA/MSIX/AppX/DMG or a PyInstaller executable, or when you need
+  Evidence IDs and integrity findings: `open_binary` with the local path, then
+  `inspect_artifact`, starting with `detail: "summary"` for large inventories. A
+  PyInstaller CArchive is the application layer; the bootloader is only the
+  native prefix. See the
+  [Python packaged applications guide](https://github.com/laaielichter/reverseport/blob/main/docs/python-packaged-applications.md).
+- Apple app plist, Interface Builder, asset catalog, or keyed archive resources:
+  `open_bundle_resources`, then the selected resource tool. This does not
+  require `CFBundleExecutable` or a deep provider. Resource sessions have no
+  executable digest or binary snapshot; use `open_binary` for native code.
 - Android APK code, classes, methods, or incoming references:
   `inspect_android_package`, then focused Android tools when advertised.
   Archive member inventory still uses the archive route above.
 - Managed PE/CLI assembly: `inspect_managed_artifact`.
+- Native program behavior, live calls, instrumentation, or command-run effects:
+  choose the matching [native runtime workflow](references/runtime-observation.md#native-runtime-questions).
+  `open_binary` and `trace_native_values` establish static facts; they do not
+  observe execution. Runtime tools have distinct launch, attach, mutation and
+  cleanup effects, and do not require a preliminary static session unless their
+  own contract says so.
 - User-owned browser page already open: `list_browser_targets`.
-- User-owned Electron runtime already open: `list_electron_targets`.
+- Browser action the agent must perform (click, type, navigate):
+  `capture_browser_scenario` with declared actions. See
+  [runtime observation](references/runtime-observation.md) for connect/launch
+  and the focused follow-up browser tools.
+- Agent environment (AgentEnv bundle) of a web application: read
+  [environments](references/environments.md) before recording; it records with
+  `capture_browser_scenario` and writes the bundle with `export_environment_bundle`.
+- User-owned Electron runtime already open: `list_electron_targets`. Before an electron-main Inspector attempt, check packaged fuses with `inspect_electron_fuses`; disabled `EnableNodeCliInspectArguments` means the app ignores `--inspect`.
 - Native executable, library, or analysis database: `open_binary`, then
   use focused analysis tools directly; call `binary_overview` when metadata or
   inventory context is useful and available from the selected provider.
 
-Firmware, NativeAOT, HAR/mitmproxy captures, WebAssembly, EVM bytecode, Go
-metadata, ELF layout, recorded crashes, PE resources and IDA: see
+Firmware, NativeAOT, HAR/SAZ/qlog/PCAP captures, signal recordings, WebAssembly,
+EVM bytecode, Go/Rust/Flutter metadata, SQLite, APK signing, GGUF/safetensors,
+ELF layout, recorded crashes, PE resources/exports and IDA: see
 [specialised targets](references/native-and-artifacts.md#specialised-targets).
+
+With `REA_KUNA_COMMAND` configured, `provider_id: "kuna"` gives fast cached
+whole-program pseudocode and assembly; read [Kuna](references/native-and-artifacts.md#kuna-provider)
+before relying on its relationships.
 
 If the user says only "my app" without a name, path, or target already selected
 for this task, ask which app before searching for artifacts. Paths in unrelated
@@ -110,13 +188,26 @@ Call only tools that are listed or that `engine_tools` returns (call those with
 `result.tool_availability` gives the reason and the fix; `tools/list` has the
 canonical schemas.
 
+For a Ghidra startup timeout on a large native target, follow
+[deadline recovery](references/native-and-artifacts.md#ghidra-startup-deadline-recovery)
+before abandoning deep analysis or repeating the same cold import. The default
+330 seconds can be changed for new startup attempts through
+`update_analysis_settings` using `ghidra.startup_timeout_ms`. Changing the
+server's launch environment instead requires a new ReversePort process.
+
 ## Work summary-first
 
 Start with the default result and use its inline Evidence and graph context.
 For a JavaScript application or ELF layout whose size is unknown or large,
 call `analyze_javascript_application` or `inspect_binary_layout` with
 `"detail": "summary"`, then inspect the retained `parent_evidence_id` with
-`inspect_analysis_view`.
+`inspect_analysis_view`. Over MCP, `analyze_function` is summary-first without
+a flag: its default reply is the summary, and the complete dossier stays
+retained under `parent_evidence_id` for facet paging. Pass that ID as a
+`retained-evidence` reference to `compare_functions`, or inside
+`match_native_functions` `left_observations`/`right_observations`; request
+`"detail": "complete"` only when the dossier must travel inline, as
+`build_call_path` requires.
 Page module identities and select the returned `node_id` before requesting an
 item; a single file path can represent several graph roles. Do not repeat an
 identical analysis or rejected call without a changed input or resolved blocker.
@@ -204,12 +295,16 @@ as complete while required questions remain open.
   [references/javascript-applications.md](references/javascript-applications.md)
 - Android APK declarations, classes, methods, and static references:
   [references/android-applications.md](references/android-applications.md)
-- Passive browser/Electron observation and static/runtime reconciliation:
+- Native instrumentation, debugger and process capture; browser/Electron
+  observation; static/runtime comparison:
   [references/runtime-observation.md](references/runtime-observation.md)
 - Evidence paging, comparisons, residual unknowns, and verification:
   [references/evidence-workflows.md](references/evidence-workflows.md)
 - Game projects and builds, recon without files, clean-room rebuilds and ports:
   [references/porting-and-rebuilds.md](references/porting-and-rebuilds.md)
+- Agent environments (AgentEnv bundles) of a web application, recorded from
+  a live instance or a HAR:
+  [references/environments.md](references/environments.md)
 
 ## Finish the task
 

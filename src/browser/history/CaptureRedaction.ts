@@ -1,3 +1,4 @@
+import { isSafeNumber, type LosslessNumber } from "lossless-json";
 import type { WebNetworkCaptureRecord } from "../../domain/webNetworkCapture.js";
 import { parseRecordedTransportUrl } from "../../domain/recordedTransportUrl.js";
 
@@ -8,6 +9,31 @@ const CREDENTIAL_HEADERS = new Set([
   "cookie",
   "set-cookie",
 ]);
+/** HTTP credential names apply equally to recorded headers and gRPC-web trailers. */
+export const isCaptureCredentialHeader = (name: string): boolean =>
+  CREDENTIAL_HEADERS.has(name.toLowerCase());
+
+/** Match an ASCII header name without allocating a potentially enormous line. */
+export const isCaptureCredentialHeaderBytes = (
+  bytes: Uint8Array,
+  start: number,
+  end: number,
+): boolean => {
+  for (const name of CREDENTIAL_HEADERS) {
+    if (end - start !== name.length) continue;
+    let matches = true;
+    for (let index = 0; index < name.length; index++) {
+      const byte = bytes[start + index]!;
+      const lower = byte >= 65 && byte <= 90 ? byte + 32 : byte;
+      if (lower !== name.charCodeAt(index)) {
+        matches = false;
+        break;
+      }
+    }
+    if (matches) return true;
+  }
+  return false;
+};
 
 /** Literal redaction and structural authentication exclusions preserve unrelated local evidence. */
 export class CaptureRedaction {
@@ -50,6 +76,22 @@ export class CaptureRedaction {
     return null;
   }
 
+  /** Check both retained spellings before projecting a producer JSON number. */
+  number(
+    value: LosslessNumber,
+    pointer: string,
+    redact = true,
+  ): { reported: number | null; literal: string } | null {
+    const reported = isSafeNumber(value.value) ? Number(value.value) : null;
+    if (
+      redact &&
+      (this.text(value.value, pointer) === null ||
+        (reported !== null && this.text(String(reported), pointer) === null))
+    )
+      return null;
+    return { reported, literal: value.value };
+  }
+
   /** Known HAR credential surfaces; unknown extensions are ordinary caller-selected evidence. */
   harCredential(
     pointer: string,
@@ -58,7 +100,7 @@ export class CaptureRedaction {
     return (
       (/^\/(request|response)\/headers\/\d+\/value$/.test(pointer) &&
         typeof parent.name === "string" &&
-        CREDENTIAL_HEADERS.has(parent.name.toLowerCase())) ||
+        isCaptureCredentialHeader(parent.name)) ||
       /^\/(request|response)\/cookies\/\d+\/value$/.test(pointer)
     );
   }

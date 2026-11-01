@@ -18,6 +18,26 @@ const environment = () => ({
   HOPPER_LAUNCHER_PATH: "/rea-unconfigured-provider/hopper",
 });
 
+it("advertises the canonical observation duration bounds through the compiled CLI", async () => {
+  const { stdout } = await promisify(execFile)(
+    process.execPath,
+    [entrypoint, "observe-web-execution", "--schema", "--json"],
+    { env: environment(), timeout: 20_000 },
+  );
+  expect(JSON.parse(stdout)).toMatchObject({
+    options: {
+      properties: {
+        observationMs: {
+          type: "integer",
+          minimum: 1,
+          maximum: 2_147_483_647,
+          default: 10_000,
+        },
+      },
+    },
+  });
+});
+
 it("runs the compiled public listener command through its default native CDP composition", async () => {
   const browser = await startRuntimeBrowser();
   onTestFinished(() => browser.close());
@@ -111,17 +131,124 @@ const cancellationSignals =
   process.platform === "win32"
     ? (["SIGINT"] as const)
     : (["SIGINT", "SIGTERM"] as const);
-const webRuntimeCancellationCases = (
-  ["observe-web-execution", "inspect-web-event-listeners"] as const
-).flatMap((command) =>
-  cancellationSignals.map(
-    (signal) => [command, signal, signal === "SIGINT" ? 130 : 143] as const,
-  ),
+
+interface CliCancellationCommand {
+  readonly command: string;
+  readonly operation: string;
+  readonly buildArgs: (endpoint: string) => readonly string[];
+}
+
+const cancellationCommands: readonly CliCancellationCommand[] = [
+  {
+    command: "observe-web-execution",
+    operation: "observe_web_execution",
+    buildArgs: (endpoint) => [
+      "observe-web-execution",
+      endpoint,
+      "page-fixture",
+      "--observation-ms",
+      "30000",
+      "--json",
+    ],
+  },
+  {
+    command: "inspect-web-event-listeners",
+    operation: "inspect_web_event_listeners",
+    buildArgs: (endpoint) => [
+      "inspect-web-event-listeners",
+      endpoint,
+      "page-fixture",
+      "body",
+      "--json",
+    ],
+  },
+  {
+    command: "list-browser-targets",
+    operation: "list_browser_targets",
+    buildArgs: (endpoint) => ["list-browser-targets", endpoint, "--json"],
+  },
+  {
+    command: "inspect-web-page",
+    operation: "inspect_web_page",
+    buildArgs: (endpoint) => [
+      "inspect-web-page",
+      endpoint,
+      "page-fixture",
+      "--json",
+    ],
+  },
+  {
+    command: "analyze-web-bundle",
+    operation: "analyze_web_bundle",
+    buildArgs: (endpoint) => [
+      "analyze-web-bundle",
+      endpoint,
+      "page-fixture",
+      "--json",
+    ],
+  },
+  {
+    command: "observe-web-session",
+    operation: "observe_web_session",
+    buildArgs: (endpoint) => [
+      "observe-web-session",
+      endpoint,
+      "page-fixture",
+      "--json",
+    ],
+  },
+  {
+    command: "discover-webmcp-tools",
+    operation: "discover_webmcp_tools",
+    buildArgs: (endpoint) => [
+      "discover-webmcp-tools",
+      endpoint,
+      "page-fixture",
+      "--json",
+    ],
+  },
+  {
+    command: "capture-web-screenshot",
+    operation: "capture_web_screenshot",
+    buildArgs: (endpoint) => [
+      "capture-web-screenshot",
+      endpoint,
+      "page-fixture",
+      "--json",
+    ],
+  },
+  {
+    command: "list-javascript-runtime-targets",
+    operation: "list_javascript_runtime_targets",
+    buildArgs: (endpoint) => [
+      "list-javascript-runtime-targets",
+      endpoint,
+      "--json",
+    ],
+  },
+  {
+    command: "observe-javascript-runtime",
+    operation: "observe_javascript_runtime",
+    buildArgs: (endpoint) => [
+      "observe-javascript-runtime",
+      endpoint,
+      "target-fixture",
+      "--json",
+    ],
+  },
+];
+
+const cancellationCases = cancellationCommands.flatMap((command) =>
+  cancellationSignals.map((signal) => ({
+    ...command,
+    signal,
+    expectedExitCode: signal === "SIGINT" ? 130 : 143,
+  })),
 );
 
-it.each(webRuntimeCancellationCases)(
-  "%s preserves %s status when cancellation interrupts CDP discovery",
-  async (command, signal, expectedExitCode) => {
+it.each(cancellationCases)(
+  "$command preserves $signal status and awaited cleanup during CDP discovery",
+  async ({ command, operation, buildArgs, signal, expectedExitCode }) => {
     const sockets = new Set<Socket>();
     const server = createServer(() => undefined);
     server.on("connection", (socket) => {
@@ -136,21 +263,14 @@ it.each(webRuntimeCancellationCases)(
     const endpoint = `http://127.0.0.1:${String(address.port)}`;
     const contacted = once(server, "request");
 
-    const args =
-      command === "observe-web-execution"
-        ? [
-            command,
-            endpoint,
-            "page-fixture",
-            "--observation-ms",
-            "30000",
-            "--json",
-          ]
-        : [command, endpoint, "page-fixture", "body", "--json"];
-    const child = spawn(process.execPath, [entrypoint, ...args], {
-      env: environment(),
-      stdio: ["ignore", "pipe", "pipe"],
-    });
+    const child = spawn(
+      process.execPath,
+      [entrypoint, ...buildArgs(endpoint)],
+      {
+        env: environment(),
+        stdio: ["ignore", "pipe", "pipe"],
+      },
+    );
     const closed = once(child, "close");
     let stdout = "";
     child.stdout.setEncoding("utf8");
@@ -180,7 +300,7 @@ it.each(webRuntimeCancellationCases)(
       expect(JSON.parse(stdout)).toMatchObject({
         code: "cancelled",
         category: "cancelled",
-        details: { cleanup: "complete" },
+        details: { cleanup: "complete", operation },
       });
     } finally {
       clearTimeout(timeout);

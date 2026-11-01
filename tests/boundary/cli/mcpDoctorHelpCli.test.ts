@@ -83,4 +83,34 @@ describe("MCP doctor help boundary", () => {
     },
     CLI_INTEGRATION_TIMEOUT_MS,
   );
+
+  workspaceCliTest(
+    "reports an absent or empty --format value as a missing output value",
+    async ({ cli }) => {
+      const message =
+        "--format requires a value, as in --format <value> or --format=<value>.";
+      for (const arguments_ of [
+        ["mcp", "doctor", "--format"],
+        ["mcp", "doctor", "--format="],
+      ]) {
+        const result = await cli.run({ arguments: arguments_ });
+        expect(result).toMatchObject({
+          exitCode: 1,
+          stdout: `code: MISSING_OUTPUT_VALUE\nmessage: "${message}"\n`,
+        });
+      }
+      for (const arguments_ of [
+        ["mcp", "doctor", "--json", "--format"],
+        ["mcp", "doctor", "--json", "--format="],
+      ]) {
+        const result = await cli.run({ arguments: arguments_ });
+        expect(result.exitCode).toBe(1);
+        expect(JSON.parse(result.stdout)).toEqual({
+          code: "MISSING_OUTPUT_VALUE",
+          message,
+        });
+      }
+    },
+    CLI_INTEGRATION_TIMEOUT_MS,
+  );
 });

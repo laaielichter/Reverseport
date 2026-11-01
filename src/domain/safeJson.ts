@@ -4,9 +4,16 @@ export type SafeJsonParseResult =
   | { readonly ok: false; readonly error: string; readonly cause: unknown };
 
 /** Parse JSON text, returning the failure reason instead of throwing. */
-export const safeParseJson = (value: string): SafeJsonParseResult => {
+export const safeParseJson = (
+  value: string,
+  reviver?: (
+    key: string,
+    value: unknown,
+    context?: { readonly source?: string },
+  ) => unknown,
+): SafeJsonParseResult => {
   try {
-    return { ok: true, value: JSON.parse(value) as unknown };
+    return { ok: true, value: JSON.parse(value, reviver) as unknown };
   } catch (cause: unknown) {
     return {
       ok: false,

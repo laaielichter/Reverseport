@@ -1,12 +1,149 @@
 import { describe, expect, it } from "vitest";
 
-import { parseGhidraInventoryResult } from "./GhidraInventoryValues.js";
+import {
+  parseGhidraInventoryInput,
+  parseGhidraInventoryResult,
+} from "./GhidraInventoryValues.js";
+
+it.each(["list_procedures", "search_procedures"] as const)(
+  "preserves real bridge symbol provenance in %s",
+  (operation) => {
+    // Captured from Ghidra 12.1.4 on the source-owned PowerPC DOL fixture.
+    const rows = [
+      {
+        address: "0x80003130",
+        value: "__start",
+        symbol: {
+          primary: true,
+          dynamic: false,
+          external: false,
+          type: "function",
+          source: "user_defined",
+        },
+        ...(operation === "list_procedures"
+          ? {
+              procedure: { external: false, thunk: false, thunk_target: null },
+            }
+          : {}),
+      },
+    ];
+    expect(parseGhidraInventoryResult(operation, rows)).toEqual({
+      ok: true,
+      value: { value: rows },
+    });
+  },
+);
+
+it("validates large masked byte queries at the provider boundary without changing caller spelling", () => {
+  const input = {
+    pattern: "aA??".repeat(1024 * 1024),
+    mask: "ff00".repeat(1024 * 1024),
+  };
+  const parsed = parseGhidraInventoryInput("search_bytes", input);
+  expect(parsed.ok).toBe(true);
+  if (!parsed.ok) throw parsed.error;
+  expect(parsed.value.pattern === input.pattern).toBe(true);
+  expect(parsed.value.mask === input.mask).toBe(true);
+  expect(
+    parseGhidraInventoryInput("search_bytes", {
+      ...input,
+      mask: `${input.mask.slice(0, -2)}g0`,
+    }).ok,
+  ).toBe(false);
+  expect(
+    parseGhidraInventoryInput("search_bytes", {
+      ...input,
+      mask: "00ff".repeat(1024 * 1024),
+    }).ok,
+  ).toBe(false);
+});
+
+describe("provider-owned overview boundary", () => {
+  const overview = {
+    document: "fixture",
+    segments: [],
+    procedure_count: 0,
+    string_count: 0,
+  };
+
+  it("keeps exact empty counts and an observed empty segment set", () => {
+    expect(
+      parseGhidraInventoryInput("read_binary_inventory_summary", {}),
+    ).toEqual({
+      ok: true,
+      value: {},
+    });
+    expect(
+      parseGhidraInventoryInput("read_binary_inventory_summary", {
+        document: "other",
+      }).ok,
+    ).toBe(false);
+    expect(
+      parseGhidraInventoryResult("read_binary_inventory_summary", overview),
+    ).toEqual({
+      ok: true,
+      value: { value: { ...overview, segment_count: 0 }, rawResult: overview },
+    });
+  });
+
+  it("keeps the independent segment permissions and provenance behind an overview", () => {
+    const reported = {
+      ...overview,
+      segments: [
+        {
+          name: ".text",
+          start: "0x1000",
+          end: "0x100f",
+          readable: true,
+          writable: false,
+          executable: true,
+          permissions: { available: true, source: "ghidra-memory-block" },
+          provenance: "ghidra-memory-block",
+          address_space: "ram",
+          image_base: "0x1000",
+          initialized: true,
+          overlay: false,
+          sections: [],
+        },
+      ],
+    };
+    const parsed = parseGhidraInventoryResult(
+      "read_binary_inventory_summary",
+      reported,
+    );
+    if (!parsed.ok) throw parsed.error;
+    expect(parsed.value.rawResult).toEqual(reported);
+    expect(parsed.value.value).toMatchObject({
+      procedure_count: 0,
+      string_count: 0,
+      segments: [{ name: ".text", start: "0x1000", end: "0x100f" }],
+    });
+  });
+
+  it.each([
+    { procedure_count: -1 },
+    { string_count: 1.5 },
+    { procedure_count: Number.MAX_SAFE_INTEGER + 1 },
+    { string_count: null },
+    { document: "" },
+    { segments: [{ name: "incomplete" }] },
+    { extra: "unexpected" },
+  ])("rejects malformed aggregates before creating Evidence: %j", (change) => {
+    expect(
+      parseGhidraInventoryResult("read_binary_inventory_summary", {
+        ...overview,
+        ...change,
+      }).ok,
+    ).toBe(false);
+  });
+});
 
 // Wire-boundary fixture only; real-provider acceptance belongs to the DOS verifier.
 describe("containing-procedure complete body evidence", () => {
   const identity = () => ({
     address: "0x1000",
     name: "fixture_function",
+    symbol: null,
     classification: {
       external: false,
       thunk: false,

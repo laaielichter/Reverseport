@@ -2,11 +2,11 @@ import { describe, expect, it } from "vitest";
 
 import {
   completionVerifierReportSchema,
+  completionManifestSchema,
   createCompletionLedgerArtifacts,
-  parseCompletionManifest,
   type CompletionVerifierReport,
 } from "./completionLedgerGeneration.js";
-import { parseEvidenceCompletionLedger } from "./evidenceCompletionLedger.js";
+import { evidenceCompletionLedgerSchema } from "./evidenceCompletionLedger.js";
 
 const digest = (digit: string): string => digit.repeat(64);
 const evidenceId = (digit: string): string => `ev_${digest(digit)}`;
@@ -246,13 +246,13 @@ describe("completion ledger identity validation", () => {
 
     const generated = generate();
     expect(() =>
-      parseCompletionManifest({
+      completionManifestSchema.parse({
         ...generated.manifest,
         manifest_id: `ecm_${digest("0")}`,
       }),
     ).toThrow();
     expect(() =>
-      parseEvidenceCompletionLedger({
+      evidenceCompletionLedgerSchema.parse({
         ...generated.ledger,
         records: generated.ledger.records.slice(1),
       }),

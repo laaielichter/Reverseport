@@ -1,3 +1,11 @@
+import {
+  analysisEvidenceDeliveryOptions,
+  cliEvidenceDeliveryInputError,
+  publishCliAnalysisEvidence,
+} from "./analysisEvidenceDelivery.js";
+import { withCommandCancellation } from "./commandCancellation.js";
+import { projectAnalysisError } from "../domain/analysisErrorProjection.js";
+import { ARTIFACT_GRAPH_PROVIDER } from "../domain/investigationProviders.js";
 import { z } from "incur";
 
 import type { DirectAnalysis } from "../composition/directAnalysis.js";
@@ -191,7 +199,8 @@ const registerExtractionCommand = (
   runProviderAnalysis: DirectAnalysis["runProviderAnalysis"],
 ): void => {
   cli.command(CLI_COMMANDS.extractArtifact, {
-    description: "Extract all regular artifact contents safely",
+    description:
+      "Extract regular contents of supported artifacts; DMG extraction is unavailable",
     args: z.object({
       path: z.string().describe("Application or package path"),
     }),
@@ -225,9 +234,10 @@ const registerInspectionCommand = (
     description:
       "Inspect one artifact and return all available observations and next probes",
     args: z.object({
-      path: z.string().describe("Application or package path"),
+      path: z.string().min(1).describe("Application or package path"),
     }),
     options: z.object({
+      ...analysisEvidenceDeliveryOptions,
       integrityPolicy: z
         .enum(["fail", "record-and-continue"])
         .default("fail")
@@ -235,14 +245,25 @@ const registerInspectionCommand = (
     }),
     run: ({ args, options }) =>
       logCliCommand(logger, "inspect-artifact", () =>
-        runProviderAnalysis(
-          args.path,
-          "inspect_artifact",
-          {
-            integrity_policy: options.integrityPolicy,
-          },
-          logger,
-        ),
+        withCommandCancellation(async (signal) => {
+          const delivery = {
+            providerId: ARTIFACT_GRAPH_PROVIDER.id,
+            operation: "inspect_artifact",
+            signal,
+            detail: options.detail,
+            evidenceOutput: options.evidence_output,
+          };
+          const inputError = cliEvidenceDeliveryInputError(delivery);
+          if (inputError !== undefined) return projectAnalysisError(inputError);
+          const complete = await runProviderAnalysis(
+            args.path,
+            "inspect_artifact",
+            { integrity_policy: options.integrityPolicy },
+            logger,
+            signal,
+          );
+          return publishCliAnalysisEvidence(complete, delivery);
+        }),
       ),
   });
 };

@@ -14,7 +14,7 @@ export const evidenceRecordFiltersSchema = z.strictObject({
 });
 export type EvidenceRecordFilters = z.infer<typeof evidenceRecordFiltersSchema>;
 
-const countSchema = z.number().int().nonnegative();
+const countSchema = z.int().nonnegative();
 const nativeMetadataSchema = z.object({
   procedure: z.object({ address: z.string(), name: z.string().nullish() }),
   native_value_flow: z.unknown().optional(),

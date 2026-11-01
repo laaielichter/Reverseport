@@ -1,14 +1,13 @@
 import { z } from "incur";
-import { AnalysisError } from "../domain/analysisErrorBase.js";
 import { AndroidAnalysisService } from "../application/android/AndroidAnalysisService.js";
 import { createAndroidAnalysisProvider } from "../composition/android.js";
 import { CLI_COMMANDS } from "../cliCommandNames.js";
 import { logCliCommand } from "../cliLogging.js";
-import { projectAnalysisError } from "../domain/analysisErrorProjection.js";
 import type { AndroidOperation } from "../domain/android/androidAnalysis.js";
 import type { Logger } from "pino";
 import type { CliInstance } from "./types.js";
 import { withCommandCancellation } from "./commandCancellation.js";
+import { finishAnalysisCommand } from "./finishAnalysisCommand.js";
 
 /** Expose the same explicit APK requests through one-shot CLI commands. */
 export const registerAndroidCommands = (
@@ -20,17 +19,15 @@ export const registerAndroidCommands = (
   const service = new AndroidAnalysisService(provider);
   const execute = (name: string, operation: AndroidOperation, input: unknown) =>
     withCommandCancellation((signal) =>
-      logCliCommand(logger, name, async () => {
-        const result = await service.execute(operation, input, { signal });
-        try {
-          await provider.close();
-        } catch (cause) {
-          if (cause instanceof AnalysisError)
-            return projectAnalysisError(cause);
-          throw cause;
-        }
-        return result.ok ? result.value : projectAnalysisError(result.error);
-      }),
+      logCliCommand(logger, name, () =>
+        finishAnalysisCommand(
+          () => service.execute(operation, input, { signal }),
+          { close: () => provider.close() },
+          "jadx",
+          operation,
+          signal,
+        ),
+      ),
     );
   const path = z.string().describe("Local standalone APK path");
   const className = z.string().describe("Exact fully qualified class name");
@@ -99,13 +96,20 @@ export const registerAndroidCommands = (
       }),
   });
   cli.command(CLI_COMMANDS.traceAndroidReferences, {
-    description: "Trace incoming APK class or unique-method references",
+    description:
+      "Trace incoming APK using nodes for a class or selected method",
     args: z.object({ path, className }),
     options: z.object({
       methodName: z
         .string()
         .optional()
-        .describe("Unique declared method name; omit for class references"),
+        .describe("Declared method name; omit for class references"),
+      overloadIndex: z
+        .number()
+        .int()
+        .nonnegative()
+        .optional()
+        .describe("Index among same-name methods from inspect-android-class"),
     }),
     run: ({ args, options }) =>
       execute(CLI_COMMANDS.traceAndroidReferences, "trace_android_references", {
@@ -114,6 +118,9 @@ export const registerAndroidCommands = (
         ...(options.methodName === undefined
           ? {}
           : { method_name: options.methodName }),
+        ...(options.overloadIndex === undefined
+          ? {}
+          : { overload_index: options.overloadIndex }),
       }),
   });
 };

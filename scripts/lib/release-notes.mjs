@@ -53,7 +53,7 @@ export const releaseInventorySchema = z.object({
   pullRequests: z.array(pullRequest),
 });
 
-export async function readReleaseHistory(run, base, target) {
+export async function requireCompleteReleaseHistory(run) {
   if (
     (await run("git", ["rev-parse", "--is-shallow-repository"])).trim() !==
     "false"
@@ -61,6 +61,10 @@ export async function readReleaseHistory(run, base, target) {
     throw new Error(
       "Release inventory requires complete Git history; fetch --unshallow first",
     );
+}
+
+export async function readReleaseHistory(run, base, target) {
+  await requireCompleteReleaseHistory(run);
   const resolve = async (ref) =>
     sha.parse(
       (
@@ -98,9 +102,9 @@ export async function readReleaseHistory(run, base, target) {
   return { base: baseSha, target: targetSha, commits };
 }
 
-// REA history maps Anthropic and Cursor's agent trailers to ordinary User actors.
+// GitHub maps these coding-agent trailers to ordinary User actors.
 // Keep those source identities in the inventory while excluding automation credit.
-const AGENT_ACCOUNTS = new Set(["claude", "cursoragent"]);
+const AGENT_ACCOUNTS = new Set(["claude", "cursoragent", "codex", "copilot"]);
 // REA's maintainer requested external-contributor thanks without self-credit.
 const MAINTAINER_ACCOUNTS = new Set(["morluto"]);
 const human = (value) =>

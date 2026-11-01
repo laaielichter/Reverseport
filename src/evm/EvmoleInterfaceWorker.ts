@@ -5,7 +5,8 @@ import {
   decodeEvmBytecodeCarrier,
   EvmCarrierFailure,
 } from "./EvmBytecodeCarrier.js";
-import { projectEvmoleInterface } from "./EvmoleInterfaceAdapter.js";
+import { evmoleInterfaceReplySchema } from "./EvmoleInterfaceAdapter.js";
+import { inspectSolidityMetadata } from "./SolidityMetadata.js";
 import {
   EVM_INTERFACE_LIMITS,
   EVM_FILE_SIZE_FAILURE_EXIT,
@@ -50,7 +51,7 @@ const main = async (): Promise<void> => {
         new URL(import.meta.resolve("evmole/evmole_bg.wasm")),
       ),
     });
-    const inferred = projectEvmoleInterface(
+    const raw = evmoleInterfaceReplySchema.parse(
       engine.contractInfo(Buffer.from(bytes).toString("hex"), {
         selectors: true,
         arguments: true,
@@ -64,8 +65,9 @@ const main = async (): Promise<void> => {
         sha256: createHash("sha256").update(bytes).digest("hex"),
         bytes: bytes.length,
         hex: Buffer.from(bytes).toString("hex"),
+        metadata: inspectSolidityMetadata(bytes),
       },
-      raw: inferred.raw,
+      raw,
     };
   } catch (cause: unknown) {
     reply = {

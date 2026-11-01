@@ -1,4 +1,4 @@
-import { realpath } from "node:fs/promises";
+import { realpath, stat } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { stripComments } from "jsonc-parser";
 import { z } from "zod";
@@ -110,10 +110,13 @@ const workspaceTrusted = async (
   return ok(trusted);
 };
 
-/** Check effective Gemini scopes while preserving their authority and source identity. */
+/**
+ * Check Gemini scopes using the caller's user-file observation (undefined means absent).
+ * Other settings sources are read here; transaction owners supply fresh user facts.
+ */
 export const readClientPolicyBlock = async (
   client: SetupClient,
-  userDocument?: ClientConfigurationDocument,
+  userDocument: ClientConfigurationDocument | undefined,
   desiredRegistration?: unknown,
   resources?: ArtifactResourceScope,
 ): Promise<Result<string | undefined, ClientConfigurationFileError>> => {
@@ -128,7 +131,7 @@ export const readClientPolicyBlock = async (
     settings.systemPath,
   ]) {
     const parsed =
-      path === client.configPath && userDocument !== undefined
+      path === client.configPath
         ? ok(userDocument)
         : await readConfigurationFile(path, "json", resources);
     if (!parsed.ok) return parsed;
@@ -149,12 +152,27 @@ export const readClientPolicyBlock = async (
       ".gemini",
       "settings.json",
     );
-    const document = await readConfigurationFile(path, "json", resources);
-    if (!document.ok) return document;
-    if (document.value !== undefined) {
-      const trusted = await workspaceTrusted(settings, sources, resources);
-      if (!trusted.ok) return trusted;
-      if (trusted.value) {
+    // Only ENOENT proves absence; preserve other metadata failures as unreadable.
+    const present = await stat(path).then(
+      () => ok(true),
+      (cause: unknown) =>
+        cause instanceof Error && "code" in cause && cause.code === "ENOENT"
+          ? ok(false)
+          : err({
+              kind: "unreadable" as const,
+              path,
+              detail: `Configuration ${path} could not be read: ${cause instanceof Error ? cause.message : String(cause)}`,
+            }),
+    );
+    if (!present.ok) return present;
+    const includeWorkspace = present.value
+      ? await workspaceTrusted(settings, sources, resources)
+      : ok(false);
+    if (!includeWorkspace.ok) return includeWorkspace;
+    if (includeWorkspace.value) {
+      const document = await readConfigurationFile(path, "json", resources);
+      if (!document.ok) return document;
+      if (document.value !== undefined) {
         const source = { path, document: document.value };
         const systemIndex = sources.findIndex(
           (item) => item.path === settings.systemPath,

@@ -2,37 +2,31 @@ import { describe, expect, it } from "vitest";
 
 import {
   functionBodySchema,
+  addressDistance,
   procedureIdentitySchema,
   parseDocuments,
   parseListCount,
-  parseNames,
-  parseProcedures,
   parseRelatedAddresses,
   parseSegments,
 } from "./hopperValues.js";
 
 describe("Hopper boundary values", () => {
-  it("parses Hopper's address-keyed name and string maps", () => {
-    expect(parseNames({ "0x1000": "_main" })).toEqual({
-      ok: true,
-      value: [{ address: "0x1000", name: "_main" }],
-    });
+  it("distinguishes measured zero, malformed, incomparable, reversed, and oversized extents", () => {
+    expect(addressDistance("not-an-address", "0x2000")).toBeNull();
+    expect(addressDistance("ram:0x1000", "rom:0x2000")).toBeNull();
+    expect(addressDistance("0x2000", "0x1000")).toBeNull();
+    expect(addressDistance("0x1000", "0x1000")).toBe(0);
+    expect(addressDistance("0x1000", "0x2000")).toBe(4096);
+    expect(addressDistance("0x0", "0x20000000000000")).toBeNull();
+  });
+
+  it("counts Hopper's address-keyed string maps", () => {
     expect(
       parseListCount({ "0x1000": "hello", "0x2000": "world" }, "strings"),
     ).toEqual({ ok: true, value: 2 });
   });
 
   it("parses direct and wrapped protocol shapes", () => {
-    expect(parseProcedures({ procedures: { "0x1": "main" } })).toEqual({
-      ok: true,
-      value: [{ address: "0x1", name: "main" }],
-    });
-    expect(parseNames({ names: [{ address: "0x2", name: "label" }] }).ok).toBe(
-      true,
-    );
-    expect(parseNames({ items: [{ address: "0x2", value: "label" }] }).ok).toBe(
-      false,
-    );
     expect(parseRelatedAddresses({ callers: ["0x3"] }, "callers")).toEqual({
       ok: true,
       value: ["0x3"],
@@ -68,8 +62,6 @@ describe("Hopper boundary values", () => {
   });
 
   it.each([
-    ["procedures", () => parseProcedures(["not-a-map"])],
-    ["names", () => parseNames([{ address: 1, name: "bad" }])],
     ["relations", () => parseRelatedAddresses([1], "callees")],
     ["segments", () => parseSegments([{ name: 1 }])],
     ["documents", () => parseDocuments([1])],
@@ -78,9 +70,21 @@ describe("Hopper boundary values", () => {
     (_label, parse) => {
       const result = parse();
       expect(result.ok).toBe(false);
-      if (!result.ok) expect(result.error._tag).toBe("HopperProtocolError");
+      if (!result.ok) expect(result.error._tag).toBe("AnalysisOutputError");
     },
   );
+
+  it("uses provider-neutral wording for malformed shared values", () => {
+    const result = parseSegments([{ name: 1 }]);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error._tag).toBe("AnalysisOutputError");
+      expect(result.error.operation).toBe("list_segments");
+      expect(result.error.reason).toBe(
+        "Provider returned an invalid segment list",
+      );
+    }
+  });
 });
 
 describe("provider-neutral inclusive function body evidence", () => {

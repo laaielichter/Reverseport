@@ -1,9 +1,16 @@
 import { Ajv2020 } from "ajv/dist/2020.js";
 import { Cli, z } from "incur";
+import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { createCli } from "../../../src/cli.js";
 import { createCliInventory } from "../../../scripts/lib/catalog-cli.mjs";
+import { adbInputSchemas } from "../../../src/domain/adb/adbDeviceAnalysis.js";
+import {
+  apktoolInputSchemas,
+  MAX_SELECTED_LOCALES,
+} from "../../../src/domain/apktool/apktoolResourceAnalysis.js";
+import { presentOmittableDefaults } from "../../../src/cli/omittableDefaults.js";
 
 type CliInstance = ReturnType<typeof createCli>;
 type CommandMap = NonNullable<ReturnType<typeof Cli.toCommands.get>>;
@@ -57,13 +64,20 @@ const parserSchema = (
   return schema instanceof z.ZodObject ? schema : undefined;
 };
 
+/**
+ * Reject a key only when an object parse that omits it fails.
+ * `exactOptional()` rejects explicit `undefined` and still accepts omission.
+ */
 const omissionRejected = (schema: z.ZodObject | undefined): string[] =>
   Object.entries(schema?.shape ?? {})
-    .filter(([, field]) => !field.safeParse(undefined).success)
+    .filter(([key, field]) => !acceptsOmittedKey(key, field))
     .map(([key]) => key)
     .sort();
 
-describe("CLI advertised input schemas", () => {
+const acceptsOmittedKey = (key: string, field: z.ZodType): boolean =>
+  z.object({ [key]: field }).safeParse({}).success;
+
+const registerParserAdvertisementInventoryTests = (): void => {
   it("require exactly the inputs whose omission the parser rejects", async () => {
     const cli = createCli({});
     const mismatches: string[] = [];
@@ -99,6 +113,91 @@ describe("CLI advertised input schemas", () => {
     }
     expect(mismatches).toEqual([]);
   });
+};
+
+describe("CLI advertised input schemas", () => {
+  registerParserAdvertisementInventoryTests();
+
+  it("preserves client choices, selected path bounds and required decoded steps", async () => {
+    const cli = createCli({});
+    const ajv = new Ajv2020({ strict: false });
+    for (const command of ["setup", "doctor"]) {
+      const schema = await advertisedSchema(cli, command);
+      const validate = ajv.compile(schema.options ?? {});
+      for (const client of ["codex", "unsupported-client"]) {
+        const input = { client: [client] };
+        expect(validate(input)).toBe(client === "codex");
+        expect(
+          parserSchema(cli, command, "options")?.safeParse(input).success,
+        ).toBe(client === "codex");
+      }
+    }
+    const setup = await advertisedSchema(cli, "setup");
+    const validateSkill = ajv.compile(setup.options ?? {});
+    for (const skillClient of ["shared", "codex", "unsupported-client"]) {
+      const input = { skillClient: [skillClient] };
+      expect(validateSkill(input)).toBe(skillClient !== "unsupported-client");
+      expect(
+        parserSchema(cli, "setup", "options")?.safeParse(input).success,
+      ).toBe(skillClient !== "unsupported-client");
+    }
+    for (const [command, field] of [
+      ["inspect-wasm-artifact", "glue_paths"],
+      ["inspect-wasm-artifact", "candidate_paths"],
+      ["recover-javascript-sources", "additionalPath"],
+    ] as const) {
+      const schema = await advertisedSchema(cli, command);
+      const validate = ajv.compile(schema.options ?? {});
+      for (const count of [16, 17]) {
+        const input = {
+          [field]: Array.from({ length: count }, () => "./selected"),
+        };
+        expect(validate(input)).toBe(count === 16);
+        expect(
+          parserSchema(cli, command, "options")?.safeParse(input).success,
+        ).toBe(count === 16);
+      }
+    }
+    const scenario = await advertisedSchema(cli, "capture-native-ui-scenario");
+    expect(scenario.options?.required).toContain("steps");
+    expect(scenario.options?.properties.steps).toMatchObject({
+      description: expect.stringContaining("one or more"),
+    });
+    const desktop = await advertisedSchema(cli, "inspect-desktop-application");
+    const validate = ajv.compile(desktop.args ?? {});
+    for (const path of ["", ".", "./selected"]) {
+      expect(validate({ path })).toBe(path !== "");
+      expect(
+        parserSchema(cli, "inspect-desktop-application", "args")?.safeParse({
+          path,
+        }).success,
+      ).toBe(path !== "");
+    }
+  });
+
+  it("allows an omitted WASM timeout while validating explicitly supplied values", async () => {
+    const cli = createCli({});
+    const advertised = await advertisedSchema(cli, "inspect-wasm-artifact");
+    const options = parserSchema(cli, "inspect-wasm-artifact", "options");
+    expect(options).toBeDefined();
+    const validate = new Ajv2020({ strict: false }).compile(
+      advertised.options ?? {},
+    );
+
+    expect(options?.safeParse({}).success).toBe(true);
+    expect(validate({})).toBe(true);
+    expect(options?.safeParse({ commandTimeoutMs: undefined }).success).toBe(
+      false,
+    );
+    for (const commandTimeoutMs of [1, 30_000, 2_147_483_647]) {
+      expect(options?.safeParse({ commandTimeoutMs }).success).toBe(true);
+      expect(validate({ commandTimeoutMs })).toBe(true);
+    }
+    for (const commandTimeoutMs of [0, 1.5, 2_147_483_648]) {
+      expect(options?.safeParse({ commandTimeoutMs }).success).toBe(false);
+      expect(validate({ commandTimeoutMs })).toBe(false);
+    }
+  });
 
   it("accepts the one-argument keyed-archive call and keeps its constraints", async () => {
     const cli = createCli({});
@@ -129,6 +228,22 @@ describe("CLI advertised input schemas", () => {
     expect(help.stdout).toContain(
       "archive  Relative archive path when the target is a bundle",
     );
+  });
+
+  it("advertises defaults as omittable on a mounted group root", async () => {
+    const group = Cli.create("group", {
+      args: z.object({ scope: z.enum(["all", "selected"]).default("all") }),
+      run: () => ({ ok: true }),
+    }).command("child", { run: () => ({ ok: true }) });
+    const cli = Cli.create("group-root-test", { sync: false }).command(group);
+
+    presentOmittableDefaults(cli as unknown as CliInstance);
+
+    const advertised = await advertisedSchema(
+      cli as unknown as CliInstance,
+      "group",
+    );
+    expect(advertised.args?.required ?? []).not.toContain("scope");
   });
 });
 
@@ -200,4 +315,445 @@ describe("web module CLI advertised input schema", () => {
     expect(options({ importMapBaseUrl: "" })).toBe(false);
   });
 });
-import { resolve } from "node:path";
+
+describe("ADB activity extra input schema", () => {
+  it("matches the owning workflow's extra count through advertisement and CLI parsing", async () => {
+    const cli = createCli({});
+    const advertised = await advertisedSchema(cli, "start-adb-activity");
+    const parser = parserSchema(cli, "start-adb-activity", "options");
+    if (parser === undefined)
+      throw new Error("ADB activity options parser was not registered");
+    const validate = new Ajv2020({ strict: false }).compile(
+      advertised.options ?? {},
+    );
+    expect(advertised.options?.properties.extra).toMatchObject({
+      type: "array",
+      maxItems: 16,
+      default: [],
+    });
+    const request = {
+      serial: "emulator-5554",
+      action: "android.intent.action.VIEW",
+    };
+    expect(validate({})).toBe(true);
+    const omitted = adbInputSchemas.start_adb_activity.parse(request);
+    expect(omitted.extras).toEqual([]);
+    expect(parser.parse({}).extra).toEqual(omitted.extras);
+    for (const count of [0, 16, 17]) {
+      const extras = Array.from({ length: count }, (_, index) => ({
+        type: "string",
+        key: `key${index}`,
+        value: `value${index}`,
+      }));
+      const input = {
+        extra: extras.map(({ type, key, value }) => `${type}:${key}:${value}`),
+      };
+      const expected = adbInputSchemas.start_adb_activity.safeParse({
+        ...request,
+        extras,
+      }).success;
+      expect(expected).toBe(count <= 16);
+      expect(parser.safeParse(input).success).toBe(expected);
+      expect(validate(input)).toBe(expected);
+    }
+  });
+});
+
+describe("Apktool locale selection input schema", () => {
+  it("preserves the owner's array bounds through CLI advertisement and parsing", async () => {
+    const cli = createCli({});
+    const advertised = await advertisedSchema(cli, "decode-android-resources");
+    expect(advertised.options?.properties?.locales).toMatchObject({
+      type: "array",
+      minItems: 1,
+      maxItems: MAX_SELECTED_LOCALES,
+    });
+    const parser = parserSchema(cli, "decode-android-resources", "options");
+    const ajv = new Ajv2020({ strict: false });
+    const validate = ajv.compile({
+      ...advertised.options,
+      $schema: "https://json-schema.org/draft/2020-12/schema",
+    });
+    for (const locales of [
+      undefined,
+      [],
+      ["de"],
+      Array<string>(MAX_SELECTED_LOCALES).fill("de"),
+      Array<string>(MAX_SELECTED_LOCALES + 1).fill("de"),
+      ["not a locale"],
+    ]) {
+      const input = locales === undefined ? {} : { locales };
+      const expected = apktoolInputSchemas.decode_android_resources.safeParse({
+        path: "/targets/app.apk",
+        ...input,
+      }).success;
+      expect(parser?.safeParse(input).success).toBe(expected);
+      expect(validate(input)).toBe(expected);
+    }
+  });
+});
+
+describe("reference-source outline-depth input schema", () => {
+  it("aligns advertised bounds with the parser's accepted values", async () => {
+    const cli = createCli({});
+    const advertised = await advertisedSchema(cli, "import-reference-source");
+    const outlineDepth = advertised.options?.properties?.outlineDepth;
+    expect(outlineDepth).toMatchObject({ type: "integer", minimum: 0 });
+
+    const parser = parserSchema(cli, "import-reference-source", "options");
+    expect(parser?.safeParse({ outlineDepth: -1 }).success).toBe(false);
+    expect(parser?.safeParse({ outlineDepth: 0 }).success).toBe(true);
+    expect(parser?.safeParse({ outlineDepth: 2 }).success).toBe(true);
+
+    const ajv = new Ajv2020({ strict: false });
+    const validate = ajv.compile({
+      ...advertised.options,
+      $schema: "https://json-schema.org/draft/2020-12/schema",
+    });
+    expect(validate({ outlineDepth: -1 })).toBe(false);
+    expect(validate({ outlineDepth: 0 })).toBe(true);
+    expect(validate({ outlineDepth: 2 })).toBe(true);
+  });
+});
+
+const atLeastOneSelector = (alternatives: string): string =>
+  `Supply at least one of ${alternatives}.`;
+const ADDRESS_OR_PROCEDURE = atLeastOneSelector(
+  "the positional address or --procedure",
+);
+const DECOMPILE_SELECTORS = `${ADDRESS_OR_PROCEDURE} Alternatively, use --file-offset alone.`;
+const NAMED_ADDRESS = atLeastOneSelector("the positional address or --address");
+const QUERY_SELECTOR = atLeastOneSelector("the positional query or --query");
+const PATTERN_SELECTOR = atLeastOneSelector(
+  "the positional pattern or --pattern",
+);
+const EXACTLY_ONE_SCRIPT = "Provide exactly one of --script or --script-file.";
+const TARGET = "target.bin";
+
+interface SelectorRequest {
+  readonly args: Record<string, unknown>;
+  readonly options: Record<string, unknown>;
+}
+
+interface SelectorField {
+  readonly group: "args" | "options";
+  readonly name: string;
+  readonly preserved?: readonly string[];
+}
+
+interface SelectorDiscovery {
+  readonly command: string;
+  readonly guidance: string;
+  readonly choice: "at least one" | "exactly one";
+  readonly fields: readonly SelectorField[];
+  /** Each side is valid alone, including when the other group omits its selector. */
+  readonly representable: readonly SelectorRequest[];
+  /** Cross-group omission stays valid because the schemas are separate. */
+  readonly omitted: SelectorRequest;
+  readonly rejected: readonly {
+    readonly args?: Record<string, unknown>;
+    readonly options?: Record<string, unknown>;
+  }[];
+}
+
+const selectorDiscovery: readonly SelectorDiscovery[] = [
+  {
+    command: "inspect-native-api",
+    guidance: ADDRESS_OR_PROCEDURE,
+    choice: "at least one",
+    fields: [
+      { group: "args", name: "address" },
+      {
+        group: "options",
+        name: "procedure",
+        preserved: ["symbols beginning with a dash"],
+      },
+    ],
+    representable: [
+      { args: { path: TARGET, address: "main" }, options: {} },
+      { args: { path: TARGET }, options: { procedure: "--help" } },
+      {
+        args: { path: TARGET, address: "main" },
+        options: { procedure: "main" },
+      },
+    ],
+    omitted: { args: { path: TARGET }, options: {} },
+    rejected: [
+      { args: { path: TARGET, address: 1 } },
+      { options: { procedure: 1 } },
+    ],
+  },
+  {
+    command: "function",
+    guidance: ADDRESS_OR_PROCEDURE,
+    choice: "at least one",
+    fields: [
+      { group: "args", name: "address" },
+      {
+        group: "options",
+        name: "procedure",
+        preserved: ["use --procedure=<value> for leading dashes"],
+      },
+    ],
+    representable: [
+      { args: { path: TARGET, address: "main" }, options: {} },
+      { args: { path: TARGET }, options: { procedure: "--help" } },
+      {
+        args: { path: TARGET, address: "main" },
+        options: { procedure: "main" },
+      },
+    ],
+    omitted: { args: { path: TARGET }, options: {} },
+    rejected: [
+      { args: { path: TARGET, address: "" } },
+      { options: { procedure: "" } },
+    ],
+  },
+  {
+    command: "instructions",
+    guidance: ADDRESS_OR_PROCEDURE,
+    choice: "at least one",
+    fields: [
+      { group: "args", name: "address" },
+      {
+        group: "options",
+        name: "procedure",
+        preserved: ["use --procedure=<value> for leading dashes"],
+      },
+    ],
+    representable: [
+      { args: { path: TARGET, address: "main" }, options: {} },
+      { args: { path: TARGET }, options: { procedure: "--help" } },
+      {
+        args: { path: TARGET, address: "main" },
+        options: { procedure: "main" },
+      },
+    ],
+    omitted: { args: { path: TARGET }, options: {} },
+    rejected: [
+      { args: { path: TARGET, address: "" } },
+      { options: { procedure: "" } },
+    ],
+  },
+  {
+    command: "decompile",
+    guidance: DECOMPILE_SELECTORS,
+    choice: "at least one",
+    fields: [
+      { group: "args", name: "address" },
+      {
+        group: "options",
+        name: "procedure",
+        preserved: ["use --procedure=<value> for leading dashes"],
+      },
+      {
+        group: "options",
+        name: "file-offset",
+        preserved: [
+          "Ghidra source-file byte offset",
+          "mapped internally to an analysis address",
+        ],
+      },
+    ],
+    representable: [
+      { args: { path: TARGET, address: "0x140001010" }, options: {} },
+      { args: { path: TARGET }, options: { procedure: "--help" } },
+      { args: { path: TARGET }, options: { "file-offset": "0x210" } },
+      {
+        args: { path: TARGET, address: "0x140001010" },
+        options: { procedure: "0x140001010" },
+      },
+    ],
+    omitted: { args: { path: TARGET }, options: {} },
+    rejected: [
+      { args: { path: TARGET, address: "" } },
+      { options: { procedure: "" } },
+      { options: { "file-offset": "210" } },
+      { options: { "file-offset": "0x" } },
+    ],
+  },
+  {
+    command: "xrefs",
+    guidance: NAMED_ADDRESS,
+    choice: "at least one",
+    fields: [
+      { group: "args", name: "address" },
+      {
+        group: "options",
+        name: "address",
+        preserved: ["use --address=<value> for leading dashes"],
+      },
+    ],
+    representable: [
+      { args: { path: TARGET, address: "main" }, options: {} },
+      { args: { path: TARGET }, options: { address: "--help" } },
+      {
+        args: { path: TARGET, address: "main" },
+        options: { address: "main" },
+      },
+    ],
+    omitted: { args: { path: TARGET }, options: {} },
+    rejected: [
+      { args: { path: TARGET, address: "" } },
+      { options: { address: "" } },
+    ],
+  },
+  {
+    command: "trace",
+    guidance: QUERY_SELECTOR,
+    choice: "at least one",
+    fields: [
+      { group: "args", name: "query" },
+      {
+        group: "options",
+        name: "query",
+        preserved: ["use --query=<value> for leading dashes"],
+      },
+    ],
+    representable: [
+      { args: { path: TARGET, query: "feature" }, options: {} },
+      { args: { path: TARGET }, options: { query: "--help" } },
+      {
+        args: { path: TARGET, query: "feature" },
+        options: { query: "feature" },
+      },
+    ],
+    omitted: { args: { path: TARGET }, options: {} },
+    rejected: [
+      { args: { path: TARGET, query: "" } },
+      { options: { query: "" } },
+    ],
+  },
+  {
+    command: "search",
+    guidance: PATTERN_SELECTOR,
+    choice: "at least one",
+    fields: [
+      { group: "args", name: "pattern" },
+      {
+        group: "options",
+        name: "pattern",
+        preserved: ["use --pattern=<value> for leading dashes"],
+      },
+    ],
+    representable: [
+      { args: { path: TARGET, pattern: "text" }, options: {} },
+      { args: { path: TARGET }, options: { pattern: "--help" } },
+      {
+        args: { path: TARGET, pattern: "text" },
+        options: { pattern: "text" },
+      },
+    ],
+    omitted: { args: { path: TARGET }, options: {} },
+    rejected: [
+      { args: { path: TARGET, pattern: "" } },
+      { options: { pattern: "" } },
+    ],
+  },
+  {
+    command: "instrument-with-frida",
+    guidance: EXACTLY_ONE_SCRIPT,
+    choice: "exactly one",
+    fields: [
+      { group: "options", name: "script" },
+      { group: "options", name: "scriptFile" },
+    ],
+    representable: [
+      {
+        args: { mode: "attach", target: "71" },
+        options: { script: "send(1)" },
+      },
+      {
+        args: { mode: "attach", target: "71" },
+        options: { scriptFile: "source.js" },
+      },
+      {
+        args: { mode: "attach", target: "71" },
+        options: { script: "send(1)", scriptFile: "source.js" },
+      },
+    ],
+    omitted: { args: { mode: "attach", target: "71" }, options: {} },
+    rejected: [
+      { args: { mode: "attach", target: "" } },
+      { args: { mode: "debug", target: "71" } },
+      { options: { scriptFile: "" } },
+    ],
+  },
+];
+
+const propertyDescription = (property: unknown, label: string): string => {
+  expect(property, label).toMatchObject({
+    description: expect.any(String),
+  });
+  if (
+    typeof property !== "object" ||
+    property === null ||
+    !("description" in property) ||
+    typeof property.description !== "string"
+  )
+    throw new Error(`${label} description was not on the schema property`);
+  return property.description;
+};
+
+describe("required CLI selector discovery", () => {
+  it.each(selectorDiscovery)(
+    "$command names every permitted selector alternative in schema, help, and the full LLM manifest",
+    async (entry) => {
+      const cli = createCli({});
+      const advertised = await advertisedSchema(cli, entry.command);
+      const otherChoice =
+        entry.choice === "at least one" ? "exactly one" : "at least one";
+      for (const field of entry.fields) {
+        const label = `${entry.command} ${field.group}.${field.name}`;
+        const description = propertyDescription(
+          advertised[field.group]?.properties[field.name],
+          label,
+        );
+        expect(description, label).toContain(entry.guidance);
+        expect(description, label).toContain(entry.choice);
+        expect(description, label).not.toContain(otherChoice);
+        for (const preserved of field.preserved ?? [])
+          expect(description, label).toContain(preserved);
+        expect(advertised[field.group]?.required ?? [], label).not.toContain(
+          field.name,
+        );
+      }
+
+      const help = await serve(cli, [entry.command, "--help"]);
+      const manifest = await serve(cli, [entry.command, "--llms-full"]);
+      expect(help.exitCode, entry.command).toBe(0);
+      expect(manifest.exitCode, entry.command).toBe(0);
+      for (const surface of [help.stdout, manifest.stdout]) {
+        expect(surface).toContain(entry.guidance);
+        expect(surface).toContain(entry.choice);
+        expect(surface).not.toContain(otherChoice);
+        for (const field of entry.fields)
+          for (const preserved of field.preserved ?? [])
+            expect(surface).toContain(preserved);
+      }
+
+      const ajv = new Ajv2020({ strict: false });
+      expect(advertised.args, entry.command).toBeDefined();
+      expect(advertised.options, entry.command).toBeDefined();
+      const validateArgs = ajv.compile(advertised.args ?? {});
+      const validateOptions = ajv.compile(advertised.options ?? {});
+      expect(validateArgs({}), entry.command).toBe(false);
+      for (const request of [...entry.representable, entry.omitted]) {
+        expect(
+          validateArgs(request.args),
+          `${entry.command} args ${JSON.stringify(validateArgs.errors)}`,
+        ).toBe(true);
+        expect(
+          validateOptions(request.options),
+          `${entry.command} options ${JSON.stringify(validateOptions.errors)}`,
+        ).toBe(true);
+      }
+      for (const request of entry.rejected) {
+        if (request.args !== undefined)
+          expect(validateArgs(request.args), entry.command).toBe(false);
+        if (request.options !== undefined)
+          expect(validateOptions(request.options), entry.command).toBe(false);
+      }
+    },
+  );
+});

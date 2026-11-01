@@ -68,13 +68,13 @@ for (const [role, command] of Object.entries(commands)) {
 }
 let installation;
 if (!compilerOnly) {
-  const { inspectGhidraInstallation } =
-    await import("../dist/ghidra/GhidraInstallation.js");
+  const { inspectVerifierGhidraInstallation } =
+    await import("./lib/ghidra-installation-inspection.mjs");
   assert.ok(
     process.env.GHIDRA_INSTALL_DIR,
     "Ghidra switch lane prerequisite missing: GHIDRA_INSTALL_DIR (bring your own)",
   );
-  installation = inspectGhidraInstallation({
+  installation = await inspectVerifierGhidraInstallation({
     environment: process.env,
     installDir: process.env.GHIDRA_INSTALL_DIR,
     ...(process.env.JAVA_HOME === undefined

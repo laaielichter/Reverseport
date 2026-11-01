@@ -2,8 +2,7 @@ import { z } from "zod";
 
 import { evidenceSchema, providerSchema } from "../evidence.js";
 import { javascriptApplicationGraphSchema } from "./javascriptApplicationGraph.js";
-import { digestSchema } from "../digests.js";
-import { prefixedDigestSchema } from "../digests.js";
+import { digestSchema, prefixedDigestSchema } from "../digests.js";
 
 const evidenceIdSchema = prefixedDigestSchema("ev");
 const nodeIdSchema = prefixedDigestSchema("jag_node");
@@ -17,33 +16,65 @@ export const featureSeedMatchMode = (seed: {
 }): "exact" | "contains" =>
   seed.match ?? (seed.kind === "string" ? "contains" : "exact");
 
-const literalSeedKinds = [
-  "route",
-  "string",
-  "api",
-  "channel",
-  "module",
-  "native-export",
-] as const;
+const apiSeedSchema = z.union([
+  z.strictObject({
+    kind: z.literal("api"),
+    value: boundedTextSchema,
+    match: z.enum(["exact", "contains"]).nullable().default(null),
+    case_sensitive: z.boolean().default(false),
+  }),
+  z.strictObject({
+    kind: z.literal("api"),
+    value: z.literal(""),
+    match: z.literal("exact"),
+    case_sensitive: z.boolean().default(false),
+  }),
+]);
+
+const apiPathSeedSchema = z.union([
+  z.strictObject({
+    kind: z.literal("api"),
+    value: boundedTextSchema,
+    match: z.enum(["exact", "contains"]).nullable().default(null),
+    case_sensitive: z.boolean().default(false),
+    entry_path: z.array(z.string()).min(1),
+  }),
+  z.strictObject({
+    kind: z.literal("api"),
+    value: z.literal(""),
+    match: z.literal("exact"),
+    case_sensitive: z.boolean().default(false),
+    entry_path: z.array(z.string()).min(1),
+  }),
+]);
 
 /**
  * Literal starting point for one application feature trace. An empty value,
  * such as the channel in `ipcMain.handle("")`, must be an explicit exact
  * literal seed: empty containment would select every node.
  */
-const applicationFeatureSeedSchema = z.union([
+export const applicationFeatureSeedSchema = z.union([
   z.strictObject({
-    kind: z.enum(["node-id", ...literalSeedKinds]),
+    kind: z.enum([
+      "node-id",
+      "route",
+      "string",
+      "channel",
+      "module",
+      "native-export",
+    ]),
     value: boundedTextSchema,
     match: z.enum(["exact", "contains"]).nullable().default(null),
     case_sensitive: z.boolean().default(false),
   }),
   z.strictObject({
-    kind: z.enum(literalSeedKinds),
+    kind: z.enum(["route", "string", "channel", "module", "native-export"]),
     value: z.literal(""),
     match: z.literal("exact"),
     case_sensitive: z.boolean().default(false),
   }),
+  apiSeedSchema,
+  apiPathSeedSchema,
 ]);
 
 /** Check unique native identities before projecting an application trace. */
@@ -129,15 +160,15 @@ export const applicationFeatureTraceResultSchema = z.strictObject({
   paths: z.array(tracePathSchema),
   native_handoffs: z.array(nativeHandoffSchema),
   summary: z.strictObject({
-    matched_seeds: z.number().int().min(0),
-    traced_nodes: z.number().int().min(0),
-    traced_edges: z.number().int().min(0),
-    terminal_paths: z.number().int().min(0),
-    native_handoffs: z.number().int().min(0),
-    observed_facts: z.number().int().min(0),
-    inferred_facts: z.number().int().min(0),
-    unknown_facts: z.number().int().min(0),
-    unavailable_facts: z.number().int().min(0),
+    matched_seeds: z.int().min(0),
+    traced_nodes: z.int().min(0),
+    traced_edges: z.int().min(0),
+    terminal_paths: z.int().min(0),
+    native_handoffs: z.int().min(0),
+    observed_facts: z.int().min(0),
+    inferred_facts: z.int().min(0),
+    unknown_facts: z.int().min(0),
+    unavailable_facts: z.int().min(0),
   }),
   coverage: z.strictObject({
     status: z.enum(["complete-within-source", "partial", "no-match"]),
@@ -147,7 +178,7 @@ export const applicationFeatureTraceResultSchema = z.strictObject({
       "unknown",
       "unavailable",
     ]),
-    total_seed_matches: z.number().int().min(0),
+    total_seed_matches: z.int().min(0),
   }),
   evidence_links: z.array(evidenceIdSchema).min(1),
   limitations: z.array(boundedTextSchema),
@@ -156,7 +187,7 @@ export const applicationFeatureTraceResultSchema = z.strictObject({
 export type TraceApplicationFeatureInput = z.infer<
   typeof traceApplicationFeatureInputSchema
 >;
-export type ApplicationFeatureSeed = z.infer<
+export type ApplicationFeatureSeed = z.output<
   typeof applicationFeatureSeedSchema
 >;
 export type ApplicationFeatureTraceResult = z.infer<

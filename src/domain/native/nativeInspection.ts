@@ -1,11 +1,12 @@
 import { z } from "zod";
+import { bundleResourceRootSchema } from "../apple/bundleResourceRoot.js";
 import { jsonValueSchema } from "../jsonValue.js";
 
 const hexAddress = z.string().regex(/^0x[a-fA-F0-9]+$/u);
 const coverage = <Schema extends z.ZodType>(item: Schema) =>
   z.object({
     items: z.array(item),
-    total: z.number().int().min(0).nullable(),
+    total: z.int().min(0).nullable(),
     exhaustive: z.boolean(),
     limitations: z.array(z.string()),
   });
@@ -17,25 +18,25 @@ const nativeCommandInvocationSchema = z.object({
   version_reason: z.string().nullable(),
   executable_sha256: z.string().regex(/^[a-f0-9]{64}$/u),
   exit: z.object({
-    code: z.number().int().nullable(),
+    code: z.int().nullable(),
     signal: z.string().nullable(),
   }),
-  stdout_bytes: z.number().int().min(0),
-  stderr_bytes: z.number().int().min(0),
+  stdout_bytes: z.int().min(0),
+  stderr_bytes: z.int().min(0),
 });
 
 const architectureSchema = z.object({
   name: z.string(),
+  hidden: z.boolean().exactOptional(),
   cpu_type: z.string().nullable(),
   cpu_subtype: z.string().nullable(),
   file_offset: z
-    .number()
     .int()
     .min(0)
     .nullable()
     .describe("Offset from the start of the input Mach-O container."),
-  size: z.number().int().min(0).nullable(),
-  alignment: z.number().int().min(0).nullable(),
+  size: z.int().min(0).nullable(),
+  alignment: z.int().min(0).nullable(),
 });
 const permissionSchema = z.object({
   read: z.boolean().nullable(),
@@ -47,33 +48,44 @@ const sectionSchema = z.object({
   segment: z.string(),
   name: z.string(),
   address: hexAddress.nullable(),
-  size: z.number().int().min(0).nullable(),
+  size: z.int().min(0).nullable(),
   file_offset: z
-    .number()
     .int()
     .min(0)
     .nullable()
     .describe("Offset from the start of the selected Mach-O slice."),
-  alignment: z.number().int().min(0).nullable(),
+  alignment: z.int().min(0).nullable(),
   flags: z.array(z.string()),
 });
 const segmentSchema = z.object({
   name: z.string(),
   vm_address: hexAddress.nullable(),
-  vm_size: z.number().int().min(0).nullable(),
+  vm_size: z.int().min(0).nullable(),
   file_offset: z
-    .number()
     .int()
     .min(0)
     .nullable()
     .describe("Offset from the start of the selected Mach-O slice."),
-  file_size: z.number().int().min(0).nullable(),
+  file_size: z.int().min(0).nullable(),
   maximum_permissions: permissionSchema,
   initial_permissions: permissionSchema,
   sections: coverage(sectionSchema),
 });
 const symbolSchema = z.object({
   name: z.string(),
+  address: hexAddress.nullable(),
+  weak: z.boolean().nullable(),
+  reexport: z.boolean().nullable(),
+  source: z.string().nullable(),
+});
+const importSymbolSchema = z.object({
+  /** Resolved symbol identity; null when the textual row has multiple parses. */
+  name: z.string().nullable(),
+  /** Exact import text retained when a chained suffix makes identity ambiguous. */
+  raw_name: z.string().nullable().default(null),
+  name_status: z.enum(["exact", "ambiguous"]).nullable().default(null),
+  /** Addend is unknown when only the ambiguous text expression is available. */
+  addend: hexAddress.nullable().default(null),
   address: hexAddress.nullable(),
   weak: z.boolean().nullable(),
   reexport: z.boolean().nullable(),
@@ -86,7 +98,7 @@ const dependencySchema = z.object({
   compatibility_version: z.string().nullable(),
 });
 const loadCommandSchema = z.object({
-  index: z.number().int().min(0),
+  index: z.int().min(0),
   kind: z.string(),
   fields: z.record(z.string(), z.union([z.string(), z.number(), z.null()])),
 });
@@ -98,7 +110,7 @@ const buildMetadataSchema = z.object({
 });
 
 export const inspectMachoSchema = z.object({
-  format: z.literal("mach-o"),
+  format: z.enum(["mach-o", "mach-o-universal"]),
   /** Exact lipo slice selected for inspection and its offset in the input container. */
   selected_architecture: z.object({
     name: z
@@ -108,7 +120,6 @@ export const inspectMachoSchema = z.object({
         "Exact architecture name selected from lipo output; null when selection is unknown.",
       ),
     container_file_offset: z
-      .number()
       .int()
       .min(0)
       .nullable()
@@ -124,7 +135,6 @@ export const inspectMachoSchema = z.object({
   entrypoints: coverage(
     z.object({
       file_offset: z
-        .number()
         .int()
         .min(0)
         .describe(
@@ -136,7 +146,7 @@ export const inspectMachoSchema = z.object({
   build_metadata: coverage(buildMetadataSchema),
   load_commands: coverage(loadCommandSchema),
   dependencies: coverage(dependencySchema),
-  imports: coverage(symbolSchema),
+  imports: coverage(importSymbolSchema),
   exports: coverage(symbolSchema),
   segments: coverage(segmentSchema),
   provenance: z.array(nativeCommandInvocationSchema),
@@ -170,6 +180,7 @@ export const inspectPlistSchema = z.object({
     short_version: z.string().nullable(),
   }),
   source_path: z.string(),
+  resource_root: bundleResourceRootSchema.optional(),
   provenance: z.array(nativeCommandInvocationSchema),
   limitations: z.array(z.string()),
 });

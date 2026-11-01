@@ -1,9 +1,9 @@
 ---
 name: rea-tool-design
-description: Design or change REA investigation tools, CLI/MCP contracts, provider capabilities, and Evidence semantics.
+description: Design or change ReversePort investigation tools, CLI/MCP contracts, provider capabilities, and Evidence semantics.
 ---
 
-# REA tool design
+# ReversePort tool design
 
 Use the [tool-design guide](../../../docs/tool-design.md) for tool boundaries,
 contract semantics, provider ownership, and discoverability. Inspect the current

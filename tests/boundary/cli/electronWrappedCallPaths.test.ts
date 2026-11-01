@@ -3,11 +3,124 @@ import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
 import { createTestTempDirectory } from "../../fixtures/temporaryDirectory.js";
+import { connectLocalToolsMcp } from "../../fixtures/localToolsMcp.js";
 import { writeFixtureFiles } from "../../support/javascriptApplicationFixture.js";
 import { cliTest, type TestCli } from "../../support/cli/cliFixture.js";
 import { javascriptApplicationAnalysisResultSchema } from "../../../src/domain/javascript/javascriptApplicationAnalysis.js";
 import { applicationFeatureTraceResultSchema } from "../../../src/domain/javascript/javascriptFeatureTraceSchemas.js";
 import { analyzeJavaScriptDirectory } from "../../support/cli/javascriptApplication.js";
+
+const sourcePositionSchema = z.object({ line: z.number(), column: z.number() });
+const callPathConditionSchema = z.object({
+  expression: z.string(),
+  location: z.object({
+    start: sourcePositionSchema,
+    end: sourcePositionSchema,
+  }),
+});
+const callPathTerminalObservationSchema = z.object({
+  properties: z.object({ conditions: z.array(callPathConditionSchema) }),
+  evidence: z.object({ coverage: z.object({ status: z.string() }) }),
+});
+
+const restArrayPropertyCases = [
+  {
+    name: "leading-zero index",
+    expression: 'items["01"] ?? "FALLBACK"',
+    parameters: "",
+    channel: null,
+  },
+  {
+    name: "double-zero key",
+    expression: 'items["00"] ?? "FALLBACK"',
+    parameters: "",
+    channel: null,
+  },
+  {
+    name: "decimal-form key",
+    expression: 'items["1.0"] ?? "FALLBACK"',
+    parameters: "",
+    channel: null,
+  },
+  {
+    name: "canonical index",
+    expression: 'items["1"] ?? "FALLBACK"',
+    parameters: "",
+    channel: "SECOND",
+  },
+  {
+    name: "literal fallback",
+    expression: '"FALLBACK"',
+    parameters: "",
+    channel: "FALLBACK",
+  },
+  {
+    name: "dynamic key",
+    expression: 'items[key] ?? "FALLBACK"',
+    parameters: "key",
+    channel: null,
+  },
+] as const;
+
+for (const fixture of restArrayPropertyCases)
+  cliTest(
+    `preserves rest-array property identity for ${fixture.name} through the public CLI`,
+    async ({ cli }) => {
+      const root = await createTestTempDirectory("rea-electron-rest-key-");
+      await writeFixtureFiles(root, {
+        "main.cjs": `const e = require("electron");
+          function make(...items) {
+            return (${fixture.parameters}) => e.ipcRenderer.send(${fixture.expression});
+          }
+          e.contextBridge.exposeInMainWorld("desktop", { read: make("FIRST", "SECOND") });`,
+      });
+      const application = await analyzeJavaScriptDirectory("CLI", cli, root);
+      expect(application.statistics).toMatchObject({
+        parsed_javascript_files: 1,
+        parse_failures: 0,
+      });
+      const observations = application.graph.nodes.flatMap(
+        (node) => node.observations,
+      );
+      const terminals = observations.filter(
+        (observation) =>
+          observation.properties.entry === "desktop.read" &&
+          observation.properties.step_kind === "terminal",
+      );
+      const channels = application.graph.nodes
+        .filter((node) => node.kind === "ipc-channel")
+        .flatMap((node) => node.observations);
+      expect(
+        terminals.map((observation) => observation.properties.channel),
+      ).toEqual(fixture.channel === null ? [] : [fixture.channel]);
+      expect(
+        channels
+          .filter(
+            (observation) => observation.properties.resolution === "literal",
+          )
+          .map((observation) => observation.properties.channel),
+      ).toEqual(fixture.channel === null ? [] : [fixture.channel]);
+      for (const terminal of terminals)
+        expect(terminal).toMatchObject({
+          properties: { resolution: "candidate" },
+          evidence: {
+            state: "inferred",
+            authority: "static-relationship-inference",
+          },
+        });
+      if (fixture.expression !== '"FALLBACK"')
+        expect(channels).toContainEqual(
+          expect.objectContaining({
+            properties: expect.objectContaining({
+              channel: null,
+              resolution: "dynamic",
+              channel_expression: fixture.expression,
+            }),
+            evidence: expect.objectContaining({ state: "observed" }),
+          }),
+        );
+    },
+  );
 
 const analyze = async (cli: TestCli, extra = "") => {
   const root = await createTestTempDirectory("rea-electron-wrapped-paths-");
@@ -23,7 +136,7 @@ const analyze = async (cli: TestCli, extra = "") => {
   const output = await cli.run({
     arguments: ["analyze-javascript-application", root, "--json"],
   });
-  expect(output.exitCode).toBe(0);
+  expect(output.exitCode, output.stderr).toBe(0);
   const { normalized_result: result } = z
     .object({
       normalized_result: javascriptApplicationAnalysisResultSchema,
@@ -55,7 +168,8 @@ cliTest(
       expect(
         byId.get(edge.target_node_id)?.observations[0]?.properties.channel,
       ).toBe(edge.properties.channel);
-      expect(edge.properties.conditions).toEqual([
+      expect(edge.properties.bridge_conditions).toEqual([]);
+      expect(edge.properties.handler_conditions).toEqual([
         expect.objectContaining({ expression: "allowed(event)" }),
       ]);
     }
@@ -122,7 +236,410 @@ cliTest(
   },
 );
 
+cliTest(
+  "preserves early-return predicates on recovered bridge paths through CLI and stdio MCP",
+  async ({ cli }) => {
+    const cases = [
+      {
+        name: "conditional early return",
+        body: 'if(x)return;e.contextBridge.exposeInMainWorld("api",{copy:()=>e.ipcRenderer.send("x")});',
+        conditions: ["!(x)"],
+        coverage: "partial",
+      },
+      {
+        name: "equivalent nested branch",
+        body: 'if(!x){e.contextBridge.exposeInMainWorld("api",{copy:()=>e.ipcRenderer.send("x")});}',
+        conditions: ["!x"],
+        coverage: "partial",
+      },
+      {
+        name: "definite early return",
+        body: 'return;e.contextBridge.exposeInMainWorld("api",{copy:()=>e.ipcRenderer.send("x")});',
+        conditions: [],
+        coverage: "complete",
+      },
+      {
+        name: "unguarded exposure",
+        body: 'e.contextBridge.exposeInMainWorld("api",{copy:()=>e.ipcRenderer.send("x")});',
+        conditions: [],
+        coverage: "complete",
+      },
+    ] as const;
+
+    for (const surface of ["CLI", "stdio MCP"] as const) {
+      const connection =
+        surface === "stdio MCP" ? await connectLocalToolsMcp() : undefined;
+      const artifacts = new Set<string>();
+      for (const fixture of cases) {
+        const root = await createTestTempDirectory(
+          "rea-electron-early-return-",
+        );
+        await writeFixtureFiles(root, {
+          "index.js": `const e=require("electron");function f(x){${fixture.body}}f(globalThis.blocked);`,
+        });
+        const application = await analyzeJavaScriptDirectory(
+          surface,
+          cli,
+          root,
+          { mcpCall: connection?.call },
+        );
+        expect(application.input_path).toBe(root);
+        expect(artifacts.has(application.root_artifact_sha256)).toBe(false);
+        artifacts.add(application.root_artifact_sha256);
+        const observations = application.graph.nodes.flatMap(
+          (node) => node.observations,
+        );
+        const terminal = observations.find(
+          (observation) =>
+            observation.properties.entry === "api.copy" &&
+            observation.properties.step_kind === "terminal",
+        );
+        if (fixture.name === "definite early return") {
+          expect(terminal).toBeUndefined();
+          continue;
+        }
+        const terminalEvidence =
+          callPathTerminalObservationSchema.parse(terminal);
+        expect(
+          terminalEvidence.properties.conditions.map(
+            ({ expression }) => expression,
+          ),
+        ).toEqual(fixture.conditions);
+        expect(terminalEvidence.evidence.coverage.status).toBe(
+          fixture.coverage,
+        );
+        expect(application.graph.coverage.status).toBe(fixture.coverage);
+        const source = observations.find(
+          (observation) => observation.properties.file_kind === "javascript",
+        );
+        expect(source?.properties.parse_status).toBe(fixture.coverage);
+      }
+    }
+  },
+);
+
+cliTest(
+  "traces a nested contextBridge member through a unique IPC channel",
+  async ({ cli }) => {
+    const root = await createTestTempDirectory("rea-electron-nested-bridge-");
+    await writeFixtureFiles(root, {
+      "preload.js": `const { contextBridge, ipcRenderer } = require("electron");
+        contextBridge.exposeInMainWorld("api", {
+          nested: { write: (value) => ipcRenderer.invoke("nested:write", value) }
+        });`,
+      "main.js": `const { ipcMain, clipboard } = require("electron");
+        ipcMain.handle("nested:write", (event, value) => clipboard.writeText(value));`,
+    });
+    const output = await cli.run({
+      arguments: ["analyze-javascript-application", root, "--json"],
+    });
+    expect(output.exitCode, output.stderr).toBe(0);
+    const { normalized_result: application } = z
+      .object({ normalized_result: javascriptApplicationAnalysisResultSchema })
+      .parse(output.json);
+    const { graph } = application;
+    const paths = graph.nodes
+      .flatMap((node) => node.observations)
+      .filter(
+        (observation) =>
+          observation.properties.entry === "api.nested.write" &&
+          observation.properties.entry_kind === "bridge-member",
+      );
+    expect(
+      paths.some(
+        (observation) => observation.properties.step_kind === "exposure",
+      ),
+    ).toBe(true);
+    expect(
+      paths.some(
+        (observation) => observation.properties.step_kind === "terminal",
+      ),
+    ).toBe(true);
+    const joins = graph.edges.filter(
+      (edge) =>
+        edge.evidence.extractor.operation === "join-electron-wrapper-paths",
+    );
+    expect(joins.map((edge) => edge.properties.channel)).toEqual([
+      "nested:write",
+    ]);
+
+    const traceInput = join(root, "trace-nested-input.json");
+    await writeFile(
+      traceInput,
+      JSON.stringify({
+        application: output.json,
+        seed: { kind: "api", value: "api.nested.write", match: "exact" },
+        direction: "outgoing",
+      }),
+    );
+    const traced = await cli.run({
+      arguments: ["trace-application-feature", traceInput, "--json"],
+    });
+    expect(traced.exitCode).toBe(0);
+    const { normalized_result: trace } = z
+      .object({ normalized_result: applicationFeatureTraceResultSchema })
+      .parse(traced.json);
+    expect(trace.seed_matches).toHaveLength(1);
+    expect(trace.paths.some((path) => path.contains_inference)).toBe(true);
+  },
+);
+
+cliTest(
+  "preserves exact bridge member segments through the public CLI",
+  async ({ cli }) => {
+    const root = await createTestTempDirectory("rea-electron-bridge-segments-");
+    await writeFixtureFiles(root, {
+      "preload.js": `const { contextBridge, ipcRenderer } = require("electron");
+        const write = () => ipcRenderer.send("write");
+        contextBridge.exposeInMainWorld("desktop", {
+          "nested.write": write,
+          nested: { write },
+          __proto__: { inherited: write },
+          ["__proto__"]: { own: write },
+        });`,
+      "main.js": `const { ipcMain } = require("electron");
+        ipcMain.on("write", (event) => event.sender.copy());`,
+    });
+    const output = await cli.run({
+      arguments: ["analyze-javascript-application", root, "--json"],
+    });
+    expect(output.exitCode).toBe(0);
+    const { normalized_result: application } = z
+      .object({ normalized_result: javascriptApplicationAnalysisResultSchema })
+      .parse(output.json);
+    const observations = application.graph.nodes.flatMap((node) =>
+      node.observations.filter(
+        (observation) =>
+          observation.properties.entry_kind === "bridge-member" &&
+          observation.properties.step_kind === "exposure",
+      ),
+    );
+    const bridge = application.graph.nodes
+      .filter((node) => node.kind === "context-bridge-api")
+      .flatMap((node) => node.observations)
+      .find((observation) => observation.properties.api_key === "desktop");
+    expect(bridge?.properties.members).not.toContain("__proto__.inherited");
+    expect(bridge?.properties.members).toContain("__proto__.own");
+    const paths = observations.map(
+      (observation) => observation.properties.entry_path,
+    );
+    expect(paths).toEqual(
+      expect.arrayContaining([
+        ["desktop", "nested.write"],
+        ["desktop", "nested", "write"],
+        ["desktop", "__proto__", "own"],
+      ]),
+    );
+    expect(paths).not.toContainEqual(["desktop", "__proto__", "inherited"]);
+    const handlerPaths = application.graph.nodes
+      .flatMap((node) => node.observations)
+      .filter(
+        (observation) => observation.properties.entry_kind === "ipc-handler",
+      );
+    expect(handlerPaths.length).toBeGreaterThan(0);
+    expect(
+      handlerPaths.every(
+        (observation) => !("entry_path" in observation.properties),
+      ),
+    ).toBe(true);
+  },
+);
+
+cliTest(
+  "retains a nested bridge path when its IPC handler has no external terminal",
+  async ({ cli }) => {
+    const root = await createTestTempDirectory("rea-electron-nested-return-");
+    await writeFixtureFiles(root, {
+      "preload.js": `const { contextBridge, ipcRenderer } = require("electron");
+        contextBridge.exposeInMainWorld("api", {
+          nested: { write: (value) => ipcRenderer.invoke("nested:write", value) }
+        });`,
+      "main.js": `const { ipcMain } = require("electron");
+        ipcMain.handle("nested:write", (event, value) => value);`,
+    });
+    const output = await cli.run({
+      arguments: ["analyze-javascript-application", root, "--json"],
+    });
+    expect(output.exitCode).toBe(0);
+    const { normalized_result: application } = z
+      .object({ normalized_result: javascriptApplicationAnalysisResultSchema })
+      .parse(output.json);
+    const { graph } = application;
+    expect(
+      graph.nodes.some((node) =>
+        node.observations.some(
+          (observation) =>
+            observation.properties.entry === "api.nested.write" &&
+            observation.properties.step_kind === "exposure",
+        ),
+      ),
+    ).toBe(true);
+    expect(
+      graph.edges.some(
+        (edge) =>
+          edge.evidence.extractor.operation === "join-electron-wrapper-paths",
+      ),
+    ).toBe(false);
+
+    const traceInput = join(root, "trace-nested-input.json");
+    await writeFile(
+      traceInput,
+      JSON.stringify({
+        application: output.json,
+        seed: { kind: "api", value: "api.nested.write", match: "exact" },
+        direction: "outgoing",
+      }),
+    );
+    const traced = await cli.run({
+      arguments: ["trace-application-feature", traceInput, "--json"],
+    });
+    expect(traced.exitCode).toBe(0);
+    const { normalized_result: trace } = z
+      .object({ normalized_result: applicationFeatureTraceResultSchema })
+      .parse(traced.json);
+    expect(trace.seed_matches).toHaveLength(1);
+    expect(trace.graph?.nodes.length).toBeGreaterThan(1);
+  },
+);
+
 for (const surface of ["CLI", "stdio MCP"] as const) {
+  cliTest(
+    `retains explicit nested contextBridge members after an unknown spread through ${surface}`,
+    async ({ cli }) => {
+      const connection =
+        surface === "stdio MCP" ? await connectLocalToolsMcp() : undefined;
+      const analyzeBridge = async (api: string) => {
+        const root = await createTestTempDirectory(
+          "rea-electron-spread-bridge-members-",
+        );
+        await writeFixtureFiles(root, {
+          "preload.js": `const { contextBridge } = require("electron");
+            const extra = getExtra();
+            contextBridge.exposeInMainWorld("api", ${api});`,
+        });
+        const application = await analyzeJavaScriptDirectory(
+          surface,
+          cli,
+          root,
+          { mcpCall: connection?.call },
+        );
+        expect(application.input_path).toBe(root);
+        return application;
+      };
+      const withSpread = await analyzeBridge("{ ...extra, a: { b: 1 }, c: 2 }");
+      const control = await analyzeBridge("{ a: { b: 1 }, c: 2 }");
+      expect(control.root_artifact_sha256).not.toBe(
+        withSpread.root_artifact_sha256,
+      );
+
+      const bridgeObservation = (application: typeof withSpread) =>
+        application.graph.nodes
+          .filter((node) => node.kind === "context-bridge-api")
+          .flatMap((node) => node.observations)
+          .find((observation) => observation.properties.api_key === "api");
+      expect(bridgeObservation(withSpread)).toMatchObject({
+        properties: {
+          api_status: "dynamic",
+          members: ["a", "a.b", "c"],
+          unknown_members: 1,
+        },
+      });
+      expect(bridgeObservation(control)).toMatchObject({
+        properties: {
+          api_status: "object-literal",
+          members: ["a", "a.b", "c"],
+          unknown_members: 0,
+        },
+      });
+      expect(withSpread.summary.exposed_api_members).toBe(3);
+      expect(control.summary.exposed_api_members).toBe(3);
+    },
+  );
+
+  cliTest(
+    `binds each contextBridge helper invocation's own key and members through ${surface}`,
+    async ({ cli }) => {
+      const root = await createTestTempDirectory(
+        "rea-electron-bridge-helper-calls-",
+      );
+      await writeFixtureFiles(root, {
+        "preload.js": `const { contextBridge, ipcRenderer } = require("electron");
+          function expose(key, api) { contextBridge.exposeInMainWorld(key, api); }
+          function relay(key, label, api) { expose(key, api); }
+          function named(label, key) { expose(key, { hidden: () => ipcRenderer.send("hidden") }); }
+          expose("one", { ping: () => ipcRenderer.send("one:ping") });
+          expose("two", { nested: { pong: () => ipcRenderer.send("two:pong") } });
+          relay("three", "label", { pang: () => ipcRenderer.send("three:pang") });
+          contextBridge.exposeInMainWorld("direct", { d: () => ipcRenderer.send("direct:d") });
+          named("label", globalThis.bridgeName);`,
+      });
+      const application = await analyzeJavaScriptDirectory(surface, cli, root);
+      const bridges = application.graph.nodes
+        .filter((node) => node.kind === "context-bridge-api")
+        .flatMap((node) => node.observations)
+        .map(({ properties }) => ({
+          api_key: properties.api_key,
+          api_key_expression: properties.api_key_expression,
+          members: properties.members,
+          unknown_members: properties.unknown_members,
+          resolution_basis: properties.resolution_basis,
+        }));
+      expect(bridges).toHaveLength(5);
+      expect(bridges).toEqual(
+        expect.arrayContaining([
+          {
+            api_key: "one",
+            api_key_expression: null,
+            members: ["ping"],
+            unknown_members: 0,
+            resolution_basis: "wrapper-substitution",
+          },
+          {
+            api_key: "two",
+            api_key_expression: null,
+            members: ["nested", "nested.pong"],
+            unknown_members: 0,
+            resolution_basis: "wrapper-substitution",
+          },
+          {
+            api_key: "three",
+            api_key_expression: null,
+            members: ["pang"],
+            unknown_members: 0,
+            resolution_basis: "wrapper-substitution",
+          },
+          {
+            api_key: "direct",
+            api_key_expression: null,
+            members: ["d"],
+            unknown_members: 0,
+            resolution_basis: "direct-syntax",
+          },
+          // The traced invocation with an unresolved key stays unknown rather
+          // than lending its members to a resolved key.
+          {
+            api_key: null,
+            api_key_expression: "key",
+            members: [],
+            unknown_members: 1,
+            resolution_basis: "direct-syntax",
+          },
+        ]),
+      );
+      expect(application.summary.context_bridge_apis).toBe(5);
+      expect(application.summary.exposed_api_members).toBe(5);
+      const exposureEntries = new Set(
+        application.graph.nodes
+          .flatMap((node) => node.observations)
+          .filter(({ properties }) => properties.step_kind === "exposure")
+          .map(({ properties }) => properties.entry),
+      );
+      expect(exposureEntries).toEqual(
+        new Set(["one.ping", "two.nested.pong", "three.pang", "direct.d"]),
+      );
+    },
+  );
+
   cliTest(
     `preserves handler ambiguity and short-circuit factory paths through ${surface}`,
     async ({ cli }) => {
@@ -223,5 +740,132 @@ cliTest(
       (e) => e.evidence.extractor.operation === "join-electron-wrapper-paths",
     );
     expect(joins.map((e) => e.properties.channel)).toEqual(["test:cut"]);
+  },
+);
+
+cliTest(
+  "keeps shallow bridge members when a sibling exceeds the nesting limit",
+  async ({ cli }) => {
+    const root = await createTestTempDirectory("rea-electron-deep-bridge-");
+    let deepMember = '() => e.ipcRenderer.send("deep:run")';
+    for (let index = 0; index < 129; index += 1)
+      deepMember = `{ level${index}: ${deepMember} }`;
+    await writeFixtureFiles(root, {
+      "preload.js": `const e=require("electron");
+        e.contextBridge.exposeInMainWorld("desktop", {
+          deep: ${deepMember},
+          shallow: () => e.ipcRenderer.send("shallow:run")
+        });`,
+      "main.js": `const e=require("electron");
+        e.ipcMain.on("shallow:run", event => event.sender.copy());
+        e.ipcMain.on("deep:run", event => event.sender.copy());`,
+    });
+    const output = await cli.run({
+      arguments: ["analyze-javascript-application", root, "--json"],
+    });
+    expect(output.exitCode).toBe(0);
+    const { normalized_result: application } = z
+      .object({ normalized_result: javascriptApplicationAnalysisResultSchema })
+      .parse(output.json);
+    const { graph } = application;
+    const joins = graph.edges.filter(
+      (edge) =>
+        edge.evidence.extractor.operation === "join-electron-wrapper-paths",
+    );
+    expect(joins.map((edge) => edge.properties.channel)).toEqual([
+      "shallow:run",
+    ]);
+    expect(
+      graph.nodes
+        .flatMap((node) => node.observations)
+        .some(
+          (observation) =>
+            observation.properties.entry === "desktop.shallow" &&
+            observation.properties.step_kind === "exposure",
+        ),
+    ).toBe(true);
+  },
+);
+
+cliTest(
+  "preserves empty bridge member segments in nested paths",
+  async ({ cli }) => {
+    const root = await createTestTempDirectory(
+      "rea-electron-empty-bridge-key-",
+    );
+    await writeFixtureFiles(root, {
+      "preload.js": `const { contextBridge, ipcRenderer } = require("electron");
+        contextBridge.exposeInMainWorld("desktop", {
+          "": { nested: { call: () => ipcRenderer.send("empty:key") } }
+        });`,
+      "main.js": `const { ipcMain } = require("electron");
+        ipcMain.on("empty:key", event => event.sender.copy());`,
+    });
+    const output = await cli.run({
+      arguments: ["analyze-javascript-application", root, "--json"],
+    });
+    expect(output.exitCode).toBe(0);
+    const { normalized_result: application } = z
+      .object({ normalized_result: javascriptApplicationAnalysisResultSchema })
+      .parse(output.json);
+    const observations = application.graph.nodes.flatMap(
+      (node) => node.observations,
+    );
+    expect(
+      observations.some(
+        (observation) =>
+          observation.properties.entry === "desktop..nested.call" &&
+          observation.properties.step_kind === "exposure",
+      ),
+    ).toBe(true);
+    expect(
+      application.graph.edges
+        .filter(
+          (edge) =>
+            edge.evidence.extractor.operation === "join-electron-wrapper-paths",
+        )
+        .map((edge) => edge.properties.channel),
+    ).toEqual(["empty:key"]);
+  },
+);
+
+cliTest(
+  "retains bridge and handler conditions on Electron IPC join edges",
+  async ({ cli }) => {
+    const root = await createTestTempDirectory("rea-electron-join-conditions-");
+    await writeFixtureFiles(root, {
+      "preload.js": `const e=require("electron");
+        e.contextBridge.exposeInMainWorld("desktop", {
+          choose: flag
+            ? () => e.ipcRenderer.send("test:copy")
+            : () => e.ipcRenderer.send("test:cut")
+        });`,
+      "main.js": `const e=require("electron");
+        if(!flag)e.ipcMain.on("test:copy",event=>allowed(event)&&event.sender.copy());
+        if(flag)e.ipcMain.on("test:cut",event=>allowed(event)&&event.sender.cut());`,
+    });
+    const { graph } = await analyzeJavaScriptDirectory("CLI", cli, root);
+    const joins = graph.edges.filter(
+      (edge) =>
+        edge.evidence.extractor.operation === "join-electron-wrapper-paths",
+    );
+    expect(joins).toHaveLength(2);
+    for (const [channel, bridgeCondition] of [
+      ["test:copy", "flag"],
+      ["test:cut", "!(flag)"],
+    ]) {
+      const edge = joins.find(
+        (candidate) => candidate.properties.channel === channel,
+      );
+      expect(edge?.properties.bridge_conditions).toEqual([
+        expect.objectContaining({ expression: bridgeCondition }),
+      ]);
+      expect(edge?.properties.handler_conditions).toEqual([
+        expect.objectContaining({
+          expression: channel === "test:copy" ? "!flag" : "flag",
+        }),
+        expect.objectContaining({ expression: "allowed(event)" }),
+      ]);
+    }
   },
 );

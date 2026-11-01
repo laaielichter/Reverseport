@@ -6,12 +6,14 @@ import { withCommandCancellation } from "./cli/commandCancellation.js";
 import { CLI_COMMANDS } from "./cliCommandNames.js";
 import { parseCliJsonInput, resolveCliJsonPaths } from "./cliJsonInput.js";
 import { logCliCommand } from "./cliLogging.js";
-import { AnalysisInputError } from "./domain/analysisErrorCore.js";
-import { AnalysisError } from "./domain/analysisErrorBase.js";
 import { projectAnalysisError } from "./domain/analysisErrorProjection.js";
-import { BrowserObservationError } from "./domain/browserObservationError.js";
-import { projectInputIssues } from "./domain/inputIssueProjection.js";
+import {
+  BrowserObservationError,
+  browserCleanupObservation,
+} from "./domain/browserObservationError.js";
+import { analysisInputErrorFromIssues } from "./domain/inputIssueProjection.js";
 import { browserScenarioSchema } from "./domain/browserScenario.js";
+import type { BrowserScenarioCapturePort } from "./application/BrowserScenarioCapturePort.js";
 import type { JsonValue } from "./domain/jsonValue.js";
 import type { Logger } from "pino";
 
@@ -22,6 +24,11 @@ export const registerBrowserScenarioCommands = (
   cli: ReturnType<typeof Cli.create>,
   logger: Logger,
   environment: Readonly<Record<string, string | undefined>>,
+  options: {
+    readonly createProvider?: (
+      environment: Readonly<Record<string, string | undefined>>,
+    ) => BrowserScenarioCapturePort;
+  } = {},
 ): void => {
   cli.command(CLI_COMMANDS.captureBrowserScenario, {
     description:
@@ -34,23 +41,32 @@ export const registerBrowserScenarioCommands = (
     run: ({ args }) =>
       withCommandCancellation((signal) =>
         logCliCommand(logger, CLI_COMMANDS.captureBrowserScenario, async () => {
-          const input = await parseCliJsonInput(args.inputJson, OPERATION);
+          const input = await parseCliJsonInput(
+            args.inputJson,
+            OPERATION,
+            signal,
+          );
           if (!input.ok) return input.error;
           const scenario = browserScenarioSchema.safeParse(
             resolveCliJsonPaths(input.value, [["browser", "executable_path"]]),
           );
           if (!scenario.success)
             return cliError(
-              new AnalysisInputError(
+              analysisInputErrorFromIssues(
                 OPERATION,
+                scenario.error.issues,
+                input.value,
                 { cause: scenario.error },
-                projectInputIssues(scenario.error.issues, input.value),
               ),
             );
           // Load Playwright only for this command, not during CLI startup.
-          const { createBrowserScenarioProvider } =
-            await import("./composition/browserScenario.js");
-          const provider = createBrowserScenarioProvider(environment);
+          const provider =
+            options.createProvider === undefined
+              ? await import("./composition/browserScenario.js").then(
+                  ({ createBrowserScenarioProvider }) =>
+                    createBrowserScenarioProvider(environment),
+                )
+              : options.createProvider(environment);
           let result:
             | Awaited<ReturnType<typeof captureBrowserScenario>>
             | undefined;
@@ -68,21 +84,7 @@ export const registerBrowserScenarioCommands = (
               if (result?.ok)
                 throw new BrowserObservationError(OPERATION, "cleanup_failed", {
                   cause,
-                  cleanup:
-                    cause instanceof AnalysisError &&
-                    cause.cleanup !== undefined
-                      ? cause.cleanup
-                      : {
-                          reason:
-                            cause instanceof Error
-                              ? cause.message
-                              : String(cause),
-                          resources:
-                            cause instanceof AnalysisError &&
-                            cause.cleanupResources.length > 0
-                              ? cause.cleanupResources
-                              : ["browser_transport"],
-                        },
+                  cleanup: browserCleanupObservation(cause),
                   partialObservation: result.value,
                 });
             }

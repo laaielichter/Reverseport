@@ -1,6 +1,7 @@
 import { Client, InMemoryTransport } from "@modelcontextprotocol/client";
 import { afterEach, describe, expect, test } from "vitest";
 import { Ajv2020 } from "ajv/dist/2020.js";
+import { z } from "zod";
 
 import type { BrowserScenarioCapturePort } from "../../../src/application/BrowserScenarioCapturePort.js";
 import { createTestBinarySession } from "../../fixtures/binarySession.js";
@@ -16,9 +17,13 @@ import {
   type BrowserScenarioCapture,
 } from "../../../src/domain/browserScenarioCapture.js";
 import type { AnalysisError } from "../../../src/domain/analysisErrorBase.js";
-import { ok, type Result } from "../../../src/domain/result.js";
+import { AnalysisCancelledError } from "../../../src/domain/analysisErrorCore.js";
+import { err, ok, type Result } from "../../../src/domain/result.js";
 import { createServer } from "../../../src/server/createServer.js";
 import { observed } from "../../fixtures/analysisExecution.js";
+import { parseMcpToolError } from "../../fixtures/mcpToolError.js";
+import { advertisedInputJsonSchema } from "../../../src/contracts/toolSchemaMetadata.js";
+import { toolContract } from "../../../src/contracts/toolContracts.js";
 
 const providerIdentity: ProviderIdentity = {
   id: "test-browser-scenario",
@@ -85,6 +90,8 @@ const captureFor = (scenario: BrowserScenario): BrowserScenarioCapture => {
       action_count: scenario.actions.length,
       secret_references: scenario.secrets.map(({ secret_id: id }) => id),
       network_content: scenario.capture.network,
+      event_families: scenario.capture.events,
+      limits: scenario.capture.limits,
     },
     duration_ms: 2,
     steps: [
@@ -93,7 +100,16 @@ const captureFor = (scenario: BrowserScenario): BrowserScenarioCapture => {
         step(index + 1, action.step_id, action.action),
       ),
     ],
-    events: { retained: 0, dropped: 0, items: [] },
+    events: {
+      retained: 0,
+      dropped: 0,
+      items: [],
+      omissions: {
+        by_kind: [],
+        network_transactions: [],
+        network_transaction_range: null,
+      },
+    },
     completeness: {
       status: "complete",
       equality_eligible: true,
@@ -243,6 +259,10 @@ describe("browser scenario MCP tool", () => {
       strict: false,
       validateFormats: false,
     }).compile(comparisonTool.inputSchema);
+    const validateFullComparison = new Ajv2020({
+      strict: false,
+      validateFormats: false,
+    }).compile(advertisedInputJsonSchema(toolContract("compare_web_captures")));
     expect(
       validateComparison(comparisonInput),
       JSON.stringify(validateComparison.errors),
@@ -252,12 +272,14 @@ describe("browser scenario MCP tool", () => {
       { before_scenario: captureResult, after: captureResult },
       { ...comparisonInput, before: captureResult, after: captureResult },
     ]) {
-      expect(validateComparison(malformed)).toBe(false);
+      expect(validateFullComparison(malformed)).toBe(false);
       const rejected = await client.callTool({
         name: "compare_web_captures",
         arguments: malformed,
       });
-      expect(rejected.isError).toBe(true);
+      expect(parseMcpToolError(rejected)).toMatchObject({
+        error: { code: "invalid_request", category: "invalid_input" },
+      });
     }
     const compared = await client.callTool({
       name: "compare_web_captures",
@@ -282,4 +304,66 @@ describe("browser scenario MCP tool", () => {
     expect(otherOrigin.isError, JSON.stringify(otherOrigin)).not.toBe(true);
     expect(provider.scenarios).toHaveLength(3);
   });
+});
+
+test("records a completed late-close cancellation as server Evidence", async () => {
+  const provider: BrowserScenarioCapturePort = {
+    identity: () => providerIdentity,
+    captureScenario: async (request) => {
+      const capture = captureFor(request);
+      return err(
+        new AnalysisCancelledError("capture_browser_scenario", {
+          partialObservation: { kind: "browser-scenario-observation", capture },
+        }),
+      );
+    },
+  };
+  const session = createTestBinarySession(() => ({
+    execute: () => Promise.resolve(observed(null)),
+    close: () => Promise.resolve(ok(null)),
+  }));
+  const server = createServer(
+    { kind: "session", session },
+    {
+      browserScenarioCapture: provider,
+      availabilityPolicy: () => ({
+        processCaptureEnabled: false,
+        investigationInputRoots: 0,
+      }),
+    },
+  );
+  const client = new Client({ name: "scenario-late-close", version: "1" });
+  const [clientTransport, serverTransport] =
+    InMemoryTransport.createLinkedPair();
+  await server.connect(serverTransport);
+  await client.connect(clientTransport);
+  try {
+    const response = await client.callTool({
+      name: "capture_browser_scenario",
+      arguments: minimalScenario(),
+    });
+    const { error } = parseMcpToolError(response);
+    const reference = z
+      .object({
+        partial_observation: z.object({
+          kind: z.literal("retained-evidence"),
+          evidence_id: z.string(),
+        }),
+      })
+      .parse(error.details).partial_observation;
+    const retained = session.evidenceById(reference.evidence_id);
+    if (retained === undefined) throw new Error("Evidence was not retained");
+    expect(retained.operation).toBe("capture_browser_scenario");
+    expect(retained.normalized_result).toMatchObject({
+      browser: { cleanup: "terminated-owned-process" },
+    });
+    expect(
+      (retained.normalized_result as BrowserScenarioCapture).steps.every(
+        ({ status }) => status === "completed",
+      ),
+    ).toBe(true);
+    await expect(client.ping()).resolves.toEqual({});
+  } finally {
+    await Promise.all([client.close(), server.close(), session.close()]);
+  }
 });

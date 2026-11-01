@@ -22,9 +22,13 @@ import {
   functionBodySchema,
   functionDossierSchema,
 } from "../dist/domain/hopperValues.js";
-import { inspectGhidraInstallation } from "../dist/ghidra/GhidraInstallation.js";
+import { inspectVerifierGhidraInstallation } from "./lib/ghidra-installation-inspection.mjs";
 import { buildDosMzFixture } from "../tests/conformance/ghidra/dos-mz-fixture.mjs";
-import { createVerifierRun, completeVerifierRun } from "./lib/verifier-run.mjs";
+import {
+  assertVerifierCleanupComplete,
+  createVerifierRun,
+  completeVerifierRun,
+} from "./lib/verifier-run.mjs";
 import { verifyGhidraAddressBoundaries } from "./lib/real-ghidra-address-boundaries.mjs";
 
 // This lane intentionally has no game paths, binary seeds or compiler dependency.
@@ -38,7 +42,7 @@ if (process.env.GHIDRA_INSTALL_DIR === undefined)
   throw new Error(
     "verify:ghidra:dos prerequisite missing: GHIDRA_INSTALL_DIR (bring your own Ghidra).",
   );
-const installation = inspectGhidraInstallation({
+const installation = await inspectVerifierGhidraInstallation({
   environment: process.env,
   installDir: process.env.GHIDRA_INSTALL_DIR,
   ...(process.env.JAVA_HOME === undefined
@@ -209,7 +213,10 @@ try {
     const resolved = await call("procedure_address", { procedure });
     assert.equal(resolved, procedure, "Flat address round-trip drifted");
     const info = await call("procedure_info", { procedure });
-    const dossierResult = await evidenceCall("analyze_function", { procedure });
+    const dossierResult = await evidenceCall("analyze_function", {
+      procedure,
+      detail: "complete",
+    });
     const dossier = functionDossierSchema.parse(
       dossierResult.normalized_result,
     );
@@ -479,12 +486,7 @@ try {
 }
 assert.ok(report, "No DOS proof report was produced");
 const verifierRun = await completeVerifierRun(run);
-if (verifierRun.process_lineage.status === "verified")
-  assert.deepEqual(
-    verifierRun.process_lineage.descendants,
-    [],
-    "Owned descendants survived verifier cleanup",
-  );
+assertVerifierCleanupComplete(verifierRun.process_lineage);
 process.stdout.write(
   `${JSON.stringify({ verifier_run: verifierRun, ...report, cleanup: "complete" })}\n`,
 );
@@ -499,7 +501,7 @@ function hexBytes(bytes) {
 function assertProfile(profile) {
   assert.equal(
     profile.parameters.load_image_evidence,
-    "independent-mz-mapping-relocations-v1",
+    "independent-mz-mapping-relocations-v2",
   );
   assert.equal(
     profile.parameters.function_body_evidence,

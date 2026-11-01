@@ -1,21 +1,48 @@
 import { z } from "zod";
+import { AnalysisOutputError } from "../../domain/analysisErrorCore.js";
+import { err, ok, type Result } from "../../domain/result.js";
+import type { NativeCommandCapture } from "../CommandRunner.js";
+import { machoCpuSubtypeBase } from "../../domain/apple/machoCpuIdentity.js";
 
 const architectureSchema = z.object({
   name: z.string().min(1),
+  hidden: z.boolean(),
   cpu_type: z.string().nullable(),
   cpu_subtype: z.string().nullable(),
-  cpu_type_code: z.number().int().nonnegative().nullable(),
-  cpu_subtype_code: z.number().int().nonnegative().nullable(),
+  cpu_type_code: z.int().nonnegative().nullable(),
+  cpu_subtype_code: z.int().nonnegative().nullable(),
+  cpu_subtype_base: z.int().nonnegative().nullable(),
   capabilities: z.string().nullable(),
-  file_offset: z.number().int().min(0).nullable(),
-  size: z.number().int().min(0).nullable(),
-  alignment: z.number().int().min(0).nullable(),
+  file_offset: z.int().min(0).nullable(),
+  size: z.int().min(0).nullable(),
+  alignment: z.int().min(0).nullable(),
 });
 
 export type LipoArchitecture = z.infer<typeof architectureSchema>;
 
-/** Parse `lipo -detailed_info` into deterministic slice metadata. */
-export const parseLipoArchitectures = (output: string): LipoArchitecture[] => {
+interface LipoOutput {
+  readonly format: "thin" | "fat";
+  /** `nfat_arch` counts visible rows; Apple may append one hidden ARM64 row. */
+  readonly declaredArchitectureCount: number | null;
+  readonly hiddenArchitectureCount: number | null;
+  readonly architectures: LipoArchitecture[];
+}
+
+/** Parse `lipo -detailed_info` framing and deterministic slice metadata. */
+export const parseLipoOutput = (
+  output: string,
+  operandPath?: string,
+): LipoOutput => {
+  // The echoed FAT operand is one value, even when its pathname contains lines.
+  if (operandPath !== undefined) {
+    const header = `Fat header in: ${operandPath}`;
+    if (output.startsWith(header)) {
+      if (output.startsWith("\r\n", header.length))
+        output = output.slice(header.length + 2);
+      else if (output.startsWith("\n", header.length))
+        output = output.slice(header.length + 1);
+    }
+  }
   // lipo echoes a thin file's pathname verbatim, including embedded newlines.
   // Match its final architecture field before splitting records into lines.
   const thinArchitecture =
@@ -23,20 +50,29 @@ export const parseLipoArchitectures = (output: string): LipoArchitecture[] => {
       output,
     )?.[1];
   if (thinArchitecture !== undefined)
-    return [
-      architectureSchema.parse({
-        name: thinArchitecture,
-        cpu_type: null,
-        cpu_subtype: null,
-        cpu_type_code: null,
-        cpu_subtype_code: null,
-        capabilities: null,
-        file_offset: null,
-        size: null,
-        alignment: null,
-      }),
-    ];
+    return {
+      format: "thin",
+      declaredArchitectureCount: null,
+      hiddenArchitectureCount: null,
+      architectures: [
+        architectureSchema.parse({
+          name: thinArchitecture,
+          hidden: false,
+          cpu_type: null,
+          cpu_subtype: null,
+          cpu_type_code: null,
+          cpu_subtype_code: null,
+          cpu_subtype_base: null,
+          capabilities: null,
+          file_offset: null,
+          size: null,
+          alignment: null,
+        }),
+      ],
+    };
   const architectures: LipoArchitecture[] = [];
+  let declaredArchitectureCount: number | null = null;
+  let hiddenArchitectureCount: number | null = null;
   let current: Record<string, string> | undefined;
   const flush = (): void => {
     if (current === undefined) return;
@@ -46,7 +82,8 @@ export const parseLipoArchitectures = (output: string): LipoArchitecture[] => {
         architectureSchema.parse({
           name: name.includes(" is architecture: ")
             ? (name.split(" is architecture: ").at(-1) ?? name)
-            : name,
+            : name.replace(/ \(hidden\)$/u, ""),
+          hidden: name.endsWith(" (hidden)"),
           cpu_type: current.cputype ?? null,
           cpu_subtype: current.cpusubtype ?? null,
           cpu_type_code: cpuTypeCode(current.cputype),
@@ -54,6 +91,7 @@ export const parseLipoArchitectures = (output: string): LipoArchitecture[] => {
             current.cpusubtype,
             current.capabilities,
           ),
+          cpu_subtype_base: cpuSubtypeBase(current.cpusubtype),
           capabilities: current.capabilities ?? null,
           file_offset: integer(current.offset),
           size: integer(current.size),
@@ -64,6 +102,12 @@ export const parseLipoArchitectures = (output: string): LipoArchitecture[] => {
   };
   for (const rawLine of output.split(/\r?\n/u)) {
     const line = rawLine.trim();
+    const count = /^nfat_arch\s+(\d+)(?:\s+\(\+(\d+) hidden\))?$/u.exec(line);
+    if (count?.[1] !== undefined) {
+      declaredArchitectureCount = integer(count[1]);
+      hiddenArchitectureCount = integer(count[2] ?? "0");
+      continue;
+    }
     if (line.startsWith("Non-fat file:")) {
       flush();
       current = { "Non-fat file": line };
@@ -86,7 +130,54 @@ export const parseLipoArchitectures = (output: string): LipoArchitecture[] => {
   flush();
   if (architectures.length === 0)
     throw new TypeError("lipo output contained no architectures");
-  return architectures;
+  return {
+    format: "fat",
+    declaredArchitectureCount,
+    hiddenArchitectureCount,
+    architectures,
+  };
+};
+
+/** Classify expected lipo parse failures once for all command adapters. */
+export const parseLipoOutputResult = (
+  output: string,
+  operandPath?: string,
+): Result<LipoOutput, TypeError | z.ZodError> => {
+  try {
+    return ok(parseLipoOutput(output, operandPath));
+  } catch (cause: unknown) {
+    if (!(cause instanceof TypeError) && !(cause instanceof z.ZodError))
+      throw cause;
+    return err(cause);
+  }
+};
+
+/** Translate classified parse failure into native command output failure. */
+export const parseLipoCapture = (
+  capture: NativeCommandCapture,
+  operation: "inspect_macho" | "list_architectures",
+  operandPath: string,
+): Result<LipoOutput, AnalysisOutputError> => {
+  const parsed = parseLipoOutputResult(capture.stdout, operandPath);
+  if (parsed.ok) return parsed;
+  return err(
+    new AnalysisOutputError(
+      operation,
+      "lipo did not produce readable architecture records",
+      {
+        cause: parsed.error,
+        capturedOutput: {
+          stdout: capture.stdout,
+          stderr: capture.stderr,
+          truncated: false,
+          stdout_bytes: capture.stdoutBytes,
+          stderr_bytes: capture.stderrBytes,
+          exit_code: capture.exitCode,
+          signal: capture.signal,
+        },
+      },
+    ),
+  );
 };
 
 const integer = (value: string | undefined): number | null => {
@@ -158,10 +249,10 @@ const cpuSubtypeCode = (
 };
 
 /** The subtype bits a lipo record names, without its capability byte. */
-export const lipoSubtypeBits = (value: string | null): number | null => {
-  if (value === null) return null;
+const cpuSubtypeBase = (value: string | undefined): number | null => {
+  if (value === undefined) return null;
   const subtype = unsigned32(value) ?? CPU_SUBTYPES[value];
-  return subtype === undefined ? null : subtype & 0x00ffffff;
+  return subtype === undefined ? null : machoCpuSubtypeBase(subtype);
 };
 
 /** lipo names the LIB64 capability and prints other capability bits in hex. */

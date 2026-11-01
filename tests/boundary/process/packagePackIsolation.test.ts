@@ -44,19 +44,30 @@ it("keeps npm pack output in the owned workspace when package validation fails",
   const packerUrl = pathToFileURL(
     resolve("scripts/verify-package-pack.mjs"),
   ).href;
+  const commandsUrl = pathToFileURL(
+    resolve("scripts/lib/verify-package-commands.mjs"),
+  ).href;
+  const cleanupUrl = pathToFileURL(
+    resolve("scripts/lib/verifier-cleanup.mjs"),
+  ).href;
   const harness = `
 import { rm } from "node:fs/promises";
+import { createPackageVerifierCommands } from ${JSON.stringify(commandsUrl)};
+import { withVerifierCleanup } from ${JSON.stringify(cleanupUrl)};
 const workspace = ${JSON.stringify(workspace)};
+const scratch = { path: workspace, close: () => rm(workspace, { recursive: true, force: true }) };
+let commands;
 let failure;
+await withVerifierCleanup(async () => {
+commands = await createPackageVerifierCommands({ workspace: scratch });
 try {
   const { verifyPackagePack } = await import(${JSON.stringify(packerUrl)});
-  await verifyPackagePack({ root: ${JSON.stringify(packageRoot)}, workspace });
+  await verifyPackagePack({ root: ${JSON.stringify(packageRoot)}, workspace, commands });
 } catch (cause) {
   if (!(cause instanceof Error) || cause.message !== ${JSON.stringify(expectedFailure)}) throw cause;
   failure = cause.message;
-} finally {
-  await rm(workspace, { recursive: true, force: true });
 }
+}, [() => commands === undefined ? scratch.close() : commands.close()]);
 if (failure !== ${JSON.stringify(expectedFailure)}) throw new Error("Expected package metadata validation to fail after packing");
 process.stdout.write(JSON.stringify({ failure }));
 `;
@@ -78,6 +89,6 @@ process.stdout.write(JSON.stringify({ failure }));
 
   expect(JSON.parse(stdout)).toEqual({ failure: expectedFailure });
   expect((await readdir(packageRoot)).sort()).toEqual(packageContentsBefore);
-  expect(await readFile(archivePath)).toEqual(sentinel);
+  expect(Buffer.compare(await readFile(archivePath), sentinel)).toBe(0);
   await expect(access(workspace)).rejects.toMatchObject({ code: "ENOENT" });
 });

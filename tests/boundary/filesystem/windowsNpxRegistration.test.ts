@@ -55,8 +55,12 @@ it.each([
     ).toContainEqual(
       expect.objectContaining({ client: "claude_code", state: "stale" }),
     );
-    const client = { name: "claude_code", configPath, format: "json" } as const;
-    const command = setupRegistrationCommand("win32", "npx");
+    const client = {
+      name: "claude_code",
+      configPath,
+      format: "claude_code",
+    } as const;
+    const command = setupRegistrationCommand("win32", "npx", undefined);
     expect(
       await configureClientConfiguration(client, {}, command),
     ).toMatchObject({ status: "configured" });
@@ -93,7 +97,7 @@ it.each(["npx", "bunx"] as const)(
       '\uFEFF# Keep this explanation.\nnotify = ["a", "b"]\nliteral = \'C:\\demo\\path\'\ndisabled_mcp_servers = ["rea"]\n\n[mcp_servers.other]\ncommand = "another-server"\n';
     await writeFile(configPath, original);
     const client = { name: "codex", configPath, format: "toml" } as const;
-    const command = setupRegistrationCommand("win32", runner);
+    const command = setupRegistrationCommand("win32", runner, undefined);
     expect(
       await configureClientConfiguration(client, {}, command),
     ).toMatchObject({ status: "configured" });
@@ -119,7 +123,11 @@ it.each(["npx", "bunx"] as const)(
 it("retains rea-named custom shell registrations without writing a backup", async () => {
   const home = await createTestTempDirectory("rea-custom-shell-registration-");
   const configPath = join(home, ".claude.json");
-  const client = { name: "claude_code", configPath, format: "json" } as const;
+  const client = {
+    name: "claude_code",
+    configPath,
+    format: "claude_code",
+  } as const;
   for (const command of [
     ["cmd.exe", "/d", "/c", "node", "custom.js", "mcp"],
     ["cmd.exe", "/k", "npx", "-y", "reverseport@5.0.0", "mcp"],
@@ -158,9 +166,9 @@ it.skipIf(process.platform !== "win32").each([
     const setupClient = {
       name: "claude_code",
       configPath,
-      format: "json",
+      format: "claude_code",
     } as const;
-    const command = setupRegistrationCommand("win32", runner);
+    const command = setupRegistrationCommand("win32", runner, undefined);
     // The default writer and npm-run setup must produce the same native launcher.
     expect(
       await (runner === "npx"

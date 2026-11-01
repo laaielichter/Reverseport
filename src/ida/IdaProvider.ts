@@ -1,20 +1,32 @@
+import { launchRegexMatchingLimitation } from "../process/RegexMatcher.js";
 import { snapshotEnvironment } from "../process/snapshotEnvironment.js";
-import { createAnalysisProfile } from "../domain/analysisProfile.js";
+import {
+  createAnalysisProfile,
+  analysisProfilesEqual,
+} from "../domain/analysisProfile.js";
 import type { AnalysisProfileCommitment } from "../domain/analysisProfile.js";
-import type { BinaryTarget } from "../domain/binaryTargetTypes.js";
+import {
+  isElfMetadataArchitecture,
+  type BinaryTarget,
+} from "../domain/binaryTargetTypes.js";
 import { err, ok } from "../domain/result.js";
 import { AnalysisCancelledError } from "../domain/analysisErrorCore.js";
+import { projectAnalysisError } from "../domain/analysisErrorProjection.js";
 import type {
   AnalysisClient,
+  AnalysisProviderBoundClientFactory,
+  AnalysisProviderInspectionOptions,
   AnalysisProfileResolutionOptions,
+  AnalysisProviderReadinessSnapshot,
+  CapabilityDescriptor,
   AnalysisProviderCandidate,
   ProviderAvailability,
   ProviderTargetSupport,
 } from "../application/AnalysisProvider.js";
 import type { AppConfig } from "../config/types.js";
 import type { ConfigurationError } from "../domain/configurationErrors.js";
-import { createHash } from "node:crypto";
-import canonicalize from "canonicalize";
+import { idaRegistrationDigest } from "./IdaRegistrationIdentity.js";
+import { isDeepStrictEqual } from "node:util";
 import type { Result } from "../domain/result.js";
 import {
   readIdaConfiguration,
@@ -31,10 +43,32 @@ import {
 } from "./IdaProviderCapabilities.js";
 import { IdaSessionClient } from "./IdaSessionClient.js";
 import { privateRuntimeRootCapability } from "../process/PrivateRuntimeRoot.js";
+import {
+  ArtifactResourceScope,
+  ArtifactResourceRetryFailure,
+} from "../artifacts/ArtifactResourceScope.js";
+import { AnalysisCleanupLease } from "../artifacts/AnalysisCleanupLease.js";
+import { AnalysisCleanupLeaseGroup } from "../artifacts/AnalysisCleanupLease.js";
+import { ProviderCleanupError } from "../domain/providerCleanupError.js";
+import type { RetainedResourceScope } from "../application/AnalysisProvider.js";
+import type { ProviderInspectionScope } from "../providers/ProviderInspectionScope.js";
 
 /** Bring-your-own IDA MCP candidate; discovery performs no provider startup. */
 export class IdaProvider implements AnalysisProviderCandidate {
-  #registration: Result<IdaConfiguration, ConfigurationError> | undefined;
+  readonly #ownedResources = new ArtifactResourceScope();
+  readonly #inspectionOwner: RetainedResourceScope = {
+    retain: (owner, resource) =>
+      this.#ownedResources.retain({
+        kind: "lease",
+        resource,
+        lease: AnalysisCleanupLease.forCloseOwner(owner, resource),
+      }),
+    run: (operation) => this.#ownedResources.run(operation),
+  };
+  readonly #registrationByScope = new WeakMap<
+    ProviderInspectionScope,
+    Promise<Result<IdaConfiguration, ConfigurationError>>
+  >();
   private readonly environment: NodeJS.ProcessEnv;
   constructor(
     private readonly config: AppConfig,
@@ -50,63 +84,195 @@ export class IdaProvider implements AnalysisProviderCandidate {
   identity() {
     return IDA_PROVIDER_IDENTITY;
   }
-  capabilities() {
-    const config = this.#configuration();
-    return idaCapabilities(
-      config.ok ? config.value.mode : "attached",
-      config.ok && "command" in config.value,
-    );
-  }
-  inspectAvailability(): ProviderAvailability {
-    const config = this.#configuration();
-    if (config.ok && config.value.mode === "headless") {
-      const privacy = privateRuntimeRootCapability();
-      if (!privacy.available)
-        return {
-          status: "unavailable",
-          code: "unsupported_host",
-          reason: privacy.reason,
-          diagnostics: {
-            configured: true,
-            mode: "headless",
-            live_connection_probed: false,
-            private_workspace_available: false,
-          },
-        };
+  capabilities(): readonly CapabilityDescriptor[] {
+    const profiles = [
+      ...idaCapabilities("attached", false, false, this.#regexLimitation()),
+      ...idaCapabilities("attached", true, true, this.#regexLimitation()),
+      ...idaCapabilities("headless", true, false, this.#regexLimitation()),
+    ];
+    const byOperation = new Map<string, (typeof profiles)[number][]>();
+    for (const capability of profiles) {
+      const existing = byOperation.get(capability.operation) ?? [];
+      existing.push(capability);
+      byOperation.set(capability.operation, existing);
     }
-    return config.ok
-      ? {
-          status: "available",
-          code: null,
-          reason: null,
-          diagnostics: {
-            configured: true,
-            mode: config.value.mode,
-            transport: "command" in config.value ? "stdio" : "http",
-            live_connection_probed: false,
-          },
-        }
-      : {
+    return [...byOperation.values()].map((variants): CapabilityDescriptor => {
+      const first = variants[0]!;
+      const available = variants.some(({ available }) => available);
+      const effects = {
+        mutatesArtifact: variants.some(
+          ({ effects }) => effects.mutatesArtifact,
+        ),
+        launchesProcess: variants.some(
+          ({ effects }) => effects.launchesProcess,
+        ),
+        mayShowUi: variants.some(({ effects }) => effects.mayShowUi),
+        mayAccessNetwork: variants.some(
+          ({ effects }) => effects.mayAccessNetwork,
+        ),
+        mayWriteFilesystem: variants.some(
+          ({ effects }) => effects.mayWriteFilesystem,
+        ),
+        changesPermissions: variants.some(
+          ({ effects }) => effects.changesPermissions,
+        ),
+        requiresRoot: variants.some(({ effects }) => effects.requiresRoot),
+      };
+      const limitations = [
+        ...new Set(variants.flatMap(({ limitations }) => limitations)),
+      ];
+      const descriptor = {
+        provider: first.provider,
+        operation: first.operation,
+        ...(first.cachePolicy === undefined
+          ? {}
+          : { cachePolicy: first.cachePolicy }),
+        effects,
+        limitations,
+      };
+      return available
+        ? { ...descriptor, available: true, reason: null }
+        : {
+            ...descriptor,
+            available: false,
+            reason:
+              first.reason ??
+              "No configured IDA compatibility profile admits this operation.",
+          };
+    });
+  }
+  hasPendingOwnedResources() {
+    return this.#ownedResources.hasPending;
+  }
+  async closeOwnedResources() {
+    try {
+      await this.#ownedResources.close();
+      return ok(null);
+    } catch (cause: unknown) {
+      const failure = new ProviderCleanupError(
+        IDA_PROVIDER_IDENTITY.id,
+        this.#ownedResources.cleanupResources,
+        { cause: cause instanceof Error ? cause.message : String(cause) },
+        { cause, operation: "close_owned_resources" },
+      );
+      if (cause instanceof ArtifactResourceRetryFailure)
+        new AnalysisCleanupLeaseGroup(failure, cause.cleanupLeases);
+      return err(failure);
+    }
+  }
+  async inspectAvailability(
+    options?: AnalysisProviderInspectionOptions,
+  ): Promise<ProviderAvailability> {
+    return (await this.inspectReadinessSnapshot(options)).availability;
+  }
+  async inspectReadinessSnapshot(
+    options?: AnalysisProviderInspectionOptions,
+  ): Promise<AnalysisProviderReadinessSnapshot> {
+    const config = await this.#configuration(options);
+    const capabilities = config.ok
+      ? idaCapabilities(
+          config.value.mode,
+          "command" in config.value,
+          config.value.protocol === "native",
+          this.#regexLimitation(),
+        )
+      : this.capabilities();
+    const registrationDiagnostics = {
+      configured: this.config.idaMcpConfigPath !== undefined,
+      registration_path: this.config.idaMcpConfigPath ?? null,
+      live_connection_probed: false,
+    };
+    if (!config.ok) {
+      const failure = projectAnalysisError(config.error);
+      return {
+        availability: {
           status: "unavailable",
           code:
             this.config.idaMcpConfigPath === undefined
               ? "not_configured"
               : "open_options_invalid",
-          reason: config.error.message,
-          diagnostics: { configured: false, live_connection_probed: false },
+          reason: failure.message,
+          diagnostics: {
+            ...registrationDiagnostics,
+            configuration_details: failure.details ?? null,
+            configuration_remediation: failure.remediation.action,
+          },
+        },
+        capabilities,
+      };
+    }
+    if (config.value.mode === "headless") {
+      const privacy = privateRuntimeRootCapability();
+      if (!privacy.available)
+        return {
+          availability: {
+            status: "unavailable" as const,
+            code: privacy.code,
+            reason: privacy.reason,
+            diagnostics: {
+              ...registrationDiagnostics,
+              mode: "headless",
+              private_workspace_available: false,
+              windows_native_failure: {
+                stage: privacy.failureStage,
+                remediation: privacy.remediation,
+              },
+            },
+          },
+          capabilities,
         };
+    }
+    return {
+      availability: {
+        status: "available" as const,
+        code: null,
+        reason: null,
+        diagnostics: {
+          ...registrationDiagnostics,
+          mode: config.value.mode,
+          transport: "command" in config.value ? "stdio" : "http",
+        },
+      },
+      capabilities,
+    };
   }
   inspectTargetSupport(target: BinaryTarget): ProviderTargetSupport {
     const diagnostics = {
       target_kind: target.kind,
       target_format: target.format,
     };
-    if (target.kind === "executable" && target.architecture === "mips")
+    if (target.format === "gamecube-dol")
+      return {
+        status: "unsupported",
+        code: "target_format_unsupported",
+        reason:
+          "IDA does not admit caller-selected GameCube DOL images. Open the target with Ghidra and select format gamecube-dol.",
+        diagnostics,
+      };
+    if (
+      target.kind === "executable" &&
+      (isElfMetadataArchitecture(target.architecture) ||
+        target.architecture === "hexagon")
+    )
       return {
         status: "unsupported",
         code: "architecture_unsupported",
-        reason:
-          "REA's IDA adapter has no verified MIPS lane. Select a supported Ghidra profile instead.",
+        reason: `REA's IDA adapter has no verified ${
+          target.architecture === "mips"
+            ? "MIPS"
+            : target.architecture === "riscv"
+              ? "RISC-V"
+              : target.architecture === "powerpc"
+                ? "PowerPC"
+                : "Hexagon"
+        } lane. Select a supported Ghidra profile instead.`,
+        diagnostics,
+      };
+    if (target.kind === "executable" && target.architecture === "arm64_32")
+      return {
+        status: "unsupported",
+        code: "architecture_unsupported",
+        reason: "REA's IDA adapter has no verified arm64_32 lane.",
         diagnostics,
       };
     if (target.kind !== "executable")
@@ -125,57 +291,144 @@ export class IdaProvider implements AnalysisProviderCandidate {
           "IDA does not admit headerless raw binaries. Open the target with Ghidra and supply architecture and entry_point.",
         diagnostics,
       };
-    return { status: "supported", code: null, reason: null, diagnostics };
+    return target.format === "mach-o-universal"
+      ? {
+          status: "unknown",
+          code: null,
+          reason:
+            "IDA mode has not been resolved, so universal Mach-O slice identity is unknown.",
+          diagnostics,
+        }
+      : { status: "supported", code: null, reason: null, diagnostics };
+  }
+  async inspectTargetSupportWithOptions(
+    target: BinaryTarget,
+    options: AnalysisProviderInspectionOptions,
+  ): Promise<ProviderTargetSupport> {
+    const base = this.inspectTargetSupport(target);
+    if (base.status === "unsupported" || target.format !== "mach-o-universal")
+      return base;
+    // Attached identity is the recorded whole-input digest, which every slice
+    // of a universal file shares, so it cannot prove the GUI loaded the slice
+    // admission selected. Headless mode thins that slice into its own input.
+    const config = await this.#configuration(options);
+    if (!config.ok)
+      return {
+        status: "unknown",
+        code: null,
+        reason: "IDA mode could not be resolved from the registration.",
+        diagnostics: base.diagnostics,
+      };
+    if (config.value.mode === "attached")
+      return {
+        status: "unsupported",
+        code: "target_format_unsupported",
+        reason: `Attached IDA records only the whole-file digest of a universal Mach-O, so REA cannot verify that the open database is its ${target.architecture} slice. Extract that slice with lipo -thin and open the thin file in both IDA and REA, or use headless mode.`,
+        diagnostics: { ...base.diagnostics, mode: "attached" },
+      };
+    return {
+      status: "supported",
+      code: null,
+      reason: null,
+      diagnostics: base.diagnostics,
+    };
   }
   async resolveAnalysisProfile(
-    _target: BinaryTarget,
+    target: BinaryTarget,
     options?: AnalysisProfileResolutionOptions,
   ) {
     if (options?.signal?.aborted === true)
-      return err(new AnalysisCancelledError("ida:profile"));
-    const config = this.#configuration();
+      return err(
+        new AnalysisCancelledError("ida:profile", {
+          cause: options.signal.reason,
+        }),
+      );
+    const config = await this.#configuration(options);
     if (!config.ok) return config;
-    return ok({
-      profile: createAnalysisProfile(IDA_PROVIDER_IDENTITY, {
-        version_scope: "rea-ida-adapter",
-        engine_version: null,
-        upstream_distribution_version: null,
-        mode: config.value.mode,
-        compatibility_profile:
-          config.value.mode === "attached"
+    const profile = createAnalysisProfile(IDA_PROVIDER_IDENTITY, {
+      version_scope: "rea-ida-adapter",
+      engine_version: null,
+      upstream_distribution_version: null,
+      mode: config.value.mode,
+      compatibility_profile:
+        config.value.protocol === "native"
+          ? "native-ida-mcp"
+          : config.value.mode === "attached"
             ? "legacy-1.4"
             : "database-supervisor",
-        database_revision: null,
-        cache_policy: "live",
-        registration_digest: createHash("sha256")
-          .update(canonicalize(config.value) ?? "")
-          .digest("hex"),
-      }),
+      database_revision: null,
+      cache_policy: "live",
+      registration_digest: idaRegistrationDigest(config.value),
+    });
+    if (options?.scope !== undefined)
+      this.#registrationByScope.delete(options.scope);
+    const registration = config.value;
+    const createClient: AnalysisProviderBoundClientFactory = (
+      requestedTarget,
+      requestedProfile,
+    ) =>
+      isDeepStrictEqual(requestedTarget, target) &&
+      analysisProfilesEqual(requestedProfile, profile)
+        ? this.#createBoundClient(registration, target, profile)
+        : this.#unboundClient(
+            "IDA client factory received a target or profile different from the resolved binding.",
+          );
+    return ok({
+      profile,
+      createClient,
     });
   }
   createClient(
-    target: BinaryTarget,
-    profile?: AnalysisProfileCommitment,
+    _target: BinaryTarget,
+    _profile?: AnalysisProfileCommitment,
   ): AnalysisClient {
-    const config = this.#configuration();
-    if (!config.ok)
-      return {
-        execute: async () => err(config.error),
-        close: async () => ok(null),
-      };
-    return new IdaSessionClient(
-      config.value,
-      target,
-      this.connectionFactory(config.value, this.environment),
-      profile,
+    return this.#unboundClient(
+      "IDA client creation requires the provider-owned selected profile binding.",
     );
   }
-  #configuration() {
-    this.#registration ??=
+  async #configuration(options?: AnalysisProviderInspectionOptions) {
+    const scope = options?.scope;
+    if (scope?.active === true) {
+      const existing = this.#registrationByScope.get(scope);
+      if (existing !== undefined) return existing;
+    }
+    const signal = options?.signal;
+    const pending =
       this.config.idaMcpConfigPath === undefined
-        ? readIdaConfigurationNotConfigured()
-        : readIdaConfiguration(this.config.idaMcpConfigPath);
-    return this.#registration;
+        ? Promise.resolve(readIdaConfigurationNotConfigured())
+        : readIdaConfiguration(this.config.idaMcpConfigPath, {
+            ...(signal === undefined ? {} : { signal }),
+            resourceScope: options?.resourceScope ?? this.#inspectionOwner,
+          });
+    if (scope?.active === true) this.#registrationByScope.set(scope, pending);
+    const registration = await pending;
+    return registration;
+  }
+  #regexLimitation(): string {
+    return launchRegexMatchingLimitation(
+      this.config.regexMatchingDeadline,
+      this.config.regexWorkerHeapRequest,
+    );
+  }
+  #createBoundClient(
+    config: IdaConfiguration,
+    target: BinaryTarget,
+    profile: AnalysisProfileCommitment,
+  ): AnalysisClient {
+    return new IdaSessionClient(
+      config,
+      target,
+      this.connectionFactory(config, this.environment),
+      profile,
+      this.config,
+    );
+  }
+  #unboundClient(reason: string): AnalysisClient {
+    const error = idaConfigurationError(reason);
+    return {
+      execute: async () => err(error),
+      close: async () => ok(null),
+    };
   }
 }
 

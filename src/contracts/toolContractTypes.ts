@@ -26,12 +26,14 @@ export const TOOL_KINDS = [
   "managed-provider",
   "android-provider",
   "apktool-provider",
+  "flutter-provider",
   "jeb-provider",
   "adb-provider",
   "firmware-provider",
   "browser-provider",
   "electron-provider",
   "runtime-provider",
+  "pcap-provider",
   "application",
   "session",
 ] as const;
@@ -53,9 +55,16 @@ export interface ToolContract<
   readonly title: string;
   readonly description: string;
   readonly kind: ToolKind;
+  /** This handler dispatches through the active binary-analysis session. */
+  readonly requiresActiveTarget?: boolean;
   readonly inputSchema: InputSchema;
   readonly outputSchema: OutputSchema;
   readonly effects: ToolEffects;
   readonly annotations: ToolAnnotations;
+  /**
+   * Results, successful or failed, can contain text that originates from the
+   * analysis target. MCP delivery marks such results as untrusted data.
+   */
+  readonly returnsTargetContent: boolean;
   readonly examples: readonly ToolExample[];
 }

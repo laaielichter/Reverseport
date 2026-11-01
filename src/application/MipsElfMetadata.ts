@@ -2,16 +2,25 @@ import type { FileHandle } from "node:fs/promises";
 import type {
   MipsAbiFlags,
   MipsElfMetadata,
+  MipsGnuAttributes,
 } from "../domain/binaryTargetTypes.js";
+import { readElfFixedHeader } from "../domain/elfFixedHeader.js";
 import { err, ok, type Result } from "../domain/result.js";
 import {
   readMipsElfSharedLoad,
   type MipsElfRelocationSection,
 } from "./MipsElfSharedLoad.js";
+import {
+  MIPS_GNU_ATTRIBUTES_MAX_BYTES,
+  parseMipsGnuAttributes,
+} from "./MipsGnuAttributes.js";
+
+const SHT_GNU_ATTRIBUTES = 0x6ffffff5;
 
 /** Observed ABI and load declarations, retaining unavailable source coverage. */
 export interface MipsElfInspection {
   readonly abiFlags: MipsAbiFlags | null;
+  readonly gnuAttributes: MipsGnuAttributes | null;
   readonly limitations: readonly string[];
   readonly sharedLoad?: MipsElfMetadata["sharedLoad"];
 }
@@ -64,21 +73,22 @@ export const readMipsElfMetadata = async (
   const header = await read(0, 52, "ELF32 header");
   if (!header.ok) return header;
   const bytes = header.value;
+  const fixedHeader = readElfFixedHeader(bytes, fileSize);
+  if (!fixedHeader.ok) return fixedHeader;
   const little = metadata.byteOrder === "little";
   const u16 = (data: Buffer, offset: number): number =>
     little ? data.readUInt16LE(offset) : data.readUInt16BE(offset);
   const u32 = (data: Buffer, offset: number): number =>
     little ? data.readUInt32LE(offset) : data.readUInt32BE(offset);
   if (
-    bytes.toString("hex", 0, 4) !== "7f454c46" ||
-    bytes[4] !== 1 ||
-    bytes[5] !== (little ? 1 : 2) ||
-    u16(bytes, 18) !== 8 ||
+    fixedHeader.value.elfClass !== 32 ||
+    fixedHeader.value.byteOrder !== metadata.byteOrder ||
+    fixedHeader.value.machine !== 8 ||
     u16(bytes, 16) !== metadata.type ||
     u32(bytes, 36) !== metadata.flags
   )
     return err("MIPS ELF header no longer matches the resolved identity");
-  if (bytes[6] !== 1 || u32(bytes, 20) !== 1 || u16(bytes, 40) !== 52)
+  if (fixedHeader.value.headerSize !== 52)
     return err("invalid MIPS ELF32 version or header size");
 
   const tables = [
@@ -116,6 +126,7 @@ export const readMipsElfMetadata = async (
   let programHeaders: Buffer | undefined;
   const relocationSections: MipsElfRelocationSection[] = [];
   const limitations: string[] = [];
+  let gnuAttributes: MipsGnuAttributes | null = null;
   for (const table of tables) {
     if (table.count === 0) {
       if (table.offset !== 0)
@@ -149,7 +160,30 @@ export const readMipsElfMetadata = async (
       checkCancelled();
       const position = i * table.entrySize;
       const type = u32(contents.value, position + table.typeOffset);
-      if (metadata.type === 3 && table.optional && (type === 4 || type === 9))
+      if (table.optional && type === SHT_GNU_ATTRIBUTES) {
+        if (gnuAttributes !== null)
+          return err("duplicate MIPS GNU attribute sections");
+        const size = u32(contents.value, position + 20);
+        if (size === 0 || size > MIPS_GNU_ATTRIBUTES_MAX_BYTES)
+          return err(
+            `MIPS GNU attribute section size ${size} is outside REA's inspected bound of ${MIPS_GNU_ATTRIBUTES_MAX_BYTES} bytes`,
+          );
+        const section = await read(
+          u32(contents.value, position + 16),
+          size,
+          "GNU attribute section",
+        );
+        if (!section.ok) return section;
+        const parsed = parseMipsGnuAttributes(section.value, little);
+        if (!parsed.ok) return parsed;
+        gnuAttributes = parsed.value;
+        continue;
+      }
+      if (
+        metadata.type === 3 &&
+        table.optional &&
+        (type === 4 || type === 9 || type === 19)
+      )
         relocationSections.push({
           type,
           offset: u32(contents.value, position + 16),
@@ -200,7 +234,7 @@ export const readMipsElfMetadata = async (
         }
       : {};
   if (record === undefined)
-    return ok({ abiFlags: null, limitations, ...shared });
+    return ok({ abiFlags: null, gnuAttributes, limitations, ...shared });
   // Preserve declarations verbatim, including unknown versions/values. Provider
   // admission, not parsing, decides which interpretations have been verified.
   const abiFlags: MipsAbiFlags = {
@@ -216,5 +250,14 @@ export const readMipsElfMetadata = async (
     flags1: u32(record, 16),
     flags2: u32(record, 20),
   };
-  return ok({ abiFlags, limitations, ...shared });
+  if (
+    gnuAttributes !== null &&
+    gnuAttributes.fpAbi !== null &&
+    gnuAttributes.fpAbi !== 0 &&
+    gnuAttributes.fpAbi !== abiFlags.fpAbi
+  )
+    return err(
+      "conflicting MIPS ABI flags and GNU floating-point ABI declarations",
+    );
+  return ok({ abiFlags, gnuAttributes, limitations, ...shared });
 };

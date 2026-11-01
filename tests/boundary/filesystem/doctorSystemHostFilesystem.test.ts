@@ -23,10 +23,27 @@ it("threads the selected host and environment into system diagnostics", async ()
     environment,
     execFileOutput: async (command, arguments_, options) => {
       calls.push({ command, arguments: arguments_, environment: options?.env });
-      if (command === "sw_vers") return { stdout: "15.0\n", stderr: "" };
-      if (command === "ldd") return { stdout: "linux-vdso.so.1", stderr: "" };
+      if (command === "sw_vers")
+        return {
+          stdout: "15.0\n",
+          stderr: "",
+          stdoutBytes: 5,
+          stderrBytes: 0,
+        };
+      if (command === "ldd")
+        return {
+          stdout: "linux-vdso.so.1",
+          stderr: "",
+          stdoutBytes: Buffer.byteLength("linux-vdso.so.1"),
+          stderrBytes: 0,
+        };
       if (command === "which")
-        return { stdout: "/selected/bin/rea\n", stderr: "" };
+        return {
+          stdout: "/selected/bin/rea\n",
+          stderr: "",
+          stdoutBytes: 18,
+          stderrBytes: 0,
+        };
       throw new Error(`Unexpected diagnostic command: ${command}`);
     },
   });
@@ -88,7 +105,12 @@ it.each([
       environment: { HOME: join(root, "home") },
       execFileOutput: async (_command, arguments_) => {
         calls.push(arguments_);
-        return { stdout: `${caskroom}\n`, stderr: "" };
+        return {
+          stdout: `${caskroom}\n`,
+          stderr: "",
+          stdoutBytes: Buffer.byteLength(`${caskroom}\n`),
+          stderrBytes: 0,
+        };
       },
     });
 
@@ -111,7 +133,12 @@ it("reports no Homebrew Hopper when the cask has no receipt", async () => {
     environment: { HOME: caskroom },
     execFileOutput: async (_command, arguments_) => {
       calls.push(arguments_);
-      return { stdout: `${caskroom}\n`, stderr: "" };
+      return {
+        stdout: `${caskroom}\n`,
+        stderr: "",
+        stdoutBytes: Buffer.byteLength(`${caskroom}\n`),
+        stderrBytes: 0,
+      };
     },
   });
 

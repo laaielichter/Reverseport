@@ -42,6 +42,7 @@ export const validateDirectory = async (
       readonly ok: false;
       readonly code: ReferenceSourceFailureCode;
       readonly message: string;
+      readonly localDiagnostic?: string;
     }
 > => {
   try {
@@ -76,15 +77,15 @@ export const validateDirectory = async (
         code: "cancelled",
         message: "Reference source traversal cancelled",
       };
-    const message = filesystemFailureDetail(
+    const detail = filesystemFailureDetail(
       cause,
       "Directory identity could not be verified",
     );
-    if (message === undefined) throw cause;
+    if (detail === undefined) throw cause;
     return {
       ok: false,
       code: "io",
-      message,
+      ...detail,
     };
   }
 };

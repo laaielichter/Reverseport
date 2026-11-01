@@ -1,9 +1,57 @@
 import { describe, expect, it } from "vitest";
 import { createHash } from "node:crypto";
-import { attestGhidraDosLoadImage } from "./GhidraLoadImageValues.js";
-import { fixtureDosLoadImage } from "./GhidraLoadImage.fixture.js";
-import { nativeLoadImageObservationSchema } from "../domain/native/nativeLoadImage.js";
+import {
+  compareDosFixture,
+  fixtureDosLoadImage,
+} from "./GhidraLoadImage.fixture.js";
+import { jsonValueSchema } from "../domain/jsonValue.js";
+import {
+  nativeLoadImageObservationSchema,
+  nativeLoadImageSchema,
+} from "../domain/native/nativeLoadImage.js";
 import type { NativeLoadImageObservation } from "../domain/native/nativeLoadImage.js";
+import { parseGhidraInventoryResult } from "./GhidraInventoryValues.js";
+import { prepareGhidraDosLoadImage } from "./GhidraLoadImageValues.js";
+
+it("accepts DOS header padding after a complete relocation table", () => {
+  const bytes = Buffer.alloc(128);
+  bytes.write("MZ", 0, "ascii");
+  bytes.writeUInt16LE(128, 2);
+  bytes.writeUInt16LE(1, 4);
+  bytes.writeUInt16LE(2, 6);
+  bytes.writeUInt16LE(4, 8);
+  bytes.writeUInt16LE(28, 24);
+  bytes.write("ABCD", 60, "ascii");
+  expect(prepareGhidraDosLoadImage(bytes, bytes.length)).toMatchObject({
+    ok: true,
+    value: {
+      header: {
+        headerBytes: 64,
+        imageBytes: 128,
+        moduleBytes: 64,
+        overlayBytes: 0,
+        relocationCount: 2,
+        relocationTableOffset: 28,
+      },
+      loadSegment: 0x1000,
+    },
+  });
+});
+
+it("does not interpret an unresolved Windows-header candidate as a DOS image", () => {
+  const bytes = Buffer.alloc(128);
+  bytes.write("MZ", 0, "ascii");
+  bytes.writeUInt16LE(128, 2);
+  bytes.writeUInt16LE(1, 4);
+  bytes.writeUInt16LE(0, 6);
+  bytes.writeUInt16LE(4, 8);
+  bytes.writeUInt16LE(28, 24);
+  bytes.write("ABCD", 60, "ascii");
+  expect(prepareGhidraDosLoadImage(bytes, bytes.length)).toEqual({
+    ok: false,
+    error: "MZ Windows new-header candidate is unresolved",
+  });
+});
 
 const damage: ReadonlyArray<
   readonly [string, (observation: NativeLoadImageObservation) => void]
@@ -211,10 +259,107 @@ const damage: ReadonlyArray<
     },
   ],
 ];
+
+const malformedCoordinates: ReadonlyArray<
+  readonly [string, (observation: NativeLoadImageObservation) => void]
+> = [
+  ["image base", (value) => (value.image_base = "not-an-address")],
+  [
+    "mapping start",
+    (value) => {
+      const mapping = value.mappings[0];
+      if (mapping) mapping.start = "not-an-address";
+    },
+  ],
+  [
+    "mapping end",
+    (value) => {
+      const mapping = value.mappings[0];
+      if (mapping) mapping.end = "not-an-address";
+    },
+  ],
+  [
+    "relocation address",
+    (value) => {
+      const relocation = value.relocations[0];
+      if (relocation) relocation.address = "not-an-address";
+    },
+  ],
+  ["entry point", (value) => (value.entry_points[0] = "not-an-address")],
+  [
+    "entry context address",
+    (value) => {
+      value.entry_context.push({ address: "not-an-address", registers: [] });
+    },
+  ],
+];
+
+it.each(malformedCoordinates)(
+  "rejects a malformed nonempty %s at both native load-image boundaries",
+  (_name, mutate) => {
+    const observation = structuredClone(fixtureDosLoadImage().observation);
+    mutate(observation);
+    expect({
+      shared: nativeLoadImageObservationSchema.safeParse(observation).success,
+      provider: parseGhidraInventoryResult(
+        "inspect_native_load_image",
+        jsonValueSchema.parse(observation),
+      ).ok,
+    }).toEqual({ shared: false, provider: false });
+  },
+);
+
+it("preserves zero-padded, qualified, and large observation addresses", () => {
+  const observation = structuredClone(fixtureDosLoadImage().observation);
+  observation.image_base = "0x0000";
+  const mapping = observation.mappings[0];
+  const relocation = observation.relocations[0];
+  if (!mapping || !relocation) throw new Error("Incomplete load-image fixture");
+  mapping.start = "ram%2Fbank:0x0000000000000001";
+  mapping.end = "ram%2Fbank:0x10000000000000001";
+  relocation.address = "0x10000000000000009";
+  observation.entry_points[0] = "ram:0x10000000000000001";
+  const parsed = parseGhidraInventoryResult(
+    "inspect_native_load_image",
+    jsonValueSchema.parse(observation),
+  );
+  expect(parsed.ok).toBe(true);
+  if (!parsed.ok) throw parsed.error;
+  expect(parsed.value.value).toEqual(observation);
+});
+
+it("rejects malformed coordinates in completed load-image checks and entries", () => {
+  const fixture = fixtureDosLoadImage();
+  const compared = compareDosFixture(
+    fixture.bytes,
+    fixture.sha256,
+    fixture.observation,
+  );
+  if (!compared.ok || compared.value.status === "unsupported")
+    throw new Error("Expected a completed DOS load-image result");
+  const malformedResults = [
+    {
+      ...compared.value,
+      entry: { ...compared.value.entry, linear_address: "not-an-address" },
+    },
+    {
+      ...compared.value,
+      checks: compared.value.checks.map((check, index) =>
+        index === 0 ? { ...check, address: "not-an-address" } : check,
+      ),
+    },
+  ];
+  expect(
+    malformedResults.map(
+      (result) => nativeLoadImageSchema.safeParse(result).success,
+    ),
+  ).toEqual([false, false]);
+});
+
 describe("independent DOS MZ import verification", () => {
   it("verifies every initialized source byte while retaining overlay and BSS scope", () => {
     const fixture = fixtureDosLoadImage();
-    const result = attestGhidraDosLoadImage(
+    const result = compareDosFixture(
       fixture.bytes,
       fixture.sha256,
       fixture.observation,
@@ -243,7 +388,7 @@ describe("independent DOS MZ import verification", () => {
     (_name, mutate) => {
       const fixture = fixtureDosLoadImage();
       mutate(fixture.observation);
-      const result = attestGhidraDosLoadImage(
+      const result = compareDosFixture(
         fixture.bytes,
         fixture.sha256,
         fixture.observation,
@@ -263,7 +408,7 @@ describe("independent DOS MZ import verification", () => {
     const mapping = fixture.observation.mappings[1];
     if (mapping === undefined) throw new Error("Missing module mapping");
     mapping.sha256 = "f".repeat(64);
-    const result = attestGhidraDosLoadImage(
+    const result = compareDosFixture(
       fixture.bytes,
       fixture.sha256,
       fixture.observation,
@@ -284,11 +429,7 @@ describe("independent DOS MZ import verification", () => {
     const fixture = fixtureDosLoadImage();
     fixture.observation.mappings.reverse();
     expect(
-      attestGhidraDosLoadImage(
-        fixture.bytes,
-        fixture.sha256,
-        fixture.observation,
-      ),
+      compareDosFixture(fixture.bytes, fixture.sha256, fixture.observation),
     ).toMatchObject({ ok: true, value: { status: "verified" } });
   });
 
@@ -300,11 +441,7 @@ describe("independent DOS MZ import verification", () => {
     relocation.segment = 0x0fff;
     relocation.offset = 25;
     expect(
-      attestGhidraDosLoadImage(
-        fixture.bytes,
-        fixture.sha256,
-        fixture.observation,
-      ),
+      compareDosFixture(fixture.bytes, fixture.sha256, fixture.observation),
     ).toMatchObject({
       ok: true,
       value: {
@@ -322,15 +459,11 @@ describe("independent DOS MZ import verification", () => {
     const fixture = fixtureDosLoadImage();
     fixture.bytes[0] = 0;
     expect(
-      attestGhidraDosLoadImage(
-        fixture.bytes,
-        fixture.sha256,
-        fixture.observation,
-      ),
+      compareDosFixture(fixture.bytes, fixture.sha256, fixture.observation),
     ).toMatchObject({ ok: false, error: expect.stringContaining("digest") });
     const digest = createHash("sha256").update(fixture.bytes).digest("hex");
     expect(
-      attestGhidraDosLoadImage(fixture.bytes, digest, fixture.observation),
+      compareDosFixture(fixture.bytes, digest, fixture.observation),
     ).toMatchObject({ ok: false, error: expect.stringContaining("MZ header") });
   });
 

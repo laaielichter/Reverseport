@@ -1,7 +1,19 @@
+import type { ClientConfigurationWriteProblem } from "./ClientConfigurationPublication.js";
 import type { DoctorReport, DoctorScope, runDoctor } from "./Doctor.js";
 import type { LinuxDistribution } from "./LinuxHopper.js";
-import type { SkillDestination, SkillInstallResult } from "./SetupSkill.js";
+import type { HopperReleaseError } from "./HopperReleaseFeed.js";
+import type {
+  SkillDestination,
+  SkillInstallResult,
+  SetupSkillInstallError,
+} from "./SetupSkill.js";
+import type { Result } from "../domain/result.js";
+import type {
+  AnalysisCleanupObservation,
+  AnalysisError,
+} from "../domain/analysisErrorBase.js";
 import type { SetupClient } from "./SupportedClients.js";
+import type { SetupRegistrationPrewarm } from "./SetupRegistrationPrewarm.js";
 import type {
   SetupFailureCode,
   SetupHopperInstallResult,
@@ -13,6 +25,10 @@ export type SetupProviderEnvironment = Readonly<Record<string, string>>;
 /** Read-only host facts shared by the initial setup plan. */
 export interface SetupInitialState {
   readonly hopperPath?: string;
+  /** Whether the caller explicitly selected a Hopper launcher in its environment. */
+  readonly hopperLauncherConfigured?: boolean;
+  /** Whether the caller or host has an analysis provider configuration. */
+  readonly providerConfigured: boolean;
   readonly providerEnvironment: SetupProviderEnvironment;
   readonly doctor: DoctorReport;
 }
@@ -20,12 +36,54 @@ export interface SetupInitialState {
 /** Result of one backup/write/readback transaction. */
 export type ClientConfigurationResult =
   | {
+      readonly status: "failed";
+      readonly reason: "conflict";
+      readonly backupPath?: string;
+    }
+  | {
       readonly status: "unchanged" | "configured" | "skipped";
       readonly backupPath?: string;
     }
   | {
       readonly status: "failed";
-      readonly reason: "path" | "backup" | "write" | "readback";
+      readonly reason: "path" | "target_changed" | "backup";
+    }
+  | {
+      readonly status: "failed";
+      readonly reason: "write";
+      readonly failure?: ClientConfigurationWriteProblem;
+      readonly backupPath?: string;
+    }
+  | {
+      readonly status: "failed";
+      /** Removing the member a client reads would activate an earlier duplicate. */
+      readonly reason: "shadowed_member";
+      readonly path: readonly string[];
+    }
+  | {
+      readonly status: "failed";
+      readonly reason: "readback";
+      /** Snapshot of the restored original, when this transaction made one. */
+      readonly backupPath?: string;
+    }
+  | {
+      readonly status: "failed";
+      readonly reason: "target_unavailable";
+      readonly failure: {
+        readonly kind: "inspect";
+        readonly path: string;
+        readonly detail: string;
+      };
+    }
+  | {
+      readonly status: "failed";
+      readonly reason: "rollback";
+      readonly backupPath?: string;
+      readonly failure: {
+        readonly kind: "restore";
+        readonly path: string;
+        readonly detail: string;
+      };
     };
 
 /** Read-only state used to block unsafe setup plans before any mutation. */
@@ -43,15 +101,20 @@ export type ClientConfigurationInspection =
 export interface SetupHost {
   readonly platform: NodeJS.Platform;
   readonly homeDirectory: string;
+  readonly linuxHopperReleaseCache?: Result<string, HopperReleaseError>;
   skillDestinations(clientIds: readonly string[]): readonly SkillDestination[];
   readonly registrationCommand: readonly string[];
+  /** Why client registration cannot proceed from this host. */
+  readonly registrationCommandBlocker?: string;
   readonly nodeVersion: string;
   macosVersion(): Promise<string | undefined>;
   linuxDistribution(): Promise<LinuxDistribution | undefined>;
   initialSetupState(scope?: DoctorScope): Promise<SetupInitialState>;
   installHopper(replaceExisting: boolean): Promise<SetupHopperInstallResult>;
-  /** Retry and report any cleanup resources still owned by this setup host. */
-  close?(): Promise<string | undefined>;
+  /** Retry retained owners. Returned or thrown errors with explicit cleanup
+   * owners follow live release state; ownerless failures remain unconfirmed.
+   * runSetup does not observe later direct calls to a caller-supplied host. */
+  close?(): Promise<AnalysisError | undefined>;
   detectedClients(): Promise<readonly SetupClient[]>;
   supportedClients(): Promise<readonly SetupClient[]>;
   configureClient(
@@ -70,8 +133,15 @@ export interface SetupHost {
     command: readonly string[],
   ): Promise<ClientConfigurationInspection>;
   skillNeedsInstall(clientIds: readonly string[]): Promise<boolean>;
+  validateSkillDirectories(
+    clientIds: readonly string[],
+  ): Promise<Result<void, SetupSkillInstallError>>;
   installSkill(clientIds: readonly string[]): Promise<SkillInstallResult>;
   doctor(scope?: DoctorScope): Promise<Awaited<ReturnType<typeof runDoctor>>>;
+  /** Best-effort materialization of the pinned package-runner cache entry
+   * before the first client start, so a one-time dependency install cannot
+   * consume a client's MCP startup deadline. Absent hosts skip the step. */
+  prewarmRegistrationRunner?(): Promise<SetupRegistrationPrewarm>;
 }
 /** Structured setup outcome carrying remediation instead of prompting. */
 export interface SetupResult {
@@ -89,6 +159,11 @@ export interface SetupResult {
   readonly clientStates: readonly SetupClientState[];
   readonly remediation?: string;
   readonly code?: SetupFailureCode;
+  /** Identified resources still retained after finalization; absent after confirmed release. */
+  readonly cleanup?: AnalysisCleanupObservation | undefined;
+  /** Best-effort pinned package-runner cache materialization; absent when the
+   * host offers no prewarm capability or setup finished before finalization. */
+  readonly prewarm?: SetupRegistrationPrewarm;
 }
 
 /** Whether the requested setup actions still need approval or human repair. */
@@ -130,7 +205,12 @@ export interface SetupClientState {
   readonly client: SetupClient;
   readonly detected: boolean;
   readonly configured: boolean;
-  readonly status: "configured" | "missing" | "needs_configuration" | "invalid";
+  readonly status:
+    | "configured"
+    | "missing"
+    | "needs_configuration"
+    | "invalid"
+    | "unknown";
 }
 
 /** One concrete setup mutation disclosed before approval. */

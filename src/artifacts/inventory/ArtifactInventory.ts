@@ -5,7 +5,11 @@ import {
   type ArtifactInventoryResult,
 } from "../../domain/artifactGraph.js";
 import { abortIfNeeded } from "../ArtifactHash.js";
-import { scanCanonicalArtifactInventoryInScope } from "./scanCanonical.js";
+import {
+  scanCanonicalArtifactInventoryInScope,
+  scanCanonicalArtifactInventoryForExtractionInScope,
+  type TransferredZipInventorySource,
+} from "./scanCanonical.js";
 import type { ArtifactInventoryOptions } from "./types.js";
 import type { ArtifactInventorySnapshot } from "../../domain/artifactInventorySnapshot.js";
 
@@ -14,18 +18,11 @@ export const inventoryArtifact = async (
   inputPath: string,
   options: ArtifactInventoryOptions,
 ): Promise<ArtifactInventoryResult> => {
-  const snapshot = await scanArtifactInventory(inputPath, options);
-  return artifactInventoryResultSchema.parse(snapshot);
-};
-
-/** Scan an artifact once and retain the complete immutable graph for projection. */
-export const scanArtifactInventory = async (
-  inputPath: string,
-  options: ArtifactInventoryOptions,
-): Promise<ArtifactInventorySnapshot> =>
-  options.resourceScope.run(() =>
+  const snapshot = await options.resourceScope.run(() =>
     scanArtifactInventoryInScope(inputPath, options),
   );
+  return artifactInventoryResultSchema.parse(snapshot);
+};
 
 export const scanArtifactInventoryInScope = async (
   inputPath: string,
@@ -34,4 +31,16 @@ export const scanArtifactInventoryInScope = async (
   abortIfNeeded(options.signal);
   const path = await realpath(inputPath);
   return scanCanonicalArtifactInventoryInScope(path, options);
+};
+
+export const scanArtifactInventoryForExtractionInScope = async (
+  inputPath: string,
+  options: ArtifactInventoryOptions,
+): Promise<{
+  readonly snapshot: ArtifactInventorySnapshot;
+  readonly zipSource: TransferredZipInventorySource | undefined;
+}> => {
+  abortIfNeeded(options.signal);
+  const path = await realpath(inputPath);
+  return scanCanonicalArtifactInventoryForExtractionInScope(path, options);
 };
