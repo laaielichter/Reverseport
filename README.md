@@ -272,6 +272,10 @@ contract. The HTTP API
 DRM, anti-cheat or licensing. See [RESPONSIBLE-USE.md](RESPONSIBLE-USE.md).
 
 **Does it upload my files?** No. It runs on your machine, only reads the target and writes output to new folders.
+There is no telemetry; [PRIVACY.md](PRIVACY.md) lists the few times it uses the network.
+
+**Where do I get it?** Only from npm as [`reverseport`](https://www.npmjs.com/package/reverseport), the MCP Registry
+as `io.github.laaielichter/reverseport`, or this repository. Copies under other names are not ours.
 
 **Does it port my code automatically?** Scenes, transforms and assets convert automatically. Code is written by your
 agent, one unit at a time, with an API map for the engine pair; `port_verify` then checks for leftovers, missing

@@ -1,0 +1,3 @@
+# The image installs the published package; only package.json (for the version) is needed.
+*
+!package.json
