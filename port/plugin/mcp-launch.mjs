@@ -3,10 +3,22 @@
 // folder. Set REVERSEPORT_HOME to put it elsewhere (e.g. a roomier drive).
 import { isMainModule } from '../src/main-module.mjs';
 
+/** Plugin settings (userConfig) arrive as env values; an empty or unsubstituted one means "not set". */
+export function applyPluginSettings(env = process.env) {
+  for (const key of ['REVERSEPORT_PLUGIN_ENGINE', 'REVERSEPORT_PROFILE', 'REVERSEPORT_HOME', 'GHIDRA_INSTALL_DIR']) {
+    const value = env[key];
+    if (value !== undefined && (value.trim() === '' || /^\$\{user_config\.[A-Za-z0-9_]+\}$/.test(value.trim()))) delete env[key];
+  }
+  if (['true', '1', 'yes', 'on'].includes(String(env.REVERSEPORT_PLUGIN_ENGINE ?? '').toLowerCase())) env.REVERSEPORT_ENGINE_FETCH ??= 'npx';
+  delete env.REVERSEPORT_PLUGIN_ENGINE;
+  return env;
+}
+
 export async function main() {
-  // A plugin installed from git has no built engine. REVERSEPORT_ENGINE_FETCH=npx lets it run the published engine
-  // through npx instead (downloads the package once); without it the server starts with ReversePort's own tools and
-  // says how to add the engine.
+  applyPluginSettings();
+  // A plugin installed from git has no built engine. The engine setting (or REVERSEPORT_ENGINE_FETCH=npx) lets it run
+  // the published engine through npx instead (downloads the package once); without it the server starts with
+  // ReversePort's own tools and says how to add the engine.
   if (process.env.REVERSEPORT_ENGINE_FETCH === 'npx' && !process.env.REVERSEPORT_ENGINE_COMMAND) {
     const { engineCommand } = await import('../src/relay.mjs');
     const { VERSION } = await import('../src/tools.mjs');

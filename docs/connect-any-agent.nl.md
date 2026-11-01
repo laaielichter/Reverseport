@@ -20,7 +20,10 @@ die bij je agent past; ze komen allemaal uit bij dezelfde tools.
 twee keer. Gebruik in Claude Code `setup` of de plugin, niet beide: de plugin bevat zijn eigen kopie van de server.
 
 The Claude Code plugin installed from GitHub has no built deep-analysis engine; it starts with ReversePort's own
-tools. Stel `REVERSEPORT_ENGINE_FETCH=npx` in om de gepubliceerde engine via `npx` uit te voeren (eenmalig gedownload).
+tools. Zet de plugin-instelling **Deep-analysis engine** aan (`/plugin` → reverseport → configure) om de
+gepubliceerde engine via `npx` uit te voeren (eenmalig gedownload); `REVERSEPORT_ENGINE_FETCH=npx` doet hetzelfde. Met
+de andere instellingen kies je de lengte van de tool-lijst, de werkmap en je Ghidra-map, zonder `settings.json` met de
+hand aan te passen.
 
 ## Functieaanroepen via HTTP
 

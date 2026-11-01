@@ -21,7 +21,10 @@ instead of `npx`. Setup and `connect` both register the server under the name `r
 twice. In Claude Code, use either `setup` or the plugin, not both: the plugin brings its own copy of the server.
 
 The Claude Code plugin installed from GitHub has no built deep-analysis engine; it starts with ReversePort's own
-tools. Set `REVERSEPORT_ENGINE_FETCH=npx` to have it run the published engine through `npx` (downloaded once).
+tools. Turn on the plugin's **Deep-analysis engine** setting (`/plugin` → reverseport → configure) to have it run
+the published engine through `npx` (downloaded once); `REVERSEPORT_ENGINE_FETCH=npx` does the same. The plugin's
+other settings choose the tool list size, the workspace folder and your Ghidra folder, so nobody edits
+`settings.json` by hand.
 
 ## Function calling over HTTP
 
