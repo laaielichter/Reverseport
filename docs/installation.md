@@ -1035,7 +1035,7 @@ For a client that requires manual configuration, use:
   "mcpServers": {
     "rea": {
       "command": "npx",
-      "args": ["-y", "reverseport@1.9.0", "mcp"]
+      "args": ["-y", "reverseport@1.10.0", "mcp"]
     }
   }
 }
