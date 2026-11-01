@@ -200,8 +200,8 @@ test.each(["unavailable", "unknown"] as const)(
       });
       expect(check?.remediation).toContain(
         state === "unavailable"
-          ? "rea setup --install-hopper"
-          : "Retry rea doctor",
+          ? "reverseport setup --install-hopper"
+          : "Retry reverseport doctor",
       );
     } finally {
       python.mockRestore();

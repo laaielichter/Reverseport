@@ -127,7 +127,8 @@ describe("tool effects", () => {
       ({ name }) => name === "analyze_web_bundle",
     );
     expect(contract?.effects).toMatchObject({
-      mutatesSession: true,
+      // ReversePort records retained browser Evidence as appendsEvidence (read-only to clients).
+      appendsEvidence: true,
       accessesNetwork: true,
       launchesProcess: true,
       writesFilesystem: true,

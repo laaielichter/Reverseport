@@ -43,7 +43,7 @@ mcpTest(
         (tool) => tool.name === "inspect_erlang_beam",
       );
       expect(advertised?.annotations).toMatchObject({
-        readOnlyHint: false,
+        readOnlyHint: true, // only appends Evidence
         idempotentHint: true,
       });
       const root = await createTestTempDirectory("rea-beam-mcp-");

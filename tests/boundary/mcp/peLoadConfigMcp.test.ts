@@ -27,7 +27,8 @@ mcpTest(
       if (definition === undefined)
         throw new Error("Missing advertised contract");
       expect(definition.annotations).toMatchObject({
-        readOnlyHint: false,
+        // ReversePort marks reads that only append Evidence as read-only.
+        readOnlyHint: true,
         idempotentHint: true,
       });
       const root = await createTestTempDirectory("rea-pe-config-mcp-");

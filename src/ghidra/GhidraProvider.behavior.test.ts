@@ -1355,12 +1355,12 @@ describe("Ghidra decompiler failure projection", () => {
         message: `${message}. Only the decompiler failed for this procedure; the Ghidra session remains usable.`,
         details: { diagnostics: { remote_code: code } },
       });
-      expect(projected.message).not.toContain("rea doctor");
+      expect(projected.message).not.toContain("reverseport doctor");
       expect(projected.remediation.action).toContain("analyze_function");
       expect(projected.remediation.action).toContain(
         "facet_availability.pseudocode",
       );
-      expect(projected.remediation.action).not.toContain("rea doctor");
+      expect(projected.remediation.action).not.toContain("reverseport doctor");
     }
   });
 
@@ -1413,7 +1413,7 @@ describe("Ghidra decompiler failure projection", () => {
       expect(action).toContain("new Codex/Kimi registrations");
       expect(action).toContain("preserves existing positive values");
       expect(action).toContain("edit existing deadlines yourself");
-      expect(action).not.toContain("rea doctor");
+      expect(action).not.toContain("reverseport doctor");
     }
   });
 });
@@ -3216,7 +3216,7 @@ describe("Ghidra deadline guidance", () => {
         applies_at: "next_startup",
       },
     });
-    expect(projected.remediation.action).not.toContain("rea doctor");
+    expect(projected.remediation.action).not.toContain("reverseport doctor");
   });
 
   it("keeps generic guidance for a bridge request deadline", async () => {
@@ -3747,7 +3747,7 @@ describe("Ghidra queries after the owned provider is lost", () => {
     expect(projected.message).toContain("exited with code 137");
     expect(projected.message).toContain("Call open_binary");
     expect(projected.remediation.action).toContain("Call open_binary");
-    expect(projected.remediation.action).not.toContain("rea doctor");
+    expect(projected.remediation.action).not.toContain("reverseport doctor");
   });
 
   it("tells the caller to reopen the target when the bridge became unreachable", async () => {
@@ -3767,7 +3767,7 @@ describe("Ghidra queries after the owned provider is lost", () => {
     if (result.ok) return;
     const projected = projectAnalysisError(result.error);
     expect(projected.message).not.toContain("Call open_binary");
-    expect(projected.remediation.action).toContain("rea doctor");
+    expect(projected.remediation.action).toContain("reverseport doctor");
   });
 
   it("keeps the generic failure when the provider is not known to be lost", async () => {
@@ -3776,7 +3776,7 @@ describe("Ghidra queries after the owned provider is lost", () => {
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(projectAnalysisError(result.error).remediation.action).toContain(
-      "rea doctor",
+      "reverseport doctor",
     );
   });
 
@@ -3866,7 +3866,7 @@ describe("Ghidra exit-signal evidence", () => {
     expect(projected.remediation.action).toContain(
       "host or container termination records",
     );
-    expect(projected.remediation.action).not.toContain("rea doctor");
+    expect(projected.remediation.action).not.toContain("reverseport doctor");
     expect(projected.remediation.action).not.toContain(
       "GHIDRA_HEADLESS_MAXMEM",
     );
@@ -4118,7 +4118,7 @@ describe("Ghidra SIGKILL projection", () => {
       expect(projected.message).toContain("child groups");
       expect(projected.message).not.toContain("process tree");
       expect(projected.remediation.action).toContain("decompiler");
-      expect(projected.remediation.action).not.toContain("rea doctor");
+      expect(projected.remediation.action).not.toContain("reverseport doctor");
       expect(projected.remediation.action).not.toMatch(
         /increas\w* GHIDRA_HEADLESS_MAXMEM/u,
       );
@@ -4192,7 +4192,7 @@ describe("Ghidra SIGKILL projection", () => {
     expect(projected.code).toBe("execution_failure");
     expect(projected.message).toContain("SIGKILL");
     expect(projected.message).toContain("does not establish its cause");
-    expect(projected.message).not.toContain("rea doctor");
+    expect(projected.message).not.toContain("reverseport doctor");
     expect(projected.remediation.action).toContain(
       "host or container termination records",
     );

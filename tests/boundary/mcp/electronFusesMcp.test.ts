@@ -81,7 +81,7 @@ fuseMcpTest(
       expect(ajv.validateSchema(inputSchema)).toBe(true);
       expect(ajv.validateSchema(outputSchema)).toBe(true);
       expect(advertised.annotations).toMatchObject({
-        readOnlyHint: false,
+        readOnlyHint: true,
         destructiveHint: false,
         idempotentHint: true,
         openWorldHint: false,

@@ -106,7 +106,7 @@ export const createCli = (
       // installer so ambiguous flags cannot bypass REA's verified workflow.
       install: () => {
         throw new Error(
-          "Use 'rea update' to update the identified installation. The '--update' alias accepts only global output flags.",
+          "Use 'reverseport update' to update the identified installation. The '--update' alias accepts only global output flags.",
         );
       },
     },

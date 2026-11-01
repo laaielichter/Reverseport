@@ -467,7 +467,7 @@ describe("ZCode disabled registrations", () => {
     // and is the working repair; doctor must keep recommending it.
     expect(await statusFor()).toMatchObject({
       state: "stale",
-      remediation: expect.stringContaining("rea setup"),
+      remediation: expect.stringContaining("reverseport setup"),
     });
     expect((await statusFor())?.remediation).not.toContain("enable: false");
 

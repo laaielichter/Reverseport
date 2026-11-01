@@ -226,20 +226,20 @@ const inspectLinuxHopperDemoRuntime = async (
       ? undefined
       : pythonFailure.reason === "runtime_unavailable"
         ? pythonFailure.message +
-          " On a supported system run rea setup --install-hopper, then rerun rea doctor --provider hopper. This checks the system interpreter; a custom Hopper Python interpreter needs its own matching shared runtime."
+          " On a supported system run reverseport setup --install-hopper, then rerun reverseport doctor --provider hopper. This checks the system interpreter; a custom Hopper Python interpreter needs its own matching shared runtime."
         : pythonFailure.reason === "configuration_unknown"
           ? pythonFailure.message +
-            " Inspect this interpreter's shared-runtime configuration, then rerun rea doctor --provider hopper."
+            " Inspect this interpreter's shared-runtime configuration, then rerun reverseport doctor --provider hopper."
           : pythonFailure.message +
-            " Retry rea doctor --provider hopper and inspect /usr/bin/python3 if its runtime remains unknown.";
+            " Retry reverseport doctor --provider hopper and inspect /usr/bin/python3 if its runtime remains unknown.";
   const displayRemediation = selection.ok
     ? undefined
     : value.failure_code === "x11_socket_directory_unusable"
-      ? "Enable unprivileged user and mount namespaces, or provide a writable mode-1777 /tmp/.X11-unix directory. Do not mutate the current host mount with sudo; then rerun rea doctor --provider hopper."
+      ? "Enable unprivileged user and mount namespaces, or provide a writable mode-1777 /tmp/.X11-unix directory. Do not mutate the current host mount with sudo; then rerun reverseport doctor --provider hopper."
       : value.failure_code === "runtime_dependency_unavailable" ||
           value.failure_code === "x11_authorization_failed"
-        ? "Install Xvfb, xauth, Python 3, libX11, and libXtst, then rerun rea doctor --provider hopper."
-        : "Inspect the private-display diagnostic, correct the reported local condition, and rerun rea doctor --provider hopper.";
+        ? "Install Xvfb, xauth, Python 3, libX11, and libXtst, then rerun reverseport doctor --provider hopper."
+        : "Inspect the private-display diagnostic, correct the reported local condition, and rerun reverseport doctor --provider hopper.";
   return {
     name: "hopper-demo-runtime",
     ok: false,

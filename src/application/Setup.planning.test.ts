@@ -254,7 +254,7 @@ describe("setup workflow", () => {
         config_path: "/cursor.json",
         command: [process.execPath, "./rea.mjs", "mcp"],
         state: "stale",
-        remediation: "Run rea setup to refresh this registration.",
+        remediation: "Run reverseport setup to refresh this registration.",
       },
     ];
 

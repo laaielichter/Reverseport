@@ -239,14 +239,14 @@ describe.skipIf(process.platform === "win32")(
           },
         },
       });
-      expect(projected.remediation.action).not.toContain("rea doctor");
+      expect(projected.remediation.action).not.toContain("reverseport doctor");
     });
 
     it("names the signal when no cgroup attributes the kill", async () => {
       const projected = await failedOperation("sigkill_tools");
       expect(projected.code).toBe("execution_failure");
       expect(projected.message).toContain("SIGKILL");
-      expect(projected.message).not.toContain("rea doctor");
+      expect(projected.message).not.toContain("reverseport doctor");
       expect(projected.details).toMatchObject({
         diagnostics: { exit_signal: "SIGKILL" },
       });

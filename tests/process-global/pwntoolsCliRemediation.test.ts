@@ -108,7 +108,7 @@ it
           ],
         },
       });
-      expect(stdout).not.toContain("rea doctor");
+      expect(stdout).not.toContain("reverseport doctor");
       expect(process.exitCode).toBe(1);
     }
   },

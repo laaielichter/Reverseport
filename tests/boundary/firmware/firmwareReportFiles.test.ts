@@ -105,7 +105,7 @@ it.each([
       },
     });
     // Generic doctor advice is not presented as a repair for a missing report.
-    expect(projected.message).not.toContain("rea doctor");
+    expect(projected.message).not.toContain("reverseport doctor");
     // Recorded arguments name a removed private workspace; recovery must not
     // present them as a replayable command.
     expect(projected.remediation.action).toContain("diagnostics.report_state");

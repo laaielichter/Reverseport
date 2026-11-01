@@ -19,7 +19,7 @@ it("advertises and validates IPS facts and failures through production stdio MCP
   const outputSchema: Record<string, unknown> = advertised.outputSchema;
   const ajv = new Ajv2020({ strict: false, validateFormats: false });
   expect(advertised?.annotations).toMatchObject({
-    readOnlyHint: false,
+    readOnlyHint: true, // only appends Evidence
     idempotentHint: true,
   });
   const root = await createTestTempDirectory("rea-apple-ips-mcp-");

@@ -31,7 +31,7 @@ mcpTest(
         (tool) => tool.name === "inspect_elf_notes",
       );
       expect(advertised?.annotations).toMatchObject({
-        readOnlyHint: false,
+        readOnlyHint: true, // only appends Evidence
         idempotentHint: true,
       });
       const root = await createTestTempDirectory("rea-elf-notes-mcp-");

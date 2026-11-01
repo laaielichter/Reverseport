@@ -698,7 +698,7 @@ it.each([
       expect(projected.remediation.action).toContain(
         "no completed capture Evidence",
       );
-      expect(projected.remediation.action).not.toContain("rea doctor");
+      expect(projected.remediation.action).not.toContain("reverseport doctor");
       expect(result.error.partialObservation).toBeUndefined();
     } else if (tag === "ProviderAdapterError") {
       expect(projected).toMatchObject({

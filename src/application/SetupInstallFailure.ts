@@ -95,13 +95,13 @@ const packageManagerRemediation = (
   failure: LinuxPackageInstallFailure | undefined,
 ): string => {
   if (failure === undefined)
-    return "Allow the system package-manager operation or install the planned Hopper package and Linux runtime dependencies, then rerun rea setup.";
+    return "Allow the system package-manager operation or install the planned Hopper package and Linux runtime dependencies, then rerun reverseport setup.";
   const status =
     failure.exitCode === null ? "no exit status" : `exit ${failure.exitCode}`;
   const excerpt = packageOutputExcerpt(failure);
   const observed =
     excerpt === "" ? "no output was captured." : `its output: ${excerpt}`;
-  return `The system package-manager command failed (${failure.command}; ${status}); ${observed} Resolve the reported problem, grant the authorization the command needs, or install the planned Hopper package and Linux runtime dependencies manually, then rerun rea setup.`;
+  return `The system package-manager command failed (${failure.command}; ${status}); ${observed} Resolve the reported problem, grant the authorization the command needs, or install the planned Hopper package and Linux runtime dependencies manually, then rerun reverseport setup.`;
 };
 
 /** Map provider installer failures to stable setup codes and safe recovery. */
@@ -207,7 +207,7 @@ export const setupInstallFailure = (
         remediation:
           platform === "linux"
             ? `The Hopper package signature did not verify under the pinned primary PGP fingerprint ${HOPPER_LINUX_PRIMARY_FINGERPRINT}; the package manager was not run. Download the official package and retry setup.`
-            : `The mounted Hopper application is not signed by the publisher REA pins (${HOPPER_PUBLISHER.bundleIdentifier}, Apple team ${HOPPER_PUBLISHER.teamIdentifier}); nothing was copied or launched. Install Hopper yourself and set HOPPER_LAUNCHER_PATH to its launcher, then rerun rea setup.`,
+            : `The mounted Hopper application is not signed by the publisher REA pins (${HOPPER_PUBLISHER.bundleIdentifier}, Apple team ${HOPPER_PUBLISHER.teamIdentifier}); nothing was copied or launched. Install Hopper yourself and set HOPPER_LAUNCHER_PATH to its launcher, then rerun reverseport setup.`,
       };
     case "verification_unavailable":
       return {

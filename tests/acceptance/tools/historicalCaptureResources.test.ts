@@ -102,7 +102,7 @@ it.skipIf(process.versions.bun !== undefined && jobLimit === null)(
     });
     expect(JSON.stringify(response)).not.toContain("caller-marked");
     expect(JSON.stringify(response)).not.toContain("reverseport doctor");
-    expect(JSON.stringify(response)).not.toContain("rea doctor");
+    expect(JSON.stringify(response)).not.toContain("reverseport doctor");
     const remediation = String(exhausted.error.remediation?.action ?? "");
     expect(remediation).toContain(
       captureDecoderHeapRecovery(DEFAULT_CAPTURE_DECODER_HEAP),

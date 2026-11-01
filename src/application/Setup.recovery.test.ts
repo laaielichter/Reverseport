@@ -633,7 +633,7 @@ describe("setup Hopper install eligibility", () => {
       expect(advised.status).toBe("needs_human");
       expect(advised.remediation).not.toContain("--install-hopper");
       expect(advised.remediation).toContain(
-        "Run rea doctor and apply each reported remediation.",
+        "Run reverseport doctor and apply each reported remediation.",
       );
       expect(advised.remediation).toContain("hosted computer");
       expect(await proposesHopper(host)).toBe(false);

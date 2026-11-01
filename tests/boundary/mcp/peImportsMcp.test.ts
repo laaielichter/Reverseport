@@ -33,7 +33,7 @@ mcpTest(
         outputSchema,
       } = await advertisedMcpToolSchemas(client, "inspect_pe_imports");
       expect(advertised?.annotations).toMatchObject({
-        readOnlyHint: false,
+        readOnlyHint: true, // only appends Evidence
         idempotentHint: true,
       });
       const root = await createTestTempDirectory("rea-pe-imports-mcp-");

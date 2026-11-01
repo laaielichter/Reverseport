@@ -29,7 +29,7 @@ mcpTest(
         (tool) => tool.name === "inspect_kernel_module",
       );
       expect(advertised?.annotations).toMatchObject({
-        readOnlyHint: false,
+        readOnlyHint: true, // only appends Evidence
         idempotentHint: true,
       });
       const root = await createTestTempDirectory("rea-kernel-module-mcp-");

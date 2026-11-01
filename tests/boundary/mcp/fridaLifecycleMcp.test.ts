@@ -614,7 +614,7 @@ it("declares non-destructive session mutation when status retains Evidence", asy
   const tools = (await client.listTools()).tools;
   expect(
     tools.find((tool) => tool.name === "frida_session_status")?.annotations,
-  ).toMatchObject({ readOnlyHint: false, destructiveHint: false });
+  ).toMatchObject({ readOnlyHint: true, destructiveHint: false }); // status only appends Evidence
   const inventory = await client.callTool({
     name: "binary_session",
     arguments: {},
@@ -628,13 +628,14 @@ it("declares non-destructive session mutation when status retains Evidence", asy
   expect(
     available.find((tool) => tool.name === "frida_session_status"),
   ).toMatchObject({
+    // ReversePort: a status read that only appends Evidence is read-only for clients.
     effects: {
-      mutatesSession: true,
+      appendsEvidence: true,
       mutatesTarget: false,
       executesForeignCode: false,
       mayDiscardData: false,
     },
-    annotations: { read_only: false, destructive: false },
+    annotations: { read_only: true, destructive: false },
   });
 
   const missing = await client.callTool({

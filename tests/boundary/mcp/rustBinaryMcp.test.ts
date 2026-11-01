@@ -30,7 +30,7 @@ mcpTest(
         (tool) => tool.name === "inspect_rust_binary",
       );
       expect(advertised?.annotations).toMatchObject({
-        readOnlyHint: false,
+        readOnlyHint: true, // only appends Evidence
         idempotentHint: true,
       });
       const root = await createTestTempDirectory("rea-rust-mcp-");

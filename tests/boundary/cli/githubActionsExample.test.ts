@@ -69,7 +69,7 @@ it("keeps the example manually triggered, least-privileged, pinned and failure-p
   }
   expect(
     job.steps.find((step) => step.name === "Install pinned REA")?.run,
-  ).toContain("--save-exact reverseport@6.7.0");
+  ).toMatch(/--save-exact reverseport@\d+\.\d+\.\d+(?:\s|$)/u);
   const upload = job.steps.find((step) =>
     step.uses?.startsWith("actions/upload-artifact@"),
   );
@@ -93,7 +93,7 @@ it("links to the workflow asset outside the documentation site's base", async ()
     "utf8",
   );
   expect(guide).toContain(
-    "[minimal workflow](https://github.com/morluto/rea/blob/main/examples/github-actions/rea-analysis.yml)",
+    "[minimal workflow](https://github.com/laaielichter/reverseport/blob/main/examples/github-actions/rea-analysis.yml)",
   );
 });
 

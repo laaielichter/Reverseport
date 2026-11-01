@@ -671,10 +671,10 @@ describe("doctor installation identity", () => {
     );
     expect(result.identity?.skill).toMatchObject({ state: "stale" });
     expect(result.identity?.skill.remediation).toContain(
-      "rea setup --skill-client claude_code --skill",
+      "reverseport setup --skill-client claude_code --skill",
     );
     expect(result.identity?.skill.remediation).toContain(
-      "rea setup --skill-client shared --skill",
+      "reverseport setup --skill-client shared --skill",
     );
     expect(result.identity?.skill.remediation).toContain(
       "/home/.claude/skills/rea",

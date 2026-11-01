@@ -26,7 +26,7 @@ mcpTest(
         (tool) => tool.name === "inspect_pe_certificates",
       );
       expect(advertised?.annotations).toMatchObject({
-        readOnlyHint: false,
+        readOnlyHint: true, // only appends Evidence
         idempotentHint: true,
       });
       const root = await createTestTempDirectory("rea-pe-cert-mcp-");

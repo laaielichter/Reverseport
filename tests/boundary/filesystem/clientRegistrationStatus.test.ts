@@ -279,14 +279,16 @@ describe("client registration package version identity", () => {
         expect(status?.remediation).toContain(
           "does not resolve package-runner",
         );
-        expect(status?.remediation).toContain("rea setup --client codex");
+        expect(status?.remediation).toContain(
+          "reverseport setup --client codex",
+        );
       } else {
         expect(status?.remediation).not.toContain("current REA CLI package");
         expect(status?.remediation).not.toContain(
           "does not resolve package-runner",
         );
       }
-      expect(status?.remediation).toContain("rea setup");
+      expect(status?.remediation).toContain("reverseport setup");
     },
   );
 });

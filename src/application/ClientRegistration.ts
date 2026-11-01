@@ -196,7 +196,7 @@ const managedConnectionKeys = new Set([
   "httpUrl",
 ]);
 
-/** Whether a rea setup repair for this target preserves the row's
+/** Whether a reverseport setup repair for this target preserves the row's
  * `enable: false` instead of dropping it. Shared registration doubles as
  * ZCode's fallback, so the activation fact belongs to every reader; a repair
  * preserves it instead of silently re-enabling a row it does not own. A

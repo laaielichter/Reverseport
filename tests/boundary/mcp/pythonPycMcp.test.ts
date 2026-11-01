@@ -142,7 +142,8 @@ mcpTest(
         (tool) => tool.name === "inspect_python_pyc",
       );
       expect(advertised?.annotations).toMatchObject({
-        readOnlyHint: false,
+        // ReversePort marks reads that only append Evidence as read-only.
+        readOnlyHint: true,
         idempotentHint: true,
       });
       if (advertised?.outputSchema === undefined)

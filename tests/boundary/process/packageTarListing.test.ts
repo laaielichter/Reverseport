@@ -27,6 +27,8 @@ const members = [
   "package/bridge/ghidra/ReaGhidraNoReturnFix.java",
   "package/bridge/ghidra/ReaGhidraMipsSoftFloat.java",
   "package/scripts/lib/cli-process-environment.mjs",
+  "package/scripts/rea.mjs",
+  "package/bin/reverseport.mjs",
 ];
 
 async function verifyListing(listing: string) {
@@ -41,7 +43,7 @@ const exec = async (command, args) => {
   if ((command === "npm" && args[0] === "pack") || (command === process.execPath && args[1] === "pack")) stdout = "fixture.tgz\\n";
   else if (command === "tar" && args[0] === "-tf") stdout = ${JSON.stringify(listing)};
   else if (command === "tar" && args[0] === "-xOf" && args[2] === "package/package.json")
-    stdout = JSON.stringify({ bin: { rea: "scripts/rea.mjs", "reverseport": "scripts/rea.mjs" }, mcpName: "io.github.morluto/rea", dependencies: { "@lydell/node-pty": "1.1.0" } });
+    stdout = JSON.stringify({ bin: { rea: "scripts/rea.mjs", reverseport: "bin/reverseport.mjs" }, mcpName: "io.github.laaielichter/reverseport", dependencies: { "@lydell/node-pty": "1.1.0" } });
   else if (command === "tar" && args[0] === "-xOf" && args[2] === "package/skills/reverse-engineer-anything/SKILL.md")
     stdout = "  tool_count: " + FULL_CATALOG_IDENTITY.counts.mcp_tools + "\\n";
   else if (command === "tar" && args[0] === "-xf") stdout = "";

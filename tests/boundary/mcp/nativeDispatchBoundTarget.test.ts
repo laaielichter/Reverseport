@@ -97,7 +97,7 @@ const inspectReplacements = async (replacements: readonly Replacement[]) => {
           }[replacement];
           expect(error.details?.reason).toContain(code);
         }
-        expect(error.remediation.action).not.toContain("rea doctor");
+        expect(error.remediation.action).not.toContain("reverseport doctor");
       } finally {
         if (replacement === "unreadable") await chmod(path, 0o600);
       }

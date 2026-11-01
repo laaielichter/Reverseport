@@ -228,7 +228,7 @@ const cliAnalysisError = (error: AnalysisError): ProcessCliErrorOutput => ({
  * Tell the user what happened; do not ask them to run the command again.
  */
 export const PROCESS_UNEXPECTED_FAILURE_REMEDIATION =
-  "Do not repeat this command. Tell the user the process command could not complete and ask them to check the input files, then run `rea doctor`.";
+  "Do not repeat this command. Tell the user the process command could not complete and ask them to check the input files, then run `reverseport doctor`.";
 
 /** Preserve typed failures and local diagnostics at the process CLI boundary. */
 const projectProcessCliError = (

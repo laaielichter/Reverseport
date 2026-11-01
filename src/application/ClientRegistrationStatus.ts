@@ -400,7 +400,7 @@ const sharedEnableFlagBinds = (
 /** A disable that setup preserves is a manual conflict: its remediation
  * must not point at an ineffective setup run. */
 const sharedDisabledActivationRemediation = (): string =>
-  "This shared registration row carries enable: false, which binds every reader of the shared storage, including ZCode's fallback view. REA preserves that flag, so rea setup will not change this row. Re-enable it with the product that disabled it, or remove enable: false manually, then rerun rea doctor.";
+  "This shared registration row carries enable: false, which binds every reader of the shared storage, including ZCode's fallback view. REA preserves that flag, so reverseport setup will not change this row. Re-enable it with the product that disabled it, or remove enable: false manually, then rerun reverseport doctor.";
 // Codex and Kimi Code load a server marked `disabled: true` and honor only
 // `enabled`; Devin loads one marked `enabled: false` and honors only `disabled`.
 const ignoresDisabledKey = new Set(["codex", "kimi"]);
@@ -486,9 +486,9 @@ const registrationAligned = ({
 /** A client that rewrites its file from memory must be quit before setup. */
 const remediation = (client: SetupClient): string => {
   if (client.quitBeforeSetup !== true)
-    return "Run rea setup to refresh this registration, then restart the client.";
+    return "Run reverseport setup to refresh this registration, then restart the client.";
   const name = client.displayName ?? client.name;
-  return `Quit ${name} fully, run rea setup to refresh this registration, then start ${name} again. A running ${name} can rewrite its configuration from memory and drop the registration.`;
+  return `Quit ${name} fully, run reverseport setup to refresh this registration, then start ${name} again. A running ${name} can rewrite its configuration from memory and drop the registration.`;
 };
 
 const unknownEntryPointRemediation = (): string =>
@@ -568,7 +568,7 @@ const packageVersionRemediation = (
   packageReference: string,
   client: SetupClient,
 ): string =>
-  `This registration requests ${packageReference}, while the current REA CLI package is ${PRODUCT_IDENTITY.packageVersion}. REA does not resolve package-runner requests during doctor; update the registration with rea setup --client ${client.name}, then restart the client.`;
+  `This registration requests ${packageReference}, while the current REA CLI package is ${PRODUCT_IDENTITY.packageVersion}. REA does not resolve package-runner requests during doctor; update the registration with reverseport setup --client ${client.name}, then restart the client.`;
 
 const unavailableStatus = (
   client: SetupClient,
@@ -609,7 +609,7 @@ const clientEvidencePresent = async (
       if (!isMissing(cause))
         unavailable ??= {
           path,
-          detail: `Client configuration evidence at ${path} could not be inspected: ${cause instanceof Error ? cause.message : String(cause)}. Check file permissions and rerun rea doctor.`,
+          detail: `Client configuration evidence at ${path} could not be inspected: ${cause instanceof Error ? cause.message : String(cause)}. Check file permissions and rerun reverseport doctor.`,
         };
     }
   }

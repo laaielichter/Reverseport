@@ -463,12 +463,12 @@ const skillIdentityRemediation = (
       .map(({ path, detail, kind, client }) => {
         const repair =
           kind === "stale" || kind === "missing"
-            ? `Run rea setup --skill-client ${client ?? "shared"} --skill to repair this copy.`
+            ? `Run reverseport setup --skill-client ${client ?? "shared"} --skill to repair this copy.`
             : "Repair the selected path/profile before rerunning setup, or use --skill=false to configure clients without installing the skill.";
         return `${detail} (${path}). ${repair}`;
       })
       .join(" ");
-  return "Run rea setup to update the installed REA skill.";
+  return "Run reverseport setup to update the installed REA skill.";
 };
 
 const skillIdentityCheck = (

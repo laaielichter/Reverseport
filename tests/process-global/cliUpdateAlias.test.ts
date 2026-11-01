@@ -159,7 +159,7 @@ it("refuses ambiguous built-in installation rather than selecting another update
   expect(result.exitCode).toBe(1);
   expect(JSON.parse(result.stdout)).toMatchObject({
     code: "UPDATE_FAILED",
-    message: expect.stringContaining("rea update"),
+    message: expect.stringContaining("reverseport update"),
   });
   expect(mocks.run).not.toHaveBeenCalled();
   expect(mocks.dependencyInstall).not.toHaveBeenCalled();

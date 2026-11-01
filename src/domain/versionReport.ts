@@ -41,7 +41,7 @@ export interface VersionReportHost {
   readonly architecture: string;
 }
 
-/** Build the report; runtime support uses the same rule as `rea doctor`. */
+/** Build the report; runtime support uses the same rule as `reverseport doctor`. */
 export const versionReport = (host: VersionReportHost): VersionReport => {
   const runtime = javaScriptRuntime(host.versions);
   return {

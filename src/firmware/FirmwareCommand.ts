@@ -416,8 +416,8 @@ export const readFirmwareCommandReport = async (context: {
         diagnostics,
         userMessage: oversized ? `${observed} ${reportAllowance}` : observed,
         remediationAction: oversized
-          ? `${reportFacts} ${reportAllowance} \`rea doctor\` checks configuration only and cannot recover this report.`
-          : `${reportFacts} Rerun the same REA request to check whether this is intermittent; each attempt uses a fresh workspace. If it recurs, copy the selected input bytes into a new directory and run diagnostics.command with the same flags, replacing every private path with your copy and a new report path, under the documented firmware resource limits; confirm that it writes the requested report. \`rea doctor\` checks configuration only and cannot recover this report.`,
+          ? `${reportFacts} ${reportAllowance} \`reverseport doctor\` checks configuration only and cannot recover this report.`
+          : `${reportFacts} Rerun the same REA request to check whether this is intermittent; each attempt uses a fresh workspace. If it recurs, copy the selected input bytes into a new directory and run diagnostics.command with the same flags, replacing every private path with your copy and a new report path, under the documented firmware resource limits; confirm that it writes the requested report. \`reverseport doctor\` checks configuration only and cannot recover this report.`,
       },
     );
   }

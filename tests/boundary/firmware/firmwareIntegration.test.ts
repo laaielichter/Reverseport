@@ -880,7 +880,7 @@ it.each([
     };
     expect(projectAnalysisError(result.error)).toMatchObject(error);
     expect(projectAnalysisError(result.error).message).not.toContain(
-      "rea doctor",
+      "reverseport doctor",
     );
     expect(
       delivery.toCallToolResult(result, toolContract(operation))

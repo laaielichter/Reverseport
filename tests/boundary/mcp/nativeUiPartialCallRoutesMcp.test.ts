@@ -280,7 +280,7 @@ it.each(["unavailable", "output"] as const)(
         resolution: "unresolved",
         reason:
           failure === "unavailable"
-            ? "This analysis is unavailable for the current target. Choose another analysis or target."
+            ? "This analysis is unavailable for the current target. Call binary_session to see what is available and why, then use an available tool or open a different target; retrying unchanged will not succeed."
             : expect.stringContaining("unreadable result"),
         limitations: expect.arrayContaining([
           "The provider could not complete callee enumeration.",

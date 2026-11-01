@@ -108,7 +108,7 @@ cliTest(
     expect(ambiguous.exitCode).toBe(1);
     expect(ambiguous.json).toMatchObject({
       code: "UPDATE_FAILED",
-      message: expect.stringContaining("rea update"),
+      message: expect.stringContaining("reverseport update"),
     });
     expect(await readFile(log, "utf8")).toBe(before);
     const help = await run(["--update", "--help"]);
