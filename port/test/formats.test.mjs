@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { tempDir, buildPng, buildPck } from './helpers.mjs';
+import { tempDir, buildPng, buildPck, buildDotNetDll } from './helpers.mjs';
 
 const dir = await tempDir();
 process.env.REVERSEPORT_HOME = path.join(dir, 'home');
@@ -64,4 +64,21 @@ test('compares folders and files', async () => {
   const pk = await compare({ a: pa, b: pb });
   assert.equal(pk.kind, 'archives');
   assert.deepEqual(pk.summary, { added: 1, removed: 0, changed: 1, entriesA: 2, entriesB: 3 });
+});
+
+test('compares two .NET builds by type and method, and says how to go deeper', async () => {
+  const a = path.join(dir, 'Game-1.dll'), b = path.join(dir, 'Game-2.dll');
+  await fs.writeFile(a, buildDotNetDll({ types: { Player: ['Awake', 'Update'], Enemy: ['OnTriggerEnter'] } }));
+  await fs.writeFile(b, buildDotNetDll({ types: { Player: ['Awake', 'Update', 'Jump'], Boss: ['Rage'] } }));
+  const r = await compare({ a, b });
+  assert.equal(r.kind, 'binaries');
+  assert.equal(r.identical, false);
+  assert.deepEqual(r.dotnet.typesAdded, ['MiniHeli.Boss']);
+  assert.deepEqual(r.dotnet.typesRemoved, ['MiniHeli.Enemy']);
+  assert.deepEqual(r.dotnet.methodsAdded.sort(), ['MiniHeli.Boss::Rage', 'MiniHeli.Player::Jump']);
+  assert.deepEqual(r.dotnet.methodsRemoved, ['MiniHeli.Enemy::OnTriggerEnter']);
+  assert.match(r.next, /inspect_managed_artifact/);
+  const same = await compare({ a, b: a });
+  assert.equal(same.identical, true);
+  assert.equal(same.next, undefined, 'nothing to follow up when the builds are the same');
 });

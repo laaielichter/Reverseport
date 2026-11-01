@@ -103,7 +103,7 @@ export async function compare({ a, b, limit: max = 300 } = {}) {
   }
   // Executables
   if (ka.category === 'executable' && kb.category === 'executable') {
-    const [ia, ib] = await Promise.all([inspectBinary({ file: A, strings: { limit: 1 } }), inspectBinary({ file: Bp, strings: { limit: 1 } })]);
+    const [ia, ib] = await Promise.all([inspectBinary({ file: A, strings: { limit: 1 }, maxTypes: 5000 }), inspectBinary({ file: Bp, strings: { limit: 1 }, maxTypes: 5000 })]);
     const libs = i => new Set((i.binary?.imports ?? []).flatMap(x => (x.libraries ? x.libraries : [x.library])));
     const fns = i => new Set((i.binary?.imports ?? []).flatMap(x => (x.functions ?? []).map(f => `${x.library}!${f}`)));
     const ex = i => new Set(i.binary?.exports?.names ?? []);
@@ -111,7 +111,19 @@ export async function compare({ a, b, limit: max = 300 } = {}) {
     const secs = i => new Map((i.binary?.sections ?? []).map(s => [s.name, s]));
     const sA = secs(ia), sB = secs(ib);
     const sections = [...new Set([...sA.keys(), ...sB.keys()])].map(n => ({ name: n, sizeA: sA.get(n)?.rawSize ?? sA.get(n)?.size ?? null, sizeB: sB.get(n)?.rawSize ?? sB.get(n)?.size ?? null, entropyA: sA.get(n)?.entropy, entropyB: sB.get(n)?.entropy })).filter(s => s.sizeA !== s.sizeB || s.entropyA !== s.entropyB);
-    return { kind: 'binaries', a: A, b: Bp, identical: ia.sha256 === ib.sha256, format: [ia.binary?.format, ib.binary?.format], arch: [ia.binary?.arch, ib.binary?.arch], size: [ia.size, ib.size], timestamp: [ia.binary?.timestamp, ib.binary?.timestamp], libraries: diff(libs(ia), libs(ib)), importedFunctions: diff(fns(ia), fns(ib)), exports: diff(ex(ia), ex(ib)), changedSections: sections.slice(0, 100), hints: [ia.hints, ib.hints] };
+    // .NET assemblies: which types and methods came and went (names from the metadata tables, no decompiler needed).
+    const types = i => new Map((i.binary?.dotnet?.types ?? []).map(t => [t.name, new Set(t.methods ?? [])]));
+    const tA = types(ia), tB = types(ib);
+    const dotnet = tA.size || tB.size ? (() => {
+      const methods = (from, to) => [...from].flatMap(([type, ms]) => [...ms].filter(m => !to.get(type)?.has(m)).map(m => `${type}::${m}`));
+      const added = methods(tB, tA), removed = methods(tA, tB);
+      return { typesAdded: [...tB.keys()].filter(t => !tA.has(t)).slice(0, cap), typesRemoved: [...tA.keys()].filter(t => !tB.has(t)).slice(0, cap), methodsAdded: added.slice(0, cap), methodsRemoved: removed.slice(0, cap), counts: { typesA: tA.size, typesB: tB.size, methodsAdded: added.length, methodsRemoved: removed.length } };
+    })() : undefined;
+    const identical = ia.sha256 === ib.sha256;
+    return { kind: 'binaries', a: A, b: Bp, identical, format: [ia.binary?.format, ib.binary?.format], arch: [ia.binary?.arch, ib.binary?.arch], size: [ia.size, ib.size], timestamp: [ia.binary?.timestamp, ib.binary?.timestamp], libraries: diff(libs(ia), libs(ib)), importedFunctions: diff(fns(ia), fns(ib)), exports: diff(ex(ia), ex(ib)), changedSections: sections.slice(0, 100), ...(dotnet ? { dotnet } : {}), hints: [ia.hints, ib.hints],
+      ...(identical ? {} : { next: dotnet
+        ? 'Method bodies: inspect_managed_artifact on each assembly (engine) decompiles the methods listed above.'
+        : 'Function by function (engine): open each build with open_binary and take list_procedures {detail:"summary"}; match_native_functions {left, right} pairs the two retained inventories, and compare_functions on a pair shows what changed inside. engine_tools {query:"match functions"} shows their schemas.' }) };
   }
   // Raw bytes
   const BLOCK = 4096, sizeA = sa.size, sizeB = sb.size;
