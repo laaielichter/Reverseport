@@ -25,6 +25,7 @@ Any client config: `reverseport connect <client>`.
 ## Context and comfort
 
 - A short list by default; `engine_tools {query}` finds any other engine tool, `engine_call {tool, arguments}` calls it.
+- Several steps in one call: `run_batch {calls:[{tool, arguments, select}]}`; `select` keeps only the fields you need.
 - `set_tool_profile {profile: compact|standard|full}` fits the list to your context; nothing becomes unreachable.
 - A copied skill may be older than the installed ReversePort. `reverseport skills get <name>` prints the guide that matches this version; `reverseport skills` lists them.
 - Results with an obvious next step carry a `next` field with the exact call; every error has `code`, `category`, `retryable` and `remediation.action`.
