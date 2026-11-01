@@ -59,7 +59,9 @@ const startProxy = async (endpoint, mode, ownerOnly = false) => {
       stall(incoming.socket);
       return;
     }
-    const outgoing = request(new URL(incoming.url, upstream), (received) => {
+    // Only the path and query reach Chrome; the host is always the browser's own.
+    const target = `${upstream.origin}/${incoming.url.replace(/^\/+/u, "")}`;
+    const outgoing = request(target, (received) => {
       const chunks = [];
       received.on("data", (chunk) => chunks.push(chunk));
       received.on("end", () => {

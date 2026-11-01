@@ -25,6 +25,12 @@ import { verifyWindowsJobMemoryLimit } from "./lib/windows-job-memory-limit.mjs"
 import { verifyVolumeRootAppendLease } from "./lib/windows-volume-root-append-lease.mjs";
 import { withVerifierCleanup } from "./lib/verifier-cleanup.mjs";
 
+/** A Windows path with mixed separators: only the first backslash becomes "/", on purpose. */
+const firstSeparatorToSlash = (path) => {
+  const at = path.indexOf("\\");
+  return at < 0 ? path : `${path.slice(0, at)}/${path.slice(at + 1)}`;
+};
+
 if (process.platform !== "win32")
   throw new Error(
     "Windows native conformance requires a real Windows x64 host.",
@@ -249,7 +255,7 @@ process.stdout.write(JSON.stringify({executable:basename(process.execPath),abiVe
   try {
     for (const requested of [
       source.replaceAll("\\", "/"),
-      source.replace(/\\/u, "/"),
+      firstSeparatorToSlash(source),
     ]) {
       const admitted = native.call("open", [requested]);
       try {
@@ -344,7 +350,7 @@ process.stdout.write(JSON.stringify({executable:basename(process.execPath),abiVe
   assert.equal(await exists(driveRootRuntime.path), false);
   report.controls.driveRootRuntimeParent = true;
   const snapshotOwner = WindowsPrivateRuntime.create(
-    workspace.replace(/\\/u, "/"),
+    firstSeparatorToSlash(workspace),
     "single-flight-",
   );
   try {
