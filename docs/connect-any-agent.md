@@ -70,8 +70,13 @@ tools = await client.get_tools()
 Formats: `mcp`, `openai`, `openai-strict`, `responses`, `anthropic`, `gemini`, `json-schema`. In the strict formats
 every argument is required and optional ones accept `null`; `null` means "not given". Every door also accepts
 numbers and booleans sent as strings (`"20"`, `"true"`) and objects sent as JSON text. For ReversePort's own tools,
-out-of-range numbers are clamped and the result says so under `adjusted`. In `openai-strict` and `responses`, a tool whose schema has a
-free-form object is sent with `strict: false`; the others are strict.
+out-of-range numbers are clamped and the result says so under `adjusted`. In `openai-strict` and `responses` the
+tools are strict: a free-form object (such as `arguments` in `run_batch`) is sent as a JSON string, which ReversePort
+reads back. Only a schema that still cannot be strict (a property with no type at all) goes out with `strict: false`.
+Unions keep every option: a field shared by several shapes keeps all its allowed values, and the description says
+which fields belong together. Limits a format does not take (`minLength`, `multipleOf`, …) move into the description.
+Function descriptions stay within 1024 characters; OpenAPI operation descriptions within 300 (the GPT Actions limit),
+cut at a sentence — `/api/openapi.json?descriptions=full` gives the whole text.
 
 The server answers only on localhost. Pages served from localhost may call it from a browser (CORS). Set
 `REVERSEPORT_TOKEN` to require `Authorization: Bearer <token>`. To reach it from Docker or through a tunnel (hosted
@@ -100,16 +105,25 @@ tool profile changes. Over HTTP the endpoint answers with JSON only, so a stream
 
 Every agent can reach every tool. What changes is how much is listed up front:
 
-| Profile              | Lists                                                                           | About           | For                                                |
-| -------------------- | ------------------------------------------------------------------------------- | --------------- | -------------------------------------------------- |
-| `compact`            | 8 ReversePort tools + 6 engine essentials, one-line descriptions, short schemas | 17 tools        | small or older models, small context windows       |
-| `standard` (default) | ReversePort's 23 tools + about 20 core engine tools                             | 46 tools        | most agents                                        |
-| `full`               | every tool                                                                      | about 200 tools | large-context agents whose client allows that many |
+| Profile              | Lists                                                                                  | Tools                            | For                                                |
+| -------------------- | -------------------------------------------------------------------------------------- | -------------------------------- | -------------------------------------------------- |
+| `compact`            | 9 ReversePort tools for recon and porting + 6 engine essentials, one-line descriptions | 19 tools (11 without the engine) | small or older models, small context windows       |
+| `standard` (default) | all 33 ReversePort tools + 20 core engine tools                                        | 57 tools (35 without the engine) | most agents                                        |
+| `full`               | every tool                                                                             | over 200 tools                   | large-context agents whose client allows that many |
+
+The counts include `set_tool_profile` and `run_batch`, and with the engine `engine_tools` and `engine_call`.
+`reverseport tools --profile compact` prints the list itself.
 
 Some clients cap the number of tools (Cursor has used about 40, VS Code and OpenAI 128, Windsurf 100). Pick
 `compact` for a tight cap. Set the profile with `REVERSEPORT_PROFILE`, or let the agent switch at any time with
-`set_tool_profile`. In every profile `engine_tools {query}` finds any other engine tool and
-`engine_call {tool, arguments}` calls it. `REVERSEPORT_TOOLS=all|port|name,glob*` picks the listed tools exactly.
+`set_tool_profile`. A tool left out of the list still works when called by name; with the engine,
+`engine_tools {query}` finds any other engine tool and `engine_call {tool, arguments}` calls it.
+`REVERSEPORT_TOOLS=all|port|name,glob*` picks the listed tools exactly.
+
+Over HTTP every MCP session keeps its own profile and its own repeat guard, so one client never changes what another
+sees. Requests without a session remember nothing; ask for a profile in the address instead: `/mcp?profile=compact`,
+`/api/agent/tools?profile=compact` or `/api/openapi.json?profile=compact`. A session that ended (or never existed)
+gets HTTP 404 with JSON-RPC error `-32001`: send `initialize` again.
 
 Strict schema validators (Gemini, OpenAI strict mode, some local-model servers) reject some JSON-Schema features the
 deep-analysis engine uses (`$ref`, unions, dependent fields). `REVERSEPORT_SCHEMA=portable` lists every schema in a
@@ -145,18 +159,20 @@ each result, which saves context and round trips:
     {
       "tool": "re_graph",
       "arguments": { "path": "/games/demo" },
-      "select": ["cycleCount", "portOrder"]
+      "select": ["cycles", "portOrder"]
     },
     {
       "tool": "port_map",
       "arguments": { "from": "godot", "to": "unity" },
-      "select": ["summary"]
+      "select": ["conventions", "hint"]
     }
   ]
 }
 ```
 
 It stops at the first error and says which call to fix and where to resume; `continueOnError: true` runs the rest.
+A `select` path that finds nothing is listed under `unresolved` for that step, with the reason and the path that works
+(`"primry.id"` → `"primary.id"`, `"entryPoints.file"` → `"entryPoints[*].file"`).
 Engine tools work too. In strict function-calling formats, `arguments` is a JSON object written as a string.
 
 ## Errors look the same everywhere
@@ -184,9 +200,9 @@ errors exit with 2 and other failures with 1; the error is JSON on stderr (at an
 `reverseport` command prints plain text instead). Over HTTP the status follows the code: 400 for input, 404 for an
 unknown tool, 503 when the engine or a public source is unavailable, 500 for unexpected failures.
 
-When the exact same call fails twice in a row (three times for errors marked `retryable`), the error comes back
+When the exact same call fails twice in one session (three times for errors marked `retryable`), the error comes back
 with `repeated` and `retryable: false` and says plainly not to send it unchanged again: change the input, use another
-tool, or tell the user what is blocking. Any other call, or a success, does not count against it.
+tool, or tell the user what is blocking. A success of that same call clears it; other calls in between do not.
 
 The engine states are distinct, so the next step is always right: `ENGINE_UNAVAILABLE` (not built — install it),
 `ENGINE_OFF` (turned off — unset `REVERSEPORT_ENGINE`), `ENGINE_STOPPED` (crashed — call again once; it restarts),

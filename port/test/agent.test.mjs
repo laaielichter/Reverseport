@@ -23,8 +23,11 @@ test('suggestions', () => {
 test('portable schemas: refs, unions, const, dropped keywords; strict when possible', () => {
   const schema = { type: 'object', $defs: { A: { type: 'string' } }, properties: { a: { $ref: '#/$defs/A' }, b: { anyOf: [{ type: 'integer' }, { type: 'null' }] }, c: { const: 'x' }, d: { type: 'string', format: 'uri', pattern: '^h' } }, required: ['a'], dependentRequired: { b: ['a'] }, minProperties: 1 };
   const p = portableSchema(schema);
-  const text = JSON.stringify(p);
-  for (const bad of ['$ref', '$defs', 'anyOf', 'const', 'dependentRequired', 'minProperties', 'format', 'pattern']) assert.equal(text.includes(bad), false, bad);
+  const keys = new Set();
+  const walk = v => { if (v && typeof v === 'object') for (const [k, x] of Object.entries(v)) { keys.add(k); walk(x); } };
+  walk(p);
+  for (const bad of ['$ref', '$defs', 'anyOf', 'const', 'dependentRequired', 'minProperties', 'format', 'pattern']) assert.equal(keys.has(bad), false, bad);
+  assert.match(p.properties.d.description, /format: uri/, 'what helps the model moves into the description');
   assert.deepEqual(p.properties.b.type, ['integer', 'null']);
   const [strict] = formatTools([{ name: 't', description: 'd', inputSchema: schema }], 'openai-strict');
   assert.equal(strict.function.strict, true);
@@ -37,6 +40,47 @@ test('portable schemas: refs, unions, const, dropped keywords; strict when possi
   assert.deepEqual(free.function.parameters.properties.args.type, ['string', 'null']);
   assert.match(free.function.parameters.properties.args.description, /JSON object as a string/);
   assert.deepEqual(coerceArgs(freeSchema, { args: '{"path":"/game"}' }), { args: { path: '/game' } }, 'the string is read back as the object');
+});
+
+test('unions keep every option: shared fields keep all their values, a list beats a single value, shapes are named', () => {
+  const target = { type: 'object', properties: {
+    target: { oneOf: [
+      { type: 'object', properties: { kind: { const: 'file' }, path: { type: 'string', minLength: 1 } }, required: ['kind', 'path'] },
+      { type: 'object', properties: { kind: { const: 'pid' }, pid: { type: 'integer', exclusiveMinimum: 0 } }, required: ['kind', 'pid'] },
+    ] },
+    names: { anyOf: [{ type: 'string' }, { type: 'array', items: { type: 'string' }, uniqueItems: true }] },
+    position: { type: 'array', prefixItems: [{ type: 'number' }, { type: 'number' }, { type: 'number' }] },
+    loose: { description: 'Any value.' },
+    step: { type: 'number', multipleOf: 0.5 },
+  }, required: ['target'] };
+  const p = portableSchema(target);
+  assert.deepEqual(p.properties.target.properties.kind.enum, ['file', 'pid'], 'both kinds stay choosable');
+  assert.deepEqual(p.properties.target.required, ['kind']);
+  assert.match(p.properties.target.description, /kind "file": path; kind "pid": pid/);
+  assert.equal(p.properties.names.type, 'array', 'a list can also carry one name');
+  assert.match(p.properties.names.description, /also accepts a string/);
+  assert.deepEqual([p.properties.position.items.type, p.properties.position.minItems, p.properties.position.maxItems], ['number', 3, 3]);
+
+  const tools = [{ name: 't', description: 'd', inputSchema: target }];
+  const keysOf = v => { const out = new Set(); const walk = x => { if (x && typeof x === 'object') for (const [k, y] of Object.entries(x)) { out.add(k); walk(k === 'properties' ? Object.values(y) : y); } }; walk(v); return out; };
+  const [strict] = formatTools([{ ...tools[0], inputSchema: { ...target, properties: { ...target.properties, loose: { type: 'string' } } } }], 'openai-strict');
+  assert.equal(strict.function.strict, true);
+  for (const k of ['minLength', 'exclusiveMinimum', 'uniqueItems', 'multipleOf', 'minItems', 'maxItems', 'prefixItems']) assert.equal(keysOf(strict.function.parameters).has(k), false, `strict: ${k}`);
+  assert.match(strict.function.parameters.properties.step.description, /multipleOf 0.5/, 'limits survive as words');
+  const gemini = formatTools(tools, 'gemini')[0].functionDeclarations[0].parameters;
+  for (const k of ['exclusiveMinimum', 'uniqueItems', 'multipleOf', 'prefixItems', 'additionalProperties']) assert.equal(keysOf(gemini).has(k), false, `gemini: ${k}`);
+  assert.equal(gemini.properties.loose.type, 'string', 'Gemini needs a type on every property');
+  assert.equal(gemini.properties.position.maxItems, 3, 'Gemini keeps list bounds');
+});
+
+test('function-calling formats keep descriptions within 1024 characters, cut at a sentence', () => {
+  const long = `First sentence. ${'A longer sentence that keeps going. '.repeat(60)}`;
+  for (const format of ['openai', 'openai-strict', 'responses']) {
+    const [t] = formatTools([{ name: 'long', description: long, inputSchema: { type: 'object', properties: { a: { type: 'string' } } } }], format);
+    const d = (t.function ?? t).description;
+    assert.ok(d.length <= 1024 && d.endsWith('.'), format);
+  }
+  assert.equal(formatTools([{ name: 'long', description: long, inputSchema: { type: 'object' } }], 'mcp')[0].description, long, 'MCP keeps the full text');
 });
 
 test('null means "not given" unless the schema allows null', () => {

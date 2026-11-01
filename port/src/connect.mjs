@@ -1,15 +1,19 @@
 // `reverseport connect [client]`: the exact snippet to connect ReversePort to any agent, with no setup wizard and no
 // dependencies. MCP clients get their own config format; everything else gets HTTP, OpenAPI or function definitions.
+import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { RPError } from './util.mjs';
 import { closest } from './agent.mjs';
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
+const VERSION = JSON.parse(readFileSync(path.join(REPO, 'package.json'), 'utf8')).version;
+/** Hand-written registrations name an exact version, so an agent never runs a release nobody chose. */
+const PACKAGE = `reverseport@${VERSION}`;
 
 function launch(mode) {
   // On Windows, clients cannot start the npx .cmd shim directly; cmd /c does it.
-  if (mode === 'npx') return process.platform === 'win32' ? { command: 'cmd', args: ['/c', 'npx', '-y', 'reverseport@latest', 'mcp'] } : { command: 'npx', args: ['-y', 'reverseport@latest', 'mcp'] };
+  if (mode === 'npx') return process.platform === 'win32' ? { command: 'cmd', args: ['/c', 'npx', '-y', PACKAGE, 'mcp'] } : { command: 'npx', args: ['-y', PACKAGE, 'mcp'] };
   return { command: 'node', args: [path.join(REPO, 'bin', 'reverseport.mjs'), 'mcp'] };
 }
 
@@ -54,5 +58,5 @@ export function connect({ client, mode } = {}) {
     const near = closest(key, Object.keys(CLIENTS), 3);
     throw new RPError('INVALID_ARGUMENT', `Unknown client "${client}".${near ? ` Did you mean "${near}"?` : ''} Clients: ${Object.keys(CLIENTS).join(', ')}.`);
   }
-  return { client: key, where: c.file, snippet: c.snippet(how === 'local' ? launch('local') : l), serverName: 'rea — the same name setup uses, so running both never registers the server twice', tools: 'ReversePort lists its own tools plus the engine core; REVERSEPORT_TOOLS=all lists every engine tool, REVERSEPORT_TOOLS=port only ReversePort\'s.' };
+  return { client: key, where: c.file, snippet: c.snippet(how === 'local' ? launch('local') : l), serverName: 'rea — the name `reverseport setup` registers, so using both never registers the server twice', ...(how === 'npx' ? { version: `${PACKAGE} — pinned on purpose; after an update run \`reverseport connect ${key}\` again for the new number` } : {}), tools: 'ReversePort lists its own tools plus the engine core; REVERSEPORT_TOOLS=all lists every engine tool, REVERSEPORT_TOOLS=port only ReversePort\'s.' };
 }

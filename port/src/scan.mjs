@@ -2,7 +2,7 @@
 // languages, where it starts. Works on source projects and on exported games (Godot, Unity, Unreal…).
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { RPError, requireDir, walk, readAt, countLines, isText, MiB } from './util.mjs';
+import { RPError, requireDir, walk, readAt, countLines, isText, MiB, nextFields } from './util.mjs';
 import { LANGUAGE_BY_EXT, CODE_LANGUAGES } from './symbols.mjs';
 import { parseGodotProject } from './scene.mjs';
 import { workspaceTooling } from './jsworkspace.mjs';
@@ -222,7 +222,7 @@ export async function scanProject({ path: dir, maxFiles = 50000 } = {}) {
     root: abs, files: files.length, truncated, totalBytes: files.reduce((s, f) => s + f.size, 0), skippedDirs: skippedDirs.slice(0, 40), ...(unreadable.length ? { unreadable, warnings: [`${unreadable.length} folder(s) could not be read; results do not cover them.`] } : {}),
     primary: primary ? { id: primary.id, name: primary.name, kind: primary.kind } : null, engines, languages: sortObj(languages), categories: sortObj(categories),
     entryPoints, biggest, binaries,
-    next: nextSteps(engines, binaries, abs),
+    ...nextFields(nextSteps(engines, binaries, abs)),
   };
 }
 
