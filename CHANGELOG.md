@@ -1,5 +1,33 @@
 # Changelog
 
+## [1.11.0](https://github.com/laaielichter/Reverseport/compare/reverseport-1.10.0...reverseport-1.11.0) (2026-11-02)
+
+
+### ⚠ BREAKING CHANGES
+
+* **engine:** update the deep-analysis engine to REA 6.8.0 ([#59](https://github.com/laaielichter/Reverseport/issues/59))
+
+### Features
+
+* **engine:** update the deep-analysis engine to REA 6.8.0 ([#59](https://github.com/laaielichter/Reverseport/issues/59)) ([47e0347](https://github.com/laaielichter/Reverseport/commit/47e03470da75637667114f5002a137e5ca2c33eb))
+* **mcp:** speak MCP 2026-07-28 next to the classic handshake, with tasks for long calls ([#60](https://github.com/laaielichter/Reverseport/issues/60)) ([57752bd](https://github.com/laaielichter/Reverseport/commit/57752bdab79eea17771eca80a45360cfeb13ff98))
+* **plugin:** settings instead of environment variables, and an icon ([#63](https://github.com/laaielichter/Reverseport/issues/63)) ([d79a145](https://github.com/laaielichter/Reverseport/commit/d79a145e6cd84171487101ef714a876a3bd4e78a))
+* **port:** fewer calls and fewer tokens for agents ([#62](https://github.com/laaielichter/Reverseport/issues/62)) ([ecfa7e9](https://github.com/laaielichter/Reverseport/commit/ecfa7e92c857a509358ee6093e8f0bddacca9874))
+* **port:** re_compare shows .NET type and method changes and the next step ([#64](https://github.com/laaielichter/Reverseport/issues/64)) ([68e03e4](https://github.com/laaielichter/Reverseport/commit/68e03e4ca7925e8a1a25c245eeb03d9a182fdaa8))
+* ready for the MCP directories (Glama, Cline, Anthropic, Docker) ([#69](https://github.com/laaielichter/Reverseport/issues/69)) ([bcb8622](https://github.com/laaielichter/Reverseport/commit/bcb8622b84898f5a31c8f52f650f197690fc6867))
+
+
+### Bug Fixes
+
+* **port:** act on agent rating round 4 ([#65](https://github.com/laaielichter/Reverseport/issues/65)) ([37abc00](https://github.com/laaielichter/Reverseport/commit/37abc0062cb18755acbf6c6569227a1e14d1aeec))
+* **port:** close the CodeQL findings in ReversePort's own code ([#70](https://github.com/laaielichter/Reverseport/issues/70)) ([2068d8f](https://github.com/laaielichter/Reverseport/commit/2068d8f7b23d2c70ec13a8bccb5eb2d7fe3a75e7))
+* **scripts:** close the CodeQL findings in the test and release scripts ([#67](https://github.com/laaielichter/Reverseport/issues/67)) ([b3fd36d](https://github.com/laaielichter/Reverseport/commit/b3fd36dc1884a3c50a965633fa5e1f4eb0f45e12))
+
+
+### Tests
+
+* **plugin:** measure what the plugin adds with claude plugin eval ([#66](https://github.com/laaielichter/Reverseport/issues/66)) ([b4d4906](https://github.com/laaielichter/Reverseport/commit/b4d4906766fc2114e0d19e43380b1e053b20aa33))
+
 ## [1.10.0](https://github.com/laaielichter/Reverseport/compare/reverseport-1.9.0...reverseport-1.10.0) (2026-11-01)
 
 
