@@ -290,6 +290,10 @@ const plannedClientWrites = (
             inspection.backupPath !== undefined
               ? { backupPath: inspection.backupPath }
               : {}),
+            ...(inspection.status !== "already_current" &&
+            inspection.notes !== undefined
+              ? { notes: inspection.notes }
+              : {}),
           },
         ]
       : [],
@@ -308,6 +312,7 @@ const setupPlan = (input: {
     readonly client: SetupClient;
     readonly operation: "create" | "update";
     readonly backupPath?: string;
+    readonly notes?: readonly string[];
   }[];
   readonly providerEnvironment: SetupProviderEnvironment;
   readonly linuxPackageFamily?: LinuxPackageFamily;
@@ -342,17 +347,20 @@ const setupPlan = (input: {
     : []),
   ...input.clients
     .filter(({ client }) => client.format !== "unsupported")
-    .map(({ client, operation, backupPath }): SetupAction => ({
+    .map(({ client, operation, backupPath, notes }): SetupAction => ({
       id: `configure_client:${client.name}`,
       kind: "configure_client",
       label: client.displayName ?? client.name,
       target: client.configPath,
-      detail: clientConfigurationDetail(
-        client,
-        input.command,
-        input.providerEnvironment,
-        input.installHopper,
-      ),
+      detail: [
+        clientConfigurationDetail(
+          client,
+          input.command,
+          input.providerEnvironment,
+          input.installHopper,
+        ),
+        ...(notes ?? []),
+      ].join(" "),
       external: false,
       operation,
       ...(backupPath === undefined ? {} : { backupPath }),

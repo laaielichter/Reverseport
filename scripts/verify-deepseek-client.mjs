@@ -164,9 +164,11 @@ await withVerifierCleanup(async () => {
           ++mainRequests <= 4,
           "Harness did not complete the bounded fixture workflow.",
         );
-        const rea = tools.filter((tool) => tool.name.startsWith("mcp__rea__"));
+        const rea = tools.filter((tool) =>
+          tool.name.startsWith("mcp__reverseport__"),
+        );
         const observedCatalog = rea
-          .map((tool) => tool.name.slice("mcp__rea__".length))
+          .map((tool) => tool.name.slice("mcp__reverseport__".length))
           .sort();
         assert.deepEqual(
           observedCatalog,
@@ -258,14 +260,15 @@ await withVerifierCleanup(async () => {
           skillLoaded,
           "Harness must load the installed skill before analysis.",
         );
-        return call("mcp__rea__analyze_javascript_application", {
+        return call("mcp__reverseport__analyze_javascript_application", {
           input_path: target,
           format: "directory",
         });
       },
     });
-    // Seed model settings and a stale registration; the public setup workflow
-    // must produce the registration this native client actually boots.
+    // Seed model settings and a stale registration under the previous server
+    // name; the public setup workflow must produce the registration this native
+    // client actually boots, under the current server name.
     const original = `
 - id: llm-pi-ai
   config:
@@ -325,6 +328,13 @@ await withVerifierCleanup(async () => {
     assert.equal(await readFile(`${configPath}.rea.backup`, "utf8"), original);
     const configured = await readFile(configPath, "utf8");
     assert.deepEqual(withoutRea(configured), withoutRea(original));
+    const registered = patches(configured)
+      .flatMap((op) => (Array.isArray(op.insert) ? op.insert : [op]))
+      .filter((entry) => entry.id === "rea-mcp");
+    assert.deepEqual(
+      registered.map((entry) => entry.config?.serverName),
+      ["reverseport"],
+    );
     assert(configured.includes("!!js process.cwd()"));
     assert(
       (await readFile(skillPath, "utf8")).includes(

@@ -194,7 +194,7 @@ it("reports a failed config rollback and retains its backup path", async () => {
   });
   expect(await readFile(`${path}.rea.backup`, "utf8")).toBe(original);
   expect(JSON.parse(await readFile(path, "utf8"))).toMatchObject({
-    mcpServers: { rea: { command: "rea", args: ["mcp"] } },
+    mcpServers: { reverseport: { command: "rea", args: ["mcp"] } },
   });
 });
 
@@ -319,7 +319,7 @@ it("retains first-run configuration for manual recovery without deleting by path
   });
   expect(result).not.toHaveProperty("backupPath");
   expect(JSON.parse(await readFile(path, "utf8"))).toMatchObject({
-    mcpServers: { rea: { command: "rea", args: ["mcp"] } },
+    mcpServers: { reverseport: { command: "rea", args: ["mcp"] } },
   });
 });
 
@@ -596,7 +596,7 @@ it.each(["symlink", "regular", "valid-readback"] as const)(
         "node:fs/promises",
       );
     const original =
-      '{"mcpServers":{"rea":{"command":"rea","args":["mcp"]}},"keep":"original"}\n';
+      '{"mcpServers":{"reverseport":{"command":"rea","args":["mcp"]}},"keep":"original"}\n';
     const foreign = '{"keep":"replacement"}\n';
     await fs.writeFile(path, original);
     await fs.writeFile(replacement, foreign);
@@ -638,7 +638,7 @@ it("uninstall retains both readback and publication owners until cleanup retry",
     );
   await fs.writeFile(
     path,
-    '{"mcpServers":{"rea":{"command":"rea","args":["mcp"]}}}\n',
+    '{"mcpServers":{"reverseport":{"command":"rea","args":["mcp"]}}}\n',
   );
   const readOwner = await ownReadHandle(path);
   const closeRead = readOwner.handle.close.bind(readOwner.handle);
@@ -689,7 +689,7 @@ it("uninstall retains the exact owner of a failed initial config read", async ()
     await vi.importActual<typeof import("node:fs/promises")>(
       "node:fs/promises",
     );
-  const original = '{"mcpServers":{"rea":{"command":"rea","args":["mcp"]}}}\n';
+  const original = '{"mcpServers":{"reverseport":{"command":"rea","args":["mcp"]}}}\n';
   await fs.writeFile(path, original);
   const owner = await ownReadHandle(path);
   const close = owner.handle.close.bind(owner.handle);
@@ -740,7 +740,7 @@ it("uninstall close joins a publication already admitted by its host", async () 
     );
   await fs.writeFile(
     path,
-    '{"mcpServers":{"rea":{"command":"rea","args":["mcp"]}}}\n',
+    '{"mcpServers":{"reverseport":{"command":"rea","args":["mcp"]}}}\n',
   );
   const arrived = createDeferred<void>();
   const release = createDeferred<void>();
@@ -899,7 +899,7 @@ it("uninstall progresses when a peer leaves a denied-close descriptor pending", 
     );
   await fs.writeFile(
     path,
-    '{"mcpServers":{"rea":{"command":"rea","args":["mcp"]}}}\n',
+    '{"mcpServers":{"reverseport":{"command":"rea","args":["mcp"]}}}\n',
   );
   await fs.writeFile(other, "{}");
   const owner = await ownReadHandle(other);
@@ -982,7 +982,7 @@ it.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
         "node:fs/promises",
       );
     const original =
-      '{"mcpServers":{"rea":{"command":"rea","args":["mcp"]}}}\n';
+      '{"mcpServers":{"reverseport":{"command":"rea","args":["mcp"]}}}\n';
     await fs.writeFile(path, original);
     await fs.chmod(path, 0o400);
     await fs.writeFile(foreign, "foreign");
@@ -1029,7 +1029,7 @@ it.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
         "node:fs/promises",
       );
     const original =
-      '{"mcpServers":{"rea":{"command":"rea","args":["mcp"]}}}\n';
+      '{"mcpServers":{"reverseport":{"command":"rea","args":["mcp"]}}}\n';
     await fs.writeFile(path, original);
     await fs.chmod(path, 0o400);
     state.rejectPublicationMode = true;
@@ -1076,7 +1076,7 @@ it.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
         "node:fs/promises",
       );
     const original =
-      '{"mcpServers":{"rea":{"command":"rea","args":["mcp"]}},"keep":true}\n';
+      '{"mcpServers":{"reverseport":{"command":"rea","args":["mcp"]}},"keep":true}\n';
     await fs.writeFile(path, original);
     await fs.chmod(path, 0o400);
     const host = systemUninstallHost(root);
@@ -1113,7 +1113,7 @@ it.each(["setup", "uninstall"] as const)(
     const original =
       operation === "setup"
         ? '{"keep":"original"}\n'
-        : '{"mcpServers":{"rea":{"command":"rea","args":["mcp"]}},"keep":"original"}\n';
+        : '{"mcpServers":{"reverseport":{"command":"rea","args":["mcp"]}},"keep":"original"}\n';
     const unrelated = '{"keep":"foreign"}\n';
     await fs.writeFile(path, original);
     await fs.writeFile(foreign, unrelated);
@@ -1193,7 +1193,7 @@ it.each([
         "node:fs/promises",
       );
     const original =
-      '{"mcpServers":{"rea":{"command":"rea","args":["mcp"]}},"keep":true}\n';
+      '{"mcpServers":{"reverseport":{"command":"rea","args":["mcp"]}},"keep":true}\n';
     const edited = '{"changed":"by client"}\n';
     await fs.writeFile(path, original);
     state.failReadback = false;
@@ -1226,7 +1226,7 @@ it.each(["setup", "uninstall"] as const)(
         "node:fs/promises",
       );
     const original =
-      '{"mcpServers":{"rea":{"command":"rea","args":["mcp"]}},"keep":true}\n';
+      '{"mcpServers":{"reverseport":{"command":"rea","args":["mcp"]}},"keep":true}\n';
     const edited = '{"changed":"during staging"}\n';
     await fs.writeFile(path, original);
     state.failReadback = false;
@@ -1282,7 +1282,7 @@ it.each(["setup", "uninstall"] as const)(
       );
     await fs.writeFile(
       path,
-      '{"mcpServers":{"rea":{"command":"rea","args":["mcp"]}},"keep":true}\n',
+      '{"mcpServers":{"reverseport":{"command":"rea","args":["mcp"]}},"keep":true}\n',
     );
     state.failReadback = false;
     state.rejectStageRemoval = true;
@@ -1423,7 +1423,7 @@ it.each(["setup", "uninstall"] as const)(
     await fs.mkdir(foreign);
     await fs.symlink(selected, alias, "dir");
     const original =
-      '{"mcpServers":{"rea":{"command":"rea","args":["mcp"]}},"keep":true}\n';
+      '{"mcpServers":{"reverseport":{"command":"rea","args":["mcp"]}},"keep":true}\n';
     const unrelated = '{"foreign":true}\n';
     await fs.writeFile(join(selected, "client.json"), original);
     await fs.writeFile(join(foreign, "client.json"), unrelated);

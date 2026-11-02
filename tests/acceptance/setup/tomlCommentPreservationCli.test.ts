@@ -30,12 +30,12 @@ const scenarios = [
       'model = "x" # inline model note',
       "",
       "# about rea",
-      "[mcp_servers.rea]",
+      "[mcp_servers.reverseport]",
       "# inside the rea table",
       'command = "old"',
       "",
       "# between rea and its environment",
-      "[mcp_servers.rea.env]",
+      "[mcp_servers.reverseport.env]",
       'OLD = "value"',
       "# after the rea environment",
       "",
@@ -62,7 +62,7 @@ const scenarios = [
     name: "a leading REA table and a final note without a line break",
     original: [
       "# about rea",
-      "[mcp_servers.rea]",
+      "[mcp_servers.reverseport]",
       'command = "old"',
       "# trailing note without a line break",
     ].join("\n"),
@@ -125,7 +125,7 @@ for (const scenario of scenarios)
         expect(unrelatedValues(text), path).toEqual(
           unrelatedValues(scenario.original),
         );
-        expect(parseToml(text), path).toHaveProperty("mcp_servers.rea.command");
+        expect(parseToml(text), path).toHaveProperty("mcp_servers.reverseport.command");
         expect(await readFile(`${path}.rea.backup`, "utf8"), path).toBe(
           scenario.original,
         );
@@ -149,7 +149,7 @@ for (const scenario of scenarios)
         remaining.push(text);
         for (const comment of scenario.comments)
           expect(text, path).toContain(comment);
-        expect(parseToml(text), path).not.toHaveProperty("mcp_servers.rea");
+        expect(parseToml(text), path).not.toHaveProperty("mcp_servers.reverseport");
         expect(unrelatedValues(text), path).toEqual(
           unrelatedValues(scenario.original),
         );

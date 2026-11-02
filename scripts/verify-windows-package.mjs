@@ -12,6 +12,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parse as parseJsonc } from "jsonc-parser";
 import { supportedClients } from "../dist/application/SupportedClients.js";
+import { PRODUCT_IDENTITY } from "../dist/identity.js";
 import { GHIDRA_BRIDGE_SOURCES } from "../src/ghidra/GhidraBridgeSources.ts";
 
 import { Client } from "@modelcontextprotocol/client";
@@ -190,10 +191,10 @@ try {
     const config = parseJsonc(text);
     const registration =
       id === "opencode"
-        ? config.mcp?.rea
+        ? config.mcp?.[PRODUCT_IDENTITY.mcpServerKey]
         : id === "vscode"
-          ? config.servers?.rea
-          : config.mcpServers?.rea;
+          ? config.servers?.[PRODUCT_IDENTITY.mcpServerKey]
+          : config.mcpServers?.[PRODUCT_IDENTITY.mcpServerKey];
     const actualCommand =
       id === "opencode"
         ? registration?.command

@@ -54,7 +54,7 @@ for (const scenario of [
       const configured = await readFile(config, "utf8");
       expect(configured.startsWith(original.trimEnd())).toBe(true);
       expect(parseToml(configured)).toMatchObject({
-        mcp_servers: { other: { command: "other-local-control" }, rea: {} },
+        mcp_servers: { other: { command: "other-local-control" }, reverseport: {} },
       });
 
       const repeated = await run([...setupArguments, "--yes"]);

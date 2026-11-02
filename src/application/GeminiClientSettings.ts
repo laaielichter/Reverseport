@@ -21,6 +21,43 @@ import {
 import type { SetupClient } from "./SupportedClients.js";
 
 type SettingsSource = { path: string; document: ClientConfigurationDocument };
+
+const normalizedServerName = (name: string): string => name.toLowerCase().trim();
+
+/**
+ * A policy written for a previous REA server name would silently change
+ * meaning after setup registers the current one: an allowlist naming only the
+ * old name would hide REA, and an exclusion of the old name would no longer
+ * exclude it. Setup never edits these policy lists, so either case blocks the
+ * client with a remediation. Names compare as Gemini compares them.
+ */
+const previousServerKeyPolicyBlock = (
+  sources: readonly SettingsSource[],
+): Result<string | undefined, ClientConfigurationFileError> => {
+  const current = normalizedServerName(PRODUCT_IDENTITY.mcpServerKey);
+  for (const { path, document } of sources) {
+    let policy: ReturnType<typeof parseGeminiMcpPolicy>;
+    try {
+      policy = parseGeminiMcpPolicy(document);
+    } catch (cause: unknown) {
+      return err(sourceFailure(path, cause));
+    }
+    const excluded = new Set((policy.excluded ?? []).map(normalizedServerName));
+    const allowed = new Set((policy.allowed ?? []).map(normalizedServerName));
+    for (const previous of PRODUCT_IDENTITY.previousMcpServerKeys) {
+      const name = normalizedServerName(previous);
+      if (excluded.has(name))
+        return ok(
+          `mcp.excluded in ${path} lists "${previous}", the name earlier REA releases registered. REA now registers as "${PRODUCT_IDENTITY.mcpServerKey}", and setup does not edit MCP policy lists. To keep REA excluded, add "${PRODUCT_IDENTITY.mcpServerKey}" to mcp.excluded; to allow it, remove "${previous}". Then rerun setup.`,
+        );
+      if (allowed.has(name) && !allowed.has(current))
+        return ok(
+          `mcp.allowed in ${path} lists "${previous}", the name earlier REA releases registered, but not "${PRODUCT_IDENTITY.mcpServerKey}", the name REA now registers. Setup does not edit MCP policy lists. Add "${PRODUCT_IDENTITY.mcpServerKey}" to mcp.allowed, then rerun setup.`,
+        );
+    }
+  }
+  return ok(undefined);
+};
 const folderTrustSchema = z
   .object({
     security: z
@@ -120,6 +157,14 @@ export const readClientPolicyBlock = async (
   desiredRegistration?: unknown,
   resources?: ArtifactResourceScope,
 ): Promise<Result<string | undefined, ClientConfigurationFileError>> => {
+  // Qwen Code is a Gemini fork with the same mcp.allowed/mcp.excluded policy;
+  // setup checks only its user settings for policies naming a previous name.
+  if (client.name === "qwen_code" && userDocument !== undefined) {
+    const policy = previousServerKeyPolicyBlock([
+      { path: client.configPath, document: userDocument },
+    ]);
+    return policy.ok ? ok(policy.value) : policy;
+  }
   if (client.name !== "gemini_cli" || client.geminiSettings === undefined)
     return ok(undefined);
   const settings = client.geminiSettings;
@@ -204,6 +249,8 @@ export const readClientPolicyBlock = async (
     return ok(
       `${policy} Settings sources: ${sources.map(({ path }) => path).join(", ")}.`,
     );
+  const previous = previousServerKeyPolicyBlock(sources);
+  if (!previous.ok || previous.value !== undefined) return previous;
   // mcpServers uses shallow merge: the entire same-name definition is replaced.
   const override = higher.findLast(({ document }) =>
     Object.hasOwn(document.servers, PRODUCT_IDENTITY.mcpServerKey),

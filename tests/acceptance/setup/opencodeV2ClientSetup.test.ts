@@ -30,7 +30,7 @@ const layeredOpenCode = async (
   const originalLower = JSON.stringify({
     mcp: {
       servers: {
-        rea: {
+        reverseport: {
           type: "local",
           command: ["rea", "mcp"],
           disabled,
@@ -77,7 +77,7 @@ for (const disabled of [true, false]) {
         expect(parse(configured)).toMatchObject({
           mcp: {
             servers: {
-              rea: {
+              reverseport: {
                 type: "local",
               },
             },
@@ -85,7 +85,7 @@ for (const disabled of [true, false]) {
           theme: "system",
         });
         if (disabled)
-          expect(parse(configured).mcp.servers.rea.disabled).toBe(false);
+          expect(parse(configured).mcp.servers.reverseport.disabled).toBe(false);
         if (jsonc)
           expect(configured).toContain(
             "// Keep the user configuration comment.",

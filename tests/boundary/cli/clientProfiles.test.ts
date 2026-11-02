@@ -73,7 +73,7 @@ cliTest(
       theme: "dark",
       mcpServers: {
         other: { command: "other" },
-        rea: expect.any(Object),
+        reverseport: expect.any(Object),
       },
     });
     await expect(access(join(skill, "SKILL.md"))).resolves.toBeUndefined();
@@ -128,7 +128,7 @@ cliTest(
   },
 );
 
-for (const policy of [{ excluded: ["rea"] }, { allowed: ["other"] }]) {
+for (const policy of [{ excluded: ["reverseport"] }, { allowed: ["other"] }]) {
   cliTest(
     `Gemini refuses a registration blocked by ${Object.keys(policy)[0]}`,
     async ({ cli }) => {
@@ -137,7 +137,7 @@ for (const policy of [{ excluded: ["rea"] }, { allowed: ["other"] }]) {
       const original = JSON.stringify({
         mcp: policy,
         mcpServers: {
-          rea: {
+          reverseport: {
             command: "npx",
             args: ["-y", PRODUCT_IDENTITY.registrationPackageSpecifier, "mcp"],
           },
@@ -198,7 +198,7 @@ cliTest(
     const higher = join(directory, "opencode.jsonc");
     const originalLower = JSON.stringify({
       mcp: {
-        rea: {
+        reverseport: {
           type: "local",
           command: [
             "npx",
@@ -212,7 +212,7 @@ cliTest(
       },
     });
     const originalHigher =
-      '// keep this comment\n{"mcp":{"rea":{"enabled":false}},"theme":"system"}\n';
+      '// keep this comment\n{"mcp":{"reverseport":{"enabled":false}},"theme":"system"}\n';
     await writeFile(lower, originalLower);
     await writeFile(higher, originalHigher);
     const run = (arguments_: readonly string[]) =>
@@ -302,7 +302,7 @@ cliTest(
     const home = await createTestTempDirectory("rea-gemini-managed-");
     const policy = join(home, "managed.json");
     const original = JSON.stringify({
-      mcp: { excluded: ["rea"] },
+      mcp: { excluded: ["reverseport"] },
       unrelated: true,
     });
     await writeFile(policy, original);
@@ -344,12 +344,12 @@ cliTest(
     await mkdir(dirname(user), { recursive: true });
     await writeFile(
       system,
-      JSON.stringify({ mcp: { allowed: ["rea", "other"] } }),
+      JSON.stringify({ mcp: { allowed: ["reverseport", "other"] } }),
     );
     await writeFile(defaults, JSON.stringify({ mcp: { allowed: ["other"] } }));
     await writeFile(
       user,
-      JSON.stringify({ mcp: { allowed: ["rea", "other"] } }),
+      JSON.stringify({ mcp: { allowed: ["reverseport", "other"] } }),
     );
     const environment = {
       HOME: home,
@@ -369,12 +369,12 @@ cliTest(
       status: "needs_human",
       appliedActions: [],
     });
-    await writeFile(defaults, JSON.stringify({ mcp: { allowed: ["rea"] } }));
+    await writeFile(defaults, JSON.stringify({ mcp: { allowed: ["reverseport"] } }));
     const allowed = await run();
     expect(allowed.exitCode).toBe(0);
     expect(allowed.json).toMatchObject({ status: "ready" });
     expect(JSON.parse(await readFile(defaults, "utf8"))).toEqual({
-      mcp: { allowed: ["rea"] },
+      mcp: { allowed: ["reverseport"] },
     });
     // The consumer treats an empty consolidated allowlist as unrestricted.
     await writeFile(defaults, JSON.stringify({ mcp: { allowed: [] } }));
@@ -480,7 +480,7 @@ cliTest(
       global,
       JSON.stringify({
         mcp: {
-          rea: {
+          reverseport: {
             type: "local",
             command: [
               "npx",
@@ -550,7 +550,7 @@ cliTest(
       enabled: true,
     };
     const original = JSON.stringify({
-      mcp: { rea: owned, other: { type: "local", command: ["other"] } },
+      mcp: { reverseport: owned, other: { type: "local", command: ["other"] } },
     });
     await writeFile(global, original);
     await writeFile(custom, "{}");
@@ -616,14 +616,14 @@ cliTest(
       defaults,
       JSON.stringify({
         mcpServers: {
-          rea: { command: "managed-default", env: { EXTRA: "default" } },
+          reverseport: { command: "managed-default", env: { EXTRA: "default" } },
         },
       }),
     );
     expect((await run(command)).exitCode).toBe(0);
     const original = await readFile(user, "utf8");
     const managed = JSON.stringify({
-      mcpServers: { rea: { command: "managed-override", args: [] } },
+      mcpServers: { reverseport: { command: "managed-override", args: [] } },
       unrelated: true,
     });
     await writeFile(system, managed);
@@ -642,7 +642,7 @@ cliTest(
           expect.objectContaining({
             client: "gemini_cli",
             state: "stale",
-            remediation: expect.stringContaining("mcpServers.rea"),
+            remediation: expect.stringContaining("mcpServers.reverseport"),
           }),
         ]),
       },
@@ -686,7 +686,7 @@ cliTest(
       cli.run({ arguments: args, cwd: project, environment });
     const command = ["setup", "--client", "gemini_cli", "--yes", "--json"];
     const original = JSON.stringify({
-      mcp: { excluded: ["rea"] },
+      mcp: { excluded: ["reverseport"] },
       unrelated: true,
     });
     await writeFile(workspace, original);
@@ -763,7 +763,7 @@ cliTest(
       cli.run({ arguments: args, cwd: project, environment });
     const command = ["setup", "--client", "gemini_cli", "--yes", "--json"];
     const original = JSON.stringify({
-      mcpServers: { rea: { command: "project-server", args: [] } },
+      mcpServers: { reverseport: { command: "project-server", args: [] } },
     });
     await writeFile(workspace, original);
     expect((await run(command)).json).toMatchObject({
@@ -805,7 +805,7 @@ cliTest(
     const trust = join(home, ".gemini/trustedFolders.json");
     await mkdir(dirname(workspace), { recursive: true });
     await mkdir(dirname(user), { recursive: true });
-    await writeFile(workspace, JSON.stringify({ mcp: { excluded: ["rea"] } }));
+    await writeFile(workspace, JSON.stringify({ mcp: { excluded: ["reverseport"] } }));
     await writeFile(trust, JSON.stringify({ [project]: "INVALID" }));
     const run = () =>
       cli.run({

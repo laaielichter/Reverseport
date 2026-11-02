@@ -16,7 +16,7 @@ const configuration = (
     "# Personal settings\nmodel: custom\nmask: 0x1F\n" +
     "server_defaults: &servers\n" +
     (existing
-      ? "  rea: &server\n    command: rea-old\n    args: [ 'mcp' ]\n    env:\n      FLAG: 'on'\n  other: *server\n"
+      ? "  reverseport: &server\n    command: rea-old\n    args: [ 'mcp' ]\n    env:\n      FLAG: 'on'\n  other: *server\n"
       : "  other: &server\n    command: other-server\n    args: [ 'on', '0600' ]\n");
   return {
     defaults,
@@ -99,9 +99,9 @@ for (const version of ["1.1", "1.2"] as const) {
         expect(parsed.server_defaults).toEqual(before.server_defaults);
         expect(parsed.observer).toEqual(before.observer);
         expect(parsed.mcp_servers.other).toEqual(before.mcp_servers.other);
-        expect(parsed.mcp_servers.rea).toMatchObject({ enabled: true });
+        expect(parsed.mcp_servers.reverseport).toMatchObject({ enabled: true });
         if (existing)
-          expect(parsed.mcp_servers.rea.env).toEqual({
+          expect(parsed.mcp_servers.reverseport.env).toEqual({
             FLAG: "on",
             HOPPER_LAUNCHER_PATH: process.execPath,
           });
@@ -169,7 +169,7 @@ cliTest("Hermes still registers into an explicit table", async ({ cli }) => {
   expect(parsed.mcp_servers.other).toEqual(
     parse(original.text).mcp_servers.other,
   );
-  expect(parsed.mcp_servers.rea).toMatchObject({ enabled: true });
+  expect(parsed.mcp_servers.reverseport).toMatchObject({ enabled: true });
   expect(await readFile(`${config}.rea.backup`, "utf8")).toBe(original.text);
 });
 
@@ -243,8 +243,8 @@ cliTest(
       "--json",
     ]);
     expect(setup.exitCode).toBe(0);
-    const entry = parse(await readFile(config, "utf8")).mcp_servers.rea;
-    const defaults = { rea: entry, other: { command: "other-server" } };
+    const entry = parse(await readFile(config, "utf8")).mcp_servers.reverseport;
+    const defaults = { reverseport: entry, other: { command: "other-server" } };
     const original =
       "server_defaults: &servers\n" +
       stringify(defaults)

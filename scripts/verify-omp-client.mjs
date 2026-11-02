@@ -40,7 +40,7 @@ const skillDirectory = join(
   "reverse-engineer-anything",
 );
 const expectedDevices = TOOL_CONTRACTS.map(
-  (tool) => "mcp__rea_" + tool.name,
+  (tool) => "mcp__reverseport_" + tool.name,
 ).sort();
 let clientVersion = null;
 let expectedSkillBody;
@@ -89,7 +89,8 @@ await withVerifierCleanup(async () => {
       join(target, "app.js"),
       'export function result() { return { clientCompatibility: "REA_CLIENT_FIXTURE", count: 7 }; }\n',
     );
-    const analysisDevice = "xd://mcp__rea_analyze_javascript_application";
+    const analysisDevice =
+      "xd://mcp__reverseport_analyze_javascript_application";
     const containsText = (value, text) => {
       if (typeof value === "string") return value.includes(text);
       return (
@@ -147,7 +148,10 @@ await withVerifierCleanup(async () => {
             path: analysisDevice,
           });
         assert(
-          containsText(replies, "# mcp__rea_analyze_javascript_application"),
+          containsText(
+            replies,
+            "# mcp__reverseport_analyze_javascript_application",
+          ),
         );
         assert(
           containsText(replies, "input_path") &&
@@ -213,7 +217,12 @@ await withVerifierCleanup(async () => {
     });
     const original = JSON.stringify(
       {
-        mcpServers: { other: { command: "unrelated-server", enabled: false } },
+        // An owned registration under the previous server name, disabled by
+        // name: setup must move it to the current name and re-enable it.
+        mcpServers: {
+          other: { command: "unrelated-server", enabled: false },
+          rea: { command: "rea", args: ["mcp"] },
+        },
         disabledServers: ["rea", "other"],
       },
       null,
@@ -357,6 +366,8 @@ await withVerifierCleanup(async () => {
     const configured = await readFile(configPath, "utf8");
     const registration = JSON.parse(configured);
     assert.equal(registration.mcpServers.other.command, "unrelated-server");
+    assert.equal(registration.mcpServers.rea, undefined);
+    assert(registration.mcpServers.reverseport);
     assert.deepEqual(registration.disabledServers, ["other"]);
     const repeated = JSON.parse(
       (await rea(["setup", "--client", "omp", "--yes"])).stdout,
@@ -415,7 +426,7 @@ await withVerifierCleanup(async () => {
       .flatMap((event) =>
         event.message.slice("xd://: mounted ".length).split(", "),
       )
-      .filter((name) => name.startsWith("mcp__rea_"));
+      .filter((name) => name.startsWith("mcp__reverseport_"));
     catalogSize = mounted.length;
     assert.deepEqual(
       mounted.sort(),

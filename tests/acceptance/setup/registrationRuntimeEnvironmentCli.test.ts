@@ -27,7 +27,7 @@ cliTest.skipIf(process.platform !== "win32")(
     await mkdir(dirname(config), { recursive: true });
     const original = JSON.stringify({
       mcpServers: {
-        rea: clientRegistrationEntry(
+        reverseport: clientRegistrationEntry(
           "json",
           [process.execPath, resolve("scripts/rea.mjs"), "mcp"],
           { rea_analysis_provider: "invalid provider" },
@@ -176,7 +176,7 @@ cliTest.for([
               ],
             },
           ])
-        : JSON.stringify({ mcpServers: { rea: entry } });
+        : JSON.stringify({ mcpServers: { reverseport: entry } });
     };
     const valueMarker = "reaNulFixtureValue_6c04e2";
     const original = registration(
@@ -286,7 +286,7 @@ for (const scenario of scenarios)
                     id: "rea-mcp",
                     name: "@deepseek-ai/dsh-mcp-client",
                     config: {
-                      serverName: "rea",
+                      serverName: "reverseport",
                       transport: "stdio",
                       ...server,
                     },
@@ -294,7 +294,7 @@ for (const scenario of scenarios)
                 ],
               },
             ])
-          : JSON.stringify({ mcpServers: { rea: server } });
+          : JSON.stringify({ mcpServers: { reverseport: server } });
       };
       const original = registration(scenario.invalid);
       await writeFile(config, original);
@@ -353,7 +353,7 @@ for (const scenario of scenarios)
       expect(configured.exitCode, configured.stdout).toBe(0);
       const text = await readFile(config, "utf8");
       const parsed = parseClientConfiguration(text, scenario.format);
-      expect(effectiveClientServer(parsed, "rea")).toMatchObject({
+      expect(effectiveClientServer(parsed, "reverseport")).toMatchObject({
         env: {
           CALLER_SETTING: "keep exactly",
           ["__proto__"]: "retain caller key",
@@ -388,7 +388,7 @@ cliTest(
     const content = (env: Record<string, string>) =>
       JSON.stringify({
         mcp: {
-          rea: clientRegistrationEntry(
+          reverseport: clientRegistrationEntry(
             "opencode",
             // Windows launches JavaScript through Node; otherwise setup repairs
             // the command before this test can exercise layered environment data.

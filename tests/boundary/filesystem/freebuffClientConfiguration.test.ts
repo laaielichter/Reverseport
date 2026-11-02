@@ -183,7 +183,7 @@ describe("FreeBuff JSON registration", () => {
     const parsed = JSON.parse(await readFile(client.configPath, "utf8"));
     expect(parsed.mcpServers.other).toEqual({ command: "other-server" });
     expect(parsed.agents).toEqual({ discoverSkills: true });
-    expect(parsed.mcpServers.rea).toEqual({
+    expect(parsed.mcpServers.reverseport).toEqual({
       command: command[0],
       args: command.slice(1),
     });
@@ -212,7 +212,7 @@ describe("FreeBuff JSON registration", () => {
       JSON.stringify(
         {
           mcpServers: {
-            rea: { command: command[0], args: command.slice(1), enable: false },
+            reverseport: { command: command[0], args: command.slice(1), enable: false },
           },
         },
         null,
@@ -223,7 +223,7 @@ describe("FreeBuff JSON registration", () => {
       (await configureClientConfiguration(client, {}, command)).status,
     );
     const parsed = JSON.parse(await readFile(client.configPath, "utf8"));
-    expect(parsed.mcpServers.rea).toMatchObject({
+    expect(parsed.mcpServers.reverseport).toMatchObject({
       command: command[0],
       args: command.slice(1),
       enable: false,
@@ -240,7 +240,7 @@ describe("FreeBuff JSON registration", () => {
       JSON.stringify(
         {
           mcpServers: {
-            rea: { command: command[0], args: command.slice(1), enable: false },
+            reverseport: { command: command[0], args: command.slice(1), enable: false },
           },
         },
         null,
@@ -273,7 +273,7 @@ describe("FreeBuff JSON registration", () => {
     ).toBe("configured");
     const parsed = JSON.parse(await readFile(client.configPath, "utf8"));
     expect(parsed.agents).toEqual({ discoverSkills: true });
-    expect(parsed.mcpServers.rea).toEqual({
+    expect(parsed.mcpServers.reverseport).toEqual({
       command: command[0],
       args: command.slice(1),
     });
@@ -286,7 +286,7 @@ describe("FreeBuff JSON registration", () => {
       (await configureClientConfiguration(client, {}, command)).status,
     ).toBe("configured");
     const parsed = JSON.parse(await readFile(client.configPath, "utf8"));
-    expect(parsed.mcpServers.rea).toEqual({
+    expect(parsed.mcpServers.reverseport).toEqual({
       command: command[0],
       args: command.slice(1),
     });
@@ -309,7 +309,7 @@ describe("FreeBuff JSON registration", () => {
     );
     const parsed = JSON.parse(await readFile(client.configPath, "utf8"));
     expect(parsed.mcpServers.other).toEqual({ command: "other-server" });
-    expect(parsed.mcpServers.rea).toBeUndefined();
+    expect(parsed.mcpServers.reverseport).toBeUndefined();
   });
 });
 

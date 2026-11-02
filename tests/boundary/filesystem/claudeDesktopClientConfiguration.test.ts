@@ -158,7 +158,7 @@ describe("Windows Claude Desktop configuration location", () => {
       configureClientConfiguration(client, {}, command),
     ).resolves.toEqual({ status: "configured" });
     expect(await readJson(privateConfig)).toEqual({
-      mcpServers: { rea: reaEntry },
+      mcpServers: { reverseport: reaEntry },
     });
   });
 
@@ -172,7 +172,7 @@ describe("Windows Claude Desktop configuration location", () => {
       const { home, env, appDataConfig } = await windowsProfile();
       const foreign = join(env.LOCALAPPDATA, "Packages", family);
       await mkdir(foreign, { recursive: true });
-      const appDataOriginal = { mcpServers: { rea: reaEntry } };
+      const appDataOriginal = { mcpServers: { reverseport: reaEntry } };
       const deploymentConfig = join(env.LOCALAPPDATA, "Claude-3p", CONFIG);
       const deploymentOriginal = {
         deploymentMode: "3p",
@@ -239,7 +239,7 @@ describe("Claude Desktop MSIX process view without its own private folder (#4278
     ).resolves.toMatchObject({ status: "configured" });
     expect(await readJson(appDataConfig)).toMatchObject({
       preferences: {},
-      mcpServers: { rea: reaEntry },
+      mcpServers: { reverseport: reaEntry },
     });
   });
 
@@ -279,7 +279,7 @@ it("preserves explicit AppData root whitespace throughout setup, doctor and unin
   );
   const original = { mcpServers: { other: { command: "other-server" } } };
   const otherOriginal = {
-    mcpServers: { rea: reaEntry },
+    mcpServers: { reverseport: reaEntry },
     preferences: { preserve: true },
   };
   await writeJson(otherConfig, otherOriginal);
@@ -337,7 +337,7 @@ describe("MSIX Claude Desktop registration lifecycle", () => {
     };
     await writeJson(privateConfig, privateOriginal);
     // Earlier setups wrote AppData, which the package never reads.
-    await writeJson(appDataConfig, { mcpServers: { rea: reaEntry } });
+    await writeJson(appDataConfig, { mcpServers: { reverseport: reaEntry } });
     const appDataOriginal = await readFile(appDataConfig, "utf8");
     const status = async () =>
       (
@@ -373,7 +373,7 @@ describe("MSIX Claude Desktop registration lifecycle", () => {
       ...privateOriginal,
       mcpServers: {
         ...privateOriginal.mcpServers,
-        rea: reaEntry,
+        reverseport: reaEntry,
       },
     });
     expect(await readJson(`${privateConfig}.rea.backup`)).toEqual(
@@ -445,7 +445,7 @@ describe("MSIX Claude Desktop registration lifecycle", () => {
 
     expect(await readJson(appDataConfig)).toEqual({
       preferences: { theme: "light" },
-      mcpServers: { rea: reaEntry },
+      mcpServers: { reverseport: reaEntry },
     });
     await expect(access(privateConfig)).rejects.toMatchObject({
       code: "ENOENT",
@@ -498,7 +498,7 @@ describe("MSIX Claude Desktop uninstall", () => {
     const { home, env, appDataConfig, container, privateConfig } =
       await windowsProfile();
     await mkdir(container, { recursive: true });
-    await writeJson(appDataConfig, { mcpServers: { rea: reaEntry } });
+    await writeJson(appDataConfig, { mcpServers: { reverseport: reaEntry } });
 
     const result = await runUninstall(
       false,
@@ -516,14 +516,14 @@ describe("MSIX Claude Desktop uninstall", () => {
       }),
     );
     expect(await readJson(appDataConfig)).toEqual({
-      mcpServers: { rea: reaEntry },
+      mcpServers: { reverseport: reaEntry },
     });
   });
 
   it("retains an unrelated rea-named entry when the package view is unknown", async () => {
     const { home, env, appDataConfig, container } = await windowsProfile();
     await mkdir(container, { recursive: true });
-    const unrelated = { mcpServers: { rea: { command: "unrelated-server" } } };
+    const unrelated = { mcpServers: { reverseport: { command: "unrelated-server" } } };
     await writeJson(appDataConfig, unrelated);
     const result = await runUninstall(
       false,
@@ -570,9 +570,9 @@ describe("MSIX Claude Desktop uninstall", () => {
     const { home, env, appDataConfig, privateConfig } = await windowsProfile();
     await writeJson(privateConfig, {
       preferences: {},
-      mcpServers: { other: { command: "other" }, rea: reaEntry },
+      mcpServers: { other: { command: "other" }, reverseport: reaEntry },
     });
-    await writeJson(appDataConfig, { mcpServers: { rea: reaEntry } });
+    await writeJson(appDataConfig, { mcpServers: { reverseport: reaEntry } });
 
     const result = await runUninstall(
       false,
