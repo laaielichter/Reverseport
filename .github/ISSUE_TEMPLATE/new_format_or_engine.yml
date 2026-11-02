@@ -1,0 +1,67 @@
+name: New format, engine or game library
+description: Ask ReversePort to recognise or read a file format, game engine or library it does not know yet
+title: "[Format] "
+labels:
+  - enhancement
+  - format
+  - triage
+body:
+  - type: markdown
+    attributes:
+      value: |
+        New formats, engines and game libraries are the easiest pull requests to make yourself:
+        a detector, a fixture and a test. Say if you would like to try, and we will point you to the files.
+
+  - type: checkboxes
+    id: allowed
+    attributes:
+      label: Before submitting
+      options:
+        - label: I own the files I describe here, or I am allowed to analyse them.
+          required: true
+        - label: This is not about decrypting, cracking or bypassing DRM, anti-cheat or licence checks.
+          required: true
+        - label: I searched the open and closed issues for the same format or engine.
+          required: true
+
+  - type: input
+    id: name
+    attributes:
+      label: Format, engine or library
+      description: Its name, and the version if it matters.
+      placeholder: "FMOD sound bank (.fsb), Defold 1.9 build, Bevy 0.15 game, ..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: how-to-recognise
+    attributes:
+      label: How to recognise it
+      description: File names or extensions, magic bytes, a package name in package.json, Cargo.toml or similar, a public spec.
+      placeholder: |
+        Starts with the bytes "FSB5". Files end in .fsb. Spec: https://...
+    validations:
+      required: true
+
+  - type: textarea
+    id: example
+    attributes:
+      label: An example you may share
+      description: A link to a small public sample, an open-source game that uses it, or how to make one yourself. Do not attach files you may not share.
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What ReversePort should report
+      description: For example the engine and its version in re_scan, or the file list in re_archive.
+
+  - type: dropdown
+    id: contribute
+    attributes:
+      label: Would you like to build it?
+      options:
+        - Yes, I would like to make the pull request
+        - Maybe, with some help
+        - No, I am only asking
+    validations:
+      required: true

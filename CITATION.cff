@@ -1,0 +1,23 @@
+cff-version: 1.2.0
+message: "If you use ReversePort in research or teaching, please cite it like this."
+type: software
+title: "ReversePort"
+abstract: >-
+  Reverse engineering and porting toolkit for AI coding agents: an MCP server, CLI, skills and Claude Code plugin
+  that read Godot packs, Unity IL2CPP, .NET and native binaries, compare builds, keep proof cases, and port games
+  between Godot, Unity, Unreal, three.js and languages with parity checks.
+authors:
+  - name: "ReversePort contributors"
+version: 1.12.0 # x-release-please-version
+license: MIT
+repository-code: "https://github.com/laaielichter/reverseport"
+url: "https://laaielichter.github.io/Reverseport/"
+keywords:
+  - reverse engineering
+  - porting
+  - model context protocol
+  - AI agents
+  - Godot
+  - Unity
+  - IL2CPP
+  - decompiler

@@ -3,18 +3,30 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ReversePort: reverse engineer anything, port it anywhere</title>
-<meta name="description" content="Open-source MCP server and CLI that lets your coding agent take apart apps, games, binaries and websites, and port them between Godot, Unity, Unreal, three.js and languages. Runs locally.">
+<title>ReversePort: reverse engineer and port games and apps with your AI agent</title>
+<meta name="description" content="Open-source MCP server, CLI and Claude Code plugin. Your coding agent reads Godot packs, Unity IL2CPP, .NET and native binaries, compares builds, keeps proof, and ports games between Godot, Unity, Unreal and three.js with parity checks. Runs locally.">
+<meta name="keywords" content="reverse engineering, game porting, MCP server, Claude Code plugin, Godot pck, Unity IL2CPP, Ghidra, IDA Pro, decompiler, build diff, Godot to Unity, Godot 3 to 4, three.js, Unreal, AI agents">
+<meta name="theme-color" content="#1e4f91">
 <link rel="canonical" href="https://laaielichter.github.io/Reverseport/">
 <meta property="og:type" content="website">
-<meta property="og:title" content="ReversePort">
-<meta property="og:description" content="Reverse engineer anything. Port it anywhere. An MCP server and CLI for coding agents. Local, MIT.">
+<meta property="og:site_name" content="ReversePort">
+<meta property="og:locale" content="en_US">
+<meta property="og:title" content="ReversePort: reverse engineer anything, port it anywhere">
+<meta property="og:description" content="Godot packs, Unity IL2CPP, build diffs, proof cases and verified engine ports for any coding agent. Local and MIT.">
 <meta property="og:url" content="https://laaielichter.github.io/Reverseport/">
 <meta property="og:image" content="https://laaielichter.github.io/Reverseport/og.png">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:width" content="1280">
+<meta property="og:image:height" content="640">
+<meta property="og:image:alt" content="ReversePort: reverse engineer anything, port it anywhere">
 <meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="ReversePort: reverse engineer anything, port it anywhere">
+<meta name="twitter:description" content="Godot packs, Unity IL2CPP, build diffs, proof cases and verified engine ports for any coding agent. Local and MIT.">
+<meta name="twitter:image" content="https://laaielichter.github.io/Reverseport/og.png">
+<meta name="twitter:image:alt" content="ReversePort: reverse engineer anything, port it anywhere">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <script type="application/ld+json">
-{"@context":"https://schema.org","@type":"SoftwareApplication","name":"ReversePort","applicationCategory":"DeveloperApplication","operatingSystem":"macOS, Linux, Windows","description":"Open-source MCP server and CLI that lets coding agents reverse engineer apps, games, binaries and websites and port them between Godot, Unity, Unreal, three.js and languages.","url":"https://laaielichter.github.io/Reverseport/","downloadUrl":"https://www.npmjs.com/package/reverseport","codeRepository":"https://github.com/laaielichter/reverseport","license":"https://opensource.org/licenses/MIT","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"}}
+{"@context":"https://schema.org","@type":"SoftwareApplication","name":"ReversePort","alternateName":"reverseport","applicationCategory":"DeveloperApplication","applicationSubCategory":"Reverse engineering and game porting","operatingSystem":"macOS, Linux, Windows","description":"Open-source MCP server, CLI and Claude Code plugin that lets coding agents reverse engineer apps, games, binaries and websites — Godot packs, Unity IL2CPP, .NET and native code — compare builds, keep proof for every claim, and port games between Godot, Unity, Unreal, three.js and languages with parity checks.","keywords":"reverse engineering, game porting, MCP server, Claude Code plugin, Godot, Unity IL2CPP, Ghidra, IDA Pro, decompiler, build diff","featureList":["Engine and version detection for projects and exported games","Godot .pck extraction and decoding back to an editable project","Unity IL2CPP metadata to a C# skeleton","Build comparison down to .NET types and methods","Proof cases with evidence, claims, unknowns and tests","Clean-room rebuild specs from public sources","Verified ports between Godot, Unity, Unreal and three.js","Native decompilation through your own Ghidra, Hopper or IDA"],"softwareRequirements":"Node.js 22.23.4 or newer","isAccessibleForFree":true,"url":"https://laaielichter.github.io/Reverseport/","downloadUrl":"https://www.npmjs.com/package/reverseport","installUrl":"https://www.npmjs.com/package/reverseport","codeRepository":"https://github.com/laaielichter/reverseport","sameAs":["https://github.com/laaielichter/reverseport","https://www.npmjs.com/package/reverseport"],"author":{"@type":"Person","name":"laaielichter","url":"https://github.com/laaielichter"},"license":"https://opensource.org/licenses/MIT","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"}}
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -94,7 +106,7 @@ h1 .second { color: var(--cyan); }
 }
 .install button:hover { background: var(--cyan); }
 .after-install { font-size: 0.95rem; color: var(--muted); margin: 14px 0 0; max-width: 30em; }
-.links { display: flex; gap: 22px; margin-top: 28px; font-weight: 600; }
+.links { display: flex; flex-wrap: wrap; gap: 10px 22px; margin-top: 28px; font-weight: 600; }
 
 /* Terminal (the one loud element) */
 .term {
@@ -186,6 +198,14 @@ h2 { font-size: clamp(1.8rem, 3.2vw, 2.5rem); line-height: 1.08; letter-spacing:
 .cards p q { color: var(--ink); quotes: "“" "”"; }
 .note { color: var(--muted); font-size: 0.97rem; max-width: 44rem; margin: 28px 0 0; }
 .note code { color: var(--ink); }
+/* What's new: two releases side by side */
+.news { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 48px; }
+.news h3 { font-size: 1.15rem; margin: 0 0 4px; }
+.news .tag { font: 500 0.85rem var(--mono); color: var(--muted); margin: 0 0 14px; }
+.news ul { margin: 0; padding-left: 1.1em; }
+.news li { margin: 0 0 10px; color: var(--muted); }
+.news li strong { color: var(--ink); font-weight: 600; }
+.news code { color: var(--ink); }
 /* Start */
 .start ol { margin: 0; padding: 0; list-style: none; counter-reset: s; max-width: 44rem; }
 .start li { counter-increment: s; display: grid; grid-template-columns: 2.2rem minmax(0, 1fr); gap: 10px; padding: 0 0 26px; }
@@ -206,7 +226,7 @@ body.demo-only .demo-stage .term { border-radius: 0; box-shadow: none; font-size
 body.demo-only .demo-stage .term-body { min-height: 0; height: 676px; }
 
 @media (max-width: 900px) {
-  .hero, .split, .honest, .bytes-grid { grid-template-columns: minmax(0, 1fr); gap: 36px; }
+  .hero, .split, .honest, .news, .bytes-grid { grid-template-columns: minmax(0, 1fr); gap: 36px; }
   .hx { grid-template-columns: 3.4em repeat(8, minmax(0, 1fr)); font-size: 12px; }
   .hx .hx-mid { display: block; }
   .hero { padding-top: 28px; padding-bottom: 64px; }
@@ -234,6 +254,7 @@ body.demo-only .demo-stage .term-body { min-height: 0; height: 676px; }
     ReversePort
   </a>
   <nav aria-label="Main">
+    <a class="hide-sm" href="#new">What's new</a>
     <a class="hide-sm" href="#ask">What it does</a>
     <a class="hide-sm" href="#routes">Ports</a>
     <a class="hide-sm" href="#skills">Skills</a>
@@ -246,15 +267,17 @@ body.demo-only .demo-stage .term-body { min-height: 0; height: 676px; }
   <div class="wrap hero">
     <div>
       <h1><span>Reverse engineer anything.</span> <span class="second">Port it anywhere.</span></h1>
-      <p class="lede">An MCP server and CLI that lets your coding agent take apart apps, games, binaries and websites, then rebuild them or port them to Godot, Unity, Unreal, three.js or another language. It runs on your machine and only reads the target.</p>
+      <p class="lede">An MCP server, CLI and Claude Code plugin that lets your coding agent take apart apps, games, binaries and websites — Godot packs, Unity IL2CPP, .NET and native code — then rebuild them or port them to Godot, Unity, Unreal, three.js or another language. It runs on your machine and only reads the target.</p>
       <div class="install">
         <code id="cmd">npx reverseport setup</code>
         <button type="button" id="copy" aria-live="polite">Copy</button>
       </div>
-      <p class="after-install">Needs Node.js 22.19 or newer. Setup connects Claude Code, Codex, Cursor, Gemini CLI, Copilot, OpenCode and more, and backs up your config first.</p>
+      <p class="after-install">Needs Node.js 22.23.4 or newer (24.22.1+ on Node 24). Setup connects Claude Code, Codex, Cursor, Gemini CLI, Copilot, OpenCode and more, and backs up your config first.</p>
       <div class="links">
         <a href="https://github.com/laaielichter/reverseport">Source on GitHub</a>
         <a href="https://www.npmjs.com/package/reverseport">npm package</a>
+        <a href="https://registry.modelcontextprotocol.io/v0/servers?search=io.github.laaielichter/reverseport">MCP Registry</a>
+        <a href="https://github.com/laaielichter/reverseport/discussions">Discussions</a>
       </div>
     </div>
     <figure style="margin:0">
@@ -266,6 +289,37 @@ body.demo-only .demo-stage .term-body { min-height: 0; height: 676px; }
     </figure>
   </div>
 
+  <section id="new">
+    <div class="wrap">
+      <h2>What's new</h2>
+      <p class="intro">ReversePort ships often. These are the last two releases; every change is in the <a href="https://github.com/laaielichter/reverseport/blob/main/CHANGELOG.md">changelog</a>.</p>
+      <div class="news">
+        <div>
+          <h3>1.12</h3>
+          <p class="tag">more formats, sturdier results</p>
+          <ul>
+            <li><strong>More formats recognised:</strong> Doom WAD, Quake and Half-Life WAD2/WAD3, XNB (XNA/MonoGame) and Valve VPK, next to Quake PAK.</li>
+            <li><strong>More game libraries:</strong> melonJS, Kontra, Matter.js, Rapier, cannon-es, Planck.js, Howler.js, Tone.js and React Three Fiber.</li>
+            <li><strong>Monorepos:</strong> <code>pnpm-workspace.yaml</code> globs, <code>#imports</code> and Deno import maps.</li>
+            <li><strong>Big results always fit</strong> the output budget, also with emoji, file-name keys and very deep results.</li>
+            <li><strong>A <a href="https://github.com/laaielichter/reverseport/blob/main/docs/walkthrough-godot-to-threejs.md">Godot to three.js walkthrough</a></strong> where every command was run and the result builds.</li>
+          </ul>
+        </div>
+        <div>
+          <h3>1.11</h3>
+          <p class="tag">a new engine and a new protocol</p>
+          <ul>
+            <li><strong>Deep analysis on REA 6.8,</strong> the newest version of the engine inside ReversePort.</li>
+            <li><strong>No more timeouts.</strong> On MCP 2026-07-28, long calls (a cold Ghidra import, a big port plan) run as tasks with progress. Older clients keep working.</li>
+            <li><strong>Fewer calls, fewer tokens:</strong> <code>run_batch</code> runs up to 20 calls at once, and big results are saved to disk with a link.</li>
+            <li><strong>Build diffs for .NET:</strong> <code>re_compare</code> shows which types and methods changed, and the next step.</li>
+            <li><strong>Plugin settings</strong> in Claude Code instead of environment variables.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
   <section id="ask">
     <div class="wrap split">
       <div>
@@ -274,8 +328,9 @@ body.demo-only .demo-stage .term-body { min-height: 0; height: 676px; }
       </div>
       <ul class="asks">
         <li><q>What is this game made with, and how is it built?</q><div><code>re_scan</code> finds the engine and version, languages, entry points and how it starts, also for exported builds.</div></li>
-        <li><q>What changed between build 43 and 44?</q><div><code>re_compare</code> diffs folders, packs and binaries, biggest changes first.</div></li>
-        <li><q>Decompile the function that saves settings and explain it.</q><div>Opens the binary through Ghidra, Hopper or IDA, finds the function and shows pseudocode with references.</div></li>
+        <li><q>What changed between build 43 and 44?</q><div><code>re_compare</code> diffs folders, packs and .NET assemblies down to types and methods, biggest changes first.</div></li>
+        <li><q>A Unity IL2CPP game without its C# source.</q><div><code>re_il2cpp</code> reads <code>global-metadata.dat</code>: classes, methods and strings, plus a C# skeleton.</div></li>
+        <li><q>Decompile the function that saves settings and explain it.</q><div>Opens the binary through the Ghidra, Hopper or IDA you have installed, finds the function and shows pseudocode with references.</div></li>
         <li><q>What is this game made with? I don't have the files.</q><div><code>re_lookup</code> checks public sources: engine with a confidence level, stack, file layout and open-source remakes.</div></li>
         <li><q>Rebuild the movement of this game in Godot.</q><div><code>re_blueprint</code> writes a clean-room spec: systems, values to measure on the original, a parity table and a project skeleton.</div></li>
         <li><q>How do the packages in this monorepo depend on each other?</q><div><code>re_graph</code> resolves pnpm, Turborepo and Nx workspace names and tsconfig paths, and shows which package uses which.</div></li>
@@ -371,7 +426,7 @@ reverseport case check &lt;caseId&gt;</code></pre>
     <div class="wrap split">
       <div>
         <h2>Works with the agent you already use</h2>
-        <p class="intro">Any vendor and any model size. About 45 tools are listed by default instead of almost 200, so small models stay focused. The rest are one call away, and results over 256 KB are saved to a file instead of flooding the context.</p>
+        <p class="intro">Any vendor and any model size. About 57 tools are listed by default instead of more than 200, so small models stay focused. The rest are one call away, <code>run_batch</code> does several steps in one call, long work runs as a task instead of timing out, and results over 256 KB are saved to a file instead of flooding the context.</p>
       </div>
       <div>
         <ul class="agents" aria-label="Agents it works with">
@@ -416,8 +471,8 @@ reverseport case check &lt;caseId&gt;</code></pre>
           <ul>
             <li><strong>Run locally.</strong> Nothing is uploaded to an analysis service and there is no extra API bill.</li>
             <li><strong>Only read the target.</strong> Output always goes to a new folder.</li>
-            <li><strong>Work right after cloning</strong> for scanning, packs, lookup, blueprints and porting. No build step.</li>
-            <li><strong>Drive Ghidra, Hopper, IDA and JADX</strong> when you have them installed, and show the evidence behind each conclusion.</li>
+            <li><strong>Work right after cloning</strong> for scanning, packs, IL2CPP metadata, build diffs, lookup, blueprints and porting. No build step.</li>
+            <li><strong>Drive Ghidra, Hopper, IDA and JADX</strong> when you have them installed, and show the evidence behind each conclusion. It finds them but never installs them.</li>
           </ul>
         </div>
         <div>
@@ -445,7 +500,22 @@ reverseport case check &lt;caseId&gt;</code></pre>
       <p>Using Claude Code? You can install the plugin instead, which adds the porting skills and the <code>port-architect</code> agent:</p>
       <pre style="max-width:44rem"><code>/plugin marketplace add laaielichter/reverseport
 /plugin install reverseport@reverseport</code></pre>
+      <p>The plugin asks for its settings once: the deep-analysis engine on or off, the tool list size, a workspace folder and your Ghidra folder.</p>
       <p>The same marketplace has two sister plugins: <a href="https://github.com/laaielichter/stashpad">Stashpad</a>, memory for agents that you can read and review (<code>/plugin install stashpad@reverseport</code>), and <a href="https://github.com/laaielichter/agentdisk">agentdisk</a>, a report of what agents left on your disk with a cleanup you can undo (<code>/plugin install agentdisk@reverseport</code>, needs the <code>agentdisk</code> binary).</p>
+    </div>
+  </section>
+  <section id="contribute">
+    <div class="wrap split">
+      <div>
+        <h2>Help build it</h2>
+        <p class="intro">ReversePort is open source. Its own tools live in <code>port/</code>, plain Node with no dependencies. New formats, engines and game libraries are the easiest first pull request: a detector, a fixture and a test.</p>
+      </div>
+      <ul class="asks">
+        <li><q>I want to add a format or an engine.</q><div>Pick a <a href="https://github.com/laaielichter/reverseport/labels/good%20first%20issue">good first issue</a>. Each one names the files to touch and says when it is done.</div></li>
+        <li><q>I have a question or an idea.</q><div>Ask in <a href="https://github.com/laaielichter/reverseport/discussions">Discussions</a>.</div></li>
+        <li><q>A port went wrong.</q><div>Open an <a href="https://github.com/laaielichter/reverseport/issues/new/choose">issue</a> with the command and its JSON error; every error names the next step.</div></li>
+        <li><q>How do I run the tests?</q><div><code>npm run test:port</code> needs no install. The rest is in <a href="https://github.com/laaielichter/reverseport/blob/main/CONTRIBUTING.md">CONTRIBUTING.md</a>.</div></li>
+      </ul>
     </div>
   </section>
 </main>
@@ -453,7 +523,7 @@ reverseport case check &lt;caseId&gt;</code></pre>
 <footer>
   <div class="wrap">
     <p>ReversePort is free and open source under the MIT license. The deep-analysis engine is based on <a href="https://github.com/morluto/rea">REA: Reverse Engineer Anything</a>. Proof cases come from <a href="https://github.com/Devaretanmay/digfox">Digfox</a>, the hooks follow <a href="https://github.com/juan-viox/rea-jev">rea-jev</a> and the challenge self-check uses <a href="https://github.com/pablodiazjorge/rea-lab">rea-lab</a>, all MIT.</p>
-    <p><a href="https://github.com/laaielichter/reverseport">GitHub</a>&nbsp;&nbsp; <a href="https://www.npmjs.com/package/reverseport">npm</a>&nbsp;&nbsp; <a href="https://github.com/laaielichter/reverseport/blob/main/CHANGELOG.md">Changelog</a>&nbsp;&nbsp; <a href="https://github.com/laaielichter/reverseport/blob/main/docs/README.nl.md">Nederlands</a></p>
+    <p><a href="https://github.com/laaielichter/reverseport">GitHub</a>&nbsp;&nbsp; <a href="https://www.npmjs.com/package/reverseport">npm</a>&nbsp;&nbsp; <a href="https://registry.modelcontextprotocol.io/v0/servers?search=io.github.laaielichter/reverseport">MCP Registry</a>&nbsp;&nbsp; <a href="https://github.com/laaielichter/reverseport/discussions">Discussions</a>&nbsp;&nbsp; <a href="https://github.com/laaielichter/reverseport/blob/main/CHANGELOG.md">Changelog</a>&nbsp;&nbsp; <a href="https://github.com/laaielichter/reverseport/blob/main/RESPONSIBLE-USE.md">Responsible use</a>&nbsp;&nbsp; <a href="https://github.com/laaielichter/reverseport/blob/main/docs/README.nl.md">Nederlands</a></p>
   </div>
 </footer>
 
