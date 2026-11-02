@@ -86,7 +86,20 @@ const okJson = (r, what) => { if (r.status !== 200 || r.json === undefined) thro
 // ------------------------------------------------------------------ helpers
 
 const norm = s => String(s ?? '').toLowerCase().normalize('NFKD').replace(/[̀-ͯ]/g, '').replace(/[™®©]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
-const stripHtml = s => String(s ?? '').replace(/<br\s*\/?>/gi, '\n').replace(/<\/(li|p|ul|h\d)>/gi, '\n').replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/[ \t]+/g, ' ').replace(/\n\s*\n+/g, '\n').trim();
+const ENTITIES = { nbsp: ' ', amp: '&', quot: '"', '#39': "'", lt: '<', gt: '>' };
+/** Text outside tags, one character at a time: a broken tag ("<scr<b>ipt>") can never glue back into a tag. */
+function outsideTags(html) {
+  let out = '', inTag = false;
+  for (const ch of html) {
+    if (ch === '<') inTag = true;
+    else if (ch === '>') inTag = false;
+    else if (!inTag) out += ch;
+  }
+  return out;
+}
+// Plain text from a page fragment: line breaks kept, tags out, then entities decoded in one pass, so "&amp;lt;"
+// stays the text "&lt;".
+export const stripHtml = s => outsideTags(String(s ?? '').replace(/<br\s*\/?>/gi, '\n').replace(/<\/(li|p|ul|h\d)>/gi, '\n')).replace(/&(nbsp|amp|quot|#39|lt|gt);/g, (m, e) => ENTITIES[e]).replace(/[ \t]+/g, ' ').replace(/\n\s*\n+/g, '\n').trim();
 const uniq = a => [...new Set(a.filter(Boolean))];
 const clip = (s, n) => (s && s.length > n ? `${s.slice(0, n - 1)}…` : s);
 
@@ -103,7 +116,7 @@ export function nameScore(asked, candidate) {
 
 /** Map an engine/framework name (any source) to a footprint key. */
 export function footprintFor(name) {
-  const n = norm(name).replace(/ /g, ' ');
+  const n = norm(name).replace(/\u00a0/g, ' ');
   if (!n) return null;
   const ids = { 'godot build': 'godot', 'unity build': 'unity', 'unreal build': 'unreal', 'gamemaker build': 'gamemaker', 'electron build': 'electron', fna: 'monogame', 'three js': 'web' };
   if (ids[n]) return ids[n];

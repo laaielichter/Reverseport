@@ -115,7 +115,7 @@ export function extractSymbols(text, language) {
       for (const m of all(/^\s*#\s*(?:include|import)\s*"([^"]+)"/gm, code)) dep(m[1], 'include');
       for (const m of all(/^\s*#\s*(?:include|import)\s*<([^>]+)>/gm, code)) dep(m[1], 'system');
       for (const m of all(/^\s*(?:template\s*<[^>]*>\s*)?(class|struct|union)\s+(?:[A-Z_][A-Z0-9_]*_API\s+|alignas\([^)]*\)\s+)?(\w+)(?:\s+final)?\s*(?::\s*([^{;]+))?\{/gm, code)) cls(m[2], m, { kind: m[1], ...(m[3] ? { extends: m[3].replace(/\b(public|private|protected|virtual)\b/g, '').split(',')[0].trim() } : {}) });
-      for (const m of all(/^[ \t]*(?:[\w:<>,*&~]+[ \t*&]+)+?([\w:~]+)\s*\(([^;{}()]*(?:\([^)]*\)[^;{}()]*)*)\)\s*(?:const\s*)?(?:override\s*)?(?:noexcept\s*)?(?:->\s*[\w:<>*&]+\s*)?\{/gm, code)) {
+      for (const m of all(/^[ \t]*(?:[\w:<>,~]+[ \t*&]+)+?([\w:~]+)\s*\(([^;{}()]*(?:\([^)]*\)[^;{}()]*)*)\)\s*(?:const\s*)?(?:override\s*)?(?:noexcept\s*)?(?:->\s*[\w:<>*&]+\s*)?\{/gm, code)) {
         const name = m[1].split('::').pop();
         if (KEYWORDS.has(name)) continue;
         fn(name, m, { ...(m[1].includes('::') ? { qualified: m[1] } : {}) });

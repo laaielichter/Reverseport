@@ -130,7 +130,7 @@ function convertProject(text, R) {
 function convertShader(text, R) {
   let out = text;
   for (const [a, b] of R.shaders) out = out.replace(new RegExp(`\\b${esc(a)}\\b`, 'g'), b);
-  return out.replace(/\bhint_albedo\b/g, 'source_color').replace(/\bhint_color\b/g, 'source_color').replace(/\bhint_white\b/g, 'hint_default_white').replace(/\bhint_black\b/g, 'hint_default_black').replace(/\bhint_normal\b/g, 'hint_normal');
+  return out.replace(/\bhint_albedo\b/g, 'source_color').replace(/\bhint_color\b/g, 'source_color').replace(/\bhint_white\b/g, 'hint_default_white').replace(/\bhint_black\b/g, 'hint_default_black'); // hint_normal keeps its name in Godot 4
 }
 
 function diffCount(a, b) {
