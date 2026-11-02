@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.13.0](https://github.com/laaielichter/Reverseport/compare/reverseport-1.12.0...reverseport-1.13.0) (2026-11-02)
+
+
+### Documentation
+
+* refresh README, site and listing metadata for 1.12 ([#83](https://github.com/laaielichter/Reverseport/issues/83)) ([5486b08](https://github.com/laaielichter/Reverseport/commit/5486b08e340928c80c2c22f34d695a85ffa14695))
+
 ## [1.12.0](https://github.com/laaielichter/Reverseport/compare/reverseport-1.11.0...reverseport-1.12.0) (2026-11-02)
 
 
