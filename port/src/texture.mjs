@@ -14,12 +14,13 @@ export const TEXTURE_FORMATS = {
   51: 'ASTC_RGB_8x8', 52: 'ASTC_RGB_10x10', 53: 'ASTC_RGB_12x12', 54: 'ASTC_RGBA_4x4', 55: 'ASTC_RGBA_5x5', 56: 'ASTC_RGBA_6x6',
   57: 'ASTC_RGBA_8x8', 58: 'ASTC_RGBA_10x10', 59: 'ASTC_RGBA_12x12', 62: 'RG16', 63: 'R8', 64: 'ETC_RGB4Crunched', 65: 'ETC2_RGBA8Crunched',
   66: 'ASTC_HDR_4x4', 67: 'ASTC_HDR_5x5', 68: 'ASTC_HDR_6x6', 69: 'ASTC_HDR_8x8', 70: 'ASTC_HDR_10x10', 71: 'ASTC_HDR_12x12', 72: 'RG32',
-  73: 'RGB48', 74: 'RGBA64',
+  73: 'RGB48', 74: 'RGBA64', 60: 'ETC_RGB4_3DS', 61: 'ETC_RGBA8_3DS', 75: 'R8_SIGNED', 76: 'RG16_SIGNED', 77: 'RGB24_SIGNED',
+  78: 'RGBA32_SIGNED', 79: 'R16_SIGNED', 80: 'RG32_SIGNED', 81: 'RGB48_SIGNED', 82: 'RGBA64_SIGNED',
 };
 
-const RAW_BPP = { 1: 1, 2: 2, 3: 3, 4: 4, 5: 4, 6: 16, 7: 2, 8: 3, 9: 2, 13: 2, 14: 4, 15: 2, 16: 4, 17: 8, 18: 4, 19: 8, 20: 16, 62: 2, 63: 1, 72: 4, 73: 6, 74: 8 };
-const BLOCK8 = new Set([10, 26, 34, 41, 42, 45, 46]);
-const BLOCK16 = new Set([11, 12, 24, 25, 27, 43, 44, 47]);
+const RAW_BPP = { 1: 1, 2: 2, 3: 3, 4: 4, 5: 4, 6: 16, 7: 2, 8: 3, 9: 2, 13: 2, 14: 4, 15: 2, 16: 4, 17: 8, 18: 4, 19: 8, 20: 16, 21: 2, 22: 4, 62: 2, 63: 1, 72: 4, 73: 6, 74: 8, 75: 1, 76: 2, 77: 3, 78: 4, 79: 2, 80: 4, 81: 6, 82: 8 };
+const BLOCK8 = new Set([10, 26, 34, 35, 41, 42, 45, 46, 60]);
+const BLOCK16 = new Set([11, 12, 24, 25, 27, 36, 43, 44, 47, 61]);
 const ASTC_DIM = id => {
   const n = id >= 66 ? id - 66 : id >= 54 ? id - 54 : id - 48;
   const d = [4, 5, 6, 8, 10, 12][n];
@@ -33,6 +34,8 @@ export function levelBytes(format, w, h) {
   if (BLOCK8.has(format)) return Math.ceil(w / 4) * Math.ceil(h / 4) * 8;
   if (BLOCK16.has(format)) return Math.ceil(w / 4) * Math.ceil(h / 4) * 16;
   if (isAstc(format)) { const d = ASTC_DIM(format); return Math.ceil(w / d) * Math.ceil(h / d) * 16; }
+  if (format === 32 || format === 33) return (Math.max(w, 8) * Math.max(h, 8)) / 2; // PVRTC 4 bpp
+  if (format === 30 || format === 31) return (Math.max(w, 16) * Math.max(h, 8)) / 4; // PVRTC 2 bpp
   return null;
 }
 

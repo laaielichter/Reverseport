@@ -10,17 +10,22 @@ const half = h => {
   return s * (1 + f / 1024) * 2 ** (e - 15);
 };
 
-// [size, read(buf, offset)] per format, for the three tables Unity used over time.
-const R = {
-  f32: [4, (b, o) => b.readFloatLE(o)], f16: [2, (b, o) => half(b.readUInt16LE(o))],
-  un8: [1, (b, o) => b[o] / 255], sn8: [1, (b, o) => Math.max(b.readInt8(o) / 127, -1)],
-  un16: [2, (b, o) => b.readUInt16LE(o) / 65535], sn16: [2, (b, o) => Math.max(b.readInt16LE(o) / 32767, -1)],
-  u8: [1, (b, o) => b[o]], s8: [1, (b, o) => b.readInt8(o)], u16: [2, (b, o) => b.readUInt16LE(o)], s16: [2, (b, o) => b.readInt16LE(o)],
-  u32: [4, (b, o) => b.readUInt32LE(o)], s32: [4, (b, o) => b.readInt32LE(o)],
-};
-const FORMATS_5 = [R.f32, R.f16, R.un8, R.u8, R.u32];
-const FORMATS_2017 = [R.f32, R.f16, R.un8, R.un8, R.sn8, R.un16, R.sn16, R.u8, R.s8, R.u16, R.s16, R.u32, R.s32];
-const FORMATS_2019 = [R.f32, R.f16, R.un8, R.sn8, R.un16, R.sn16, R.u8, R.s8, R.u16, R.s16, R.u32, R.s32];
+// [size, read(buf, offset)] per format, in the file's byte order, for the three tables Unity used over time.
+function readers(le) {
+  const u16 = (b, o) => (le ? b.readUInt16LE(o) : b.readUInt16BE(o)), i16 = (b, o) => (le ? b.readInt16LE(o) : b.readInt16BE(o));
+  const R = {
+    f32: [4, (b, o) => (le ? b.readFloatLE(o) : b.readFloatBE(o))], f16: [2, (b, o) => half(u16(b, o))],
+    un8: [1, (b, o) => b[o] / 255], sn8: [1, (b, o) => Math.max(b.readInt8(o) / 127, -1)],
+    un16: [2, (b, o) => u16(b, o) / 65535], sn16: [2, (b, o) => Math.max(i16(b, o) / 32767, -1)],
+    u8: [1, (b, o) => b[o]], s8: [1, (b, o) => b.readInt8(o)], u16: [2, u16], s16: [2, i16],
+    u32: [4, (b, o) => (le ? b.readUInt32LE(o) : b.readUInt32BE(o))], s32: [4, (b, o) => (le ? b.readInt32LE(o) : b.readInt32BE(o))],
+  };
+  return {
+    v5: [R.f32, R.f16, R.un8, R.u8, R.u32],
+    v2017: [R.f32, R.f16, R.un8, R.un8, R.sn8, R.un16, R.sn16, R.u8, R.s8, R.u16, R.s16, R.u32, R.s32],
+    v2019: [R.f32, R.f16, R.un8, R.sn8, R.un16, R.sn16, R.u8, R.s8, R.u16, R.s16, R.u32, R.s32],
+  };
+}
 
 function unpackInts(pv, start = 0, count = pv.m_NumItems) {
   const bitSize = pv.m_BitSize, data = pv.m_Data, out = new Array(count);
@@ -50,20 +55,26 @@ const groups = (flat, n) => { const out = []; for (let i = 0; i + n <= flat.leng
  * Vertex attributes and index list of a Mesh value. `external(path, offset, size)` returns the bytes of
  * m_StreamData (vertex data kept in a .resS). Returns { positions, uvs, normals, indices, use16, subMeshes } or null.
  */
-export async function meshGeometry(m, unity, external) {
+export async function meshGeometry(m, unity, external, { le = true } = {}) {
   const major = unity[0];
+  const tables = readers(le);
   const out = { positions: null, uvs: null, normals: null, indices: null, subMeshes: m.m_SubMeshes ?? [] };
   // Index buffer width.
   out.use16 = m.m_Use16BitIndices != null ? !!m.m_Use16BitIndices : m.m_IndexFormat != null ? m.m_IndexFormat === 0 : true;
   const ib = Buffer.isBuffer(m.m_IndexBuffer) ? m.m_IndexBuffer : Buffer.alloc(0);
-  if (ib.length) { const w = out.use16 ? 2 : 4; out.indices = []; for (let o = 0; o + w <= ib.length; o += w) out.indices.push(w === 2 ? ib.readUInt16LE(o) : ib.readUInt32LE(o)); }
+  if (ib.length) {
+    const w = out.use16 ? 2 : 4; out.indices = [];
+    for (let o = 0; o + w <= ib.length; o += w) out.indices.push(w === 2 ? (le ? ib.readUInt16LE(o) : ib.readUInt16BE(o)) : (le ? ib.readUInt32LE(o) : ib.readUInt32BE(o)));
+  }
   // Vertex streams.
   const vd = m.m_VertexData;
   let data = Buffer.isBuffer(vd?.m_DataSize) ? vd.m_DataSize : Buffer.alloc(0);
   if (vd?.m_VertexCount && !data.length && m.m_StreamData?.size && m.m_StreamData?.path) data = await external(m.m_StreamData.path, Number(m.m_StreamData.offset), Number(m.m_StreamData.size));
   if (vd?.m_VertexCount && data.length && Array.isArray(vd.m_Channels)) {
     const count = vd.m_VertexCount, channels = vd.m_Channels;
-    const table = major < 2017 ? FORMATS_5 : major < 2019 ? FORMATS_2017 : FORMATS_2019;
+    // 14 channels (UV0 = 4) from 2018 on, 8 before (UV0 = 3); the channel count decides when the version is unknown.
+    const modern = channels.length >= 14 || (channels.length !== 8 && major >= 2018);
+    const table = major < 2017 ? (modern ? tables.v2019 : tables.v5) : major < 2019 ? tables.v2017 : tables.v2019;
     const fmt = c => table[c.format] ?? null;
     const streams = [];
     let offset = 0;
@@ -89,7 +100,7 @@ export async function meshGeometry(m, unity, external) {
     };
     out.positions = read(0, 3);
     out.normals = read(1, 3);
-    out.uvs = read(major >= 2018 ? 4 : 3, 2);
+    out.uvs = read(modern ? 4 : 3, 2);
   }
   // Compressed mesh (mesh compression on in the import settings).
   const cm = m.m_CompressedMesh;
@@ -120,8 +131,8 @@ export async function meshGeometry(m, unity, external) {
 const num = v => (Number.isFinite(v) ? String(Number(v.toPrecision(9))) : '0');
 
 /** Mesh value → OBJ text, or null when the mesh has no readable vertices. */
-export async function meshToObj(m, unity, external) {
-  const g = await meshGeometry(m, unity, external);
+export async function meshToObj(m, unity, external, opts) {
+  const g = await meshGeometry(m, unity, external, opts);
   if (!g) return null;
   const name = String(m.m_Name ?? 'mesh').replace(/\s+/g, '_') || 'mesh';
   const lines = [`g ${name}`];

@@ -15,7 +15,7 @@ Use the port-project skill for the loop; this skill holds the Unity-specific jud
   GUID (missing script, pink material) is a component the port would silently lose; fix it in Unity before planning.
 - Only a build, no project? `re_archive` on `<Game>_Data/data.unity3d`, `sharedassets*.assets` or an asset bundle
   lists every object, the scene list and the C# scripts each MonoBehaviour uses; `action:"extract"` writes textures as
-  PNG, meshes as OBJ, audio and TextAssets. Code still comes from `re_binary` (Mono) or `re_il2cpp` (IL2CPP).
+  PNG, audio and TextAssets, and meshes as OBJ where the file keeps type trees (bundles do; player builds strip them). Code still comes from `re_binary` (Mono) or `re_il2cpp` (IL2CPP).
 - GDScript or C#? Large, idiomatic C# codebases port faster to **godot-csharp** (only engine API calls change);
   smaller or designer-facing projects read better as GDScript (`to:"godot"`).
 

@@ -85,7 +85,7 @@ Alles staat in de [changelog](https://github.com/laaielichter/reverseport/blob/m
   bij Unity IL2CPP en RPG Maker.
 - **Unity-builds en asset bundles** — `re_archive` op `data.unity3d`, `sharedassets0.assets` of een bundle (LZ4/LZMA)
   toont elk object met klasse en naam, de scènes en welke C#-scripts de objecten gebruiken; `action:"extract"` schrijft
-  textures als PNG, meshes als OBJ, audio (FSB5), TextAssets en objecten als JSON. Zonder Unity, zonder extra software.
+  textures als PNG, audio (FSB5) en TextAssets; meshes als OBJ en objecten als JSON als het bestand typetrees heeft (bundels wel, player-builds niet). Zonder Unity, zonder extra software.
 - **Monorepo's en websites** — `re_scan` en `re_graph` begrijpen JS/TS-monorepo's (pnpm, Turborepo, Nx, tsconfig
   paths, `#imports`, Deno-import-maps) en Rust-workspaces. `capture_web_screenshot` met een `selector` geeft van één element op een site een
   bijgesneden afbeelding, de HTML en de CSS.
