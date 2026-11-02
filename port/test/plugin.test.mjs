@@ -4,7 +4,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import os from 'node:os';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const read = f => fs.readFile(path.join(REPO, f), 'utf8');
@@ -88,7 +88,7 @@ test('Claude plugin directory tree: only what the plugin loads, within the direc
     const pkg = JSON.parse(await fs.readFile(path.join(out, 'package.json'), 'utf8'));
     assert.deepEqual([pkg.name, pkg.version, pkg.private], ['reverseport', VERSION, true]);
     for (const k of ['dependencies', 'devDependencies', 'scripts', 'bin']) assert.equal(k in pkg, false, `package.json: no ${k}`);
-    const version = spawnSync(process.execPath, ['--input-type=module', '-e', `const m = await import(${JSON.stringify(path.join(out, 'port/src/tools.mjs'))}); console.log(m.VERSION, m.tools.length)`], { encoding: 'utf8' });
+    const version = spawnSync(process.execPath, ['--input-type=module', '-e', `const m = await import(${JSON.stringify(pathToFileURL(path.join(out, 'port/src/tools.mjs')).href)}); console.log(m.VERSION, m.tools.length)`], { encoding: 'utf8' });
     assert.equal(version.stdout.trim(), `${VERSION} ${tools.length}`, version.stderr);
     // The README points into the full repository, so its links and images still work in the listing.
     const readme = await fs.readFile(path.join(out, 'README.md'), 'utf8');
