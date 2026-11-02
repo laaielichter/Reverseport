@@ -148,6 +148,7 @@
     "metadata:generate": "node scripts/run-exclusive.mjs artifacts node scripts/generate-package-metadata.mjs",
     "metadata:check": "node scripts/generate-package-metadata.mjs --check",
     "mcp-registry:check": "node scripts/verify-mcp-registry-metadata.mjs",
+    "directory:build": "node scripts/build-claude-directory.mjs",
     "mcp-catalog:generate": "node scripts/check-dependency-install.mjs && node scripts/run-exclusive.mjs artifacts node scripts/run-turbo.mjs run artifacts:mcp-catalog",
     "mcp-catalog:check": "node scripts/check-dependency-install.mjs && node scripts/run-exclusive.mjs artifacts node scripts/run-turbo.mjs run mcp-catalog:check:built",
     "prebuild": "npm run deps:check",

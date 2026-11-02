@@ -1,0 +1,84 @@
+name: Claude plugin directory branch
+
+# Keeps the branch claude-directory in step with each release. It holds only the files the Claude Code plugin loads,
+# so the Claude plugin directory (claude.ai/directory/manage) can validate and scan it; the whole repository is more
+# than its validation reads in time. The directory follows this branch. See docs/releasing.md.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".release-please-manifest.json"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: claude-directory
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Update claude-directory
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+
+      - name: Build the plugin tree
+        run: npm run directory:build -- --out "$RUNNER_TEMP/claude-directory" --ref main
+
+      - name: Check that the plugin starts from the tree alone
+        env:
+          TREE: ${{ runner.temp }}/claude-directory
+          REVERSEPORT_HOME: ${{ runner.temp }}/reverseport-home
+        run: |
+          export CLAUDE_PLUGIN_ROOT="$TREE"
+          printf '%s\n' \
+            '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"directory-check","version":"1"}}}' \
+            '{"jsonrpc":"2.0","method":"notifications/initialized"}' \
+            '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' \
+            | timeout 30 node "$TREE/port/plugin/mcp-launch.mjs" > "$RUNNER_TEMP/mcp.out" || true
+          node -e '
+            const lines = require("fs").readFileSync(process.argv[1], "utf8").trim().split("\n");
+            const list = lines.map((l) => { try { return JSON.parse(l); } catch { return {}; } }).find((m) => m.id === 2);
+            const count = list?.result?.tools?.length ?? 0;
+            if (count < 30) { console.error(`tools/list returned ${count} tools`); process.exit(1); }
+            console.log(`MCP server answered with ${count} tools.`);
+          ' "$RUNNER_TEMP/mcp.out"
+          echo '{"hook_event_name":"SessionStart"}' | node "$TREE/port/hooks/guard.mjs" session > /dev/null
+
+      - name: Commit the tree to claude-directory
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPOSITORY: ${{ github.repository }}
+          SOURCE_SHA: ${{ github.sha }}
+        working-directory: ${{ runner.temp }}/claude-directory
+        run: |
+          version="$(node -p 'require("./package.json").version')"
+          remote="https://x-access-token:${GH_TOKEN}@github.com/${REPOSITORY}.git"
+          git init -q -b claude-directory
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git fetch -q "$remote" claude-directory; then
+            git reset -q --soft FETCH_HEAD
+          fi
+          git add -A
+          if git diff --cached --quiet; then
+            echo "claude-directory already holds ReversePort ${version}."
+            exit 0
+          fi
+          git commit -q -m "ReversePort ${version} for the Claude plugin directory" \
+            -m "Built from ${SOURCE_SHA} by scripts/build-claude-directory.mjs."
+          git push -q "$remote" HEAD:claude-directory
+          echo "claude-directory now holds ReversePort ${version}."
