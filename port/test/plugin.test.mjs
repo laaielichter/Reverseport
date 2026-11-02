@@ -4,7 +4,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import os from 'node:os';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const read = f => fs.readFile(path.join(REPO, f), 'utf8');
@@ -70,6 +70,35 @@ test('Claude plugin directory: no .gitattributes, and the .cmd fixtures keep CRL
     const text = await read(f);
     assert.ok(text.includes('\r\n') && !/(?:^|[^\r])\n/.test(text), `${f}: keep CRLF line endings`);
   }
+});
+
+test('Claude plugin directory tree: only what the plugin loads, within the directory limits, and it runs', async () => {
+  const { buildClaudeDirectory, absoluteReadme } = await import('../../scripts/build-claude-directory.mjs');
+  const out = path.join(await fs.mkdtemp(path.join(os.tmpdir(), 'rp-directory-')), 'tree');
+  try {
+    const result = buildClaudeDirectory({ out, ref: 'main' });
+    assert.equal(result.version, VERSION);
+    assert.ok(result.files > 30 && result.files <= 512, `${result.files} files`);
+    const has = f => fs.access(path.join(out, f)).then(() => true, () => false);
+    for (const f of ['.claude-plugin/plugin.json', 'hooks/hooks.json', 'agents/port-architect.md', 'skills/port-project/SKILL.md', 'port/src/tools.mjs', 'port/plugin/mcp-launch.mjs', 'port/hooks/guard.mjs', 'README.md', 'LICENSE', 'package.json'])
+      assert.ok(await has(f), `tree has ${f}`);
+    for (const f of ['.claude-plugin/marketplace.json', '.gitattributes', 'port/test', 'src', 'package-lock.json', 'node_modules', 'docs'])
+      assert.equal(await has(f), false, `tree leaves out ${f}`);
+    // Nothing for Claude Code to install, and the engine still finds its version.
+    const pkg = JSON.parse(await fs.readFile(path.join(out, 'package.json'), 'utf8'));
+    assert.deepEqual([pkg.name, pkg.version, pkg.private], ['reverseport', VERSION, true]);
+    for (const k of ['dependencies', 'devDependencies', 'scripts', 'bin']) assert.equal(k in pkg, false, `package.json: no ${k}`);
+    const version = spawnSync(process.execPath, ['--input-type=module', '-e', `const m = await import(${JSON.stringify(pathToFileURL(path.join(out, 'port/src/tools.mjs')).href)}); console.log(m.VERSION, m.tools.length)`], { encoding: 'utf8' });
+    assert.equal(version.stdout.trim(), `${VERSION} ${tools.length}`, version.stderr);
+    // The README points into the full repository, so its links and images still work in the listing.
+    const readme = await fs.readFile(path.join(out, 'README.md'), 'utf8');
+    assert.match(readme, /src="https:\/\/raw\.githubusercontent\.com\/laaielichter\/Reverseport\/main\/docs\/assets\/demo\.gif"/);
+    assert.match(readme, /\]\(https:\/\/github\.com\/laaielichter\/Reverseport\/blob\/main\/docs\/installation\.md#mcp-registry\)/);
+  } finally {
+    await fs.rm(path.dirname(out), { recursive: true, force: true });
+  }
+  assert.equal(absoluteReadme('[a](#x) [b](docs/) ![c](./x.svg) [d](https://e.f)', 'v1'),
+    '[a](#x) [b](https://github.com/laaielichter/Reverseport/tree/v1/docs/) ![c](https://raw.githubusercontent.com/laaielichter/Reverseport/v1/x.svg) [d](https://e.f)');
 });
 
 test('plugin settings: empty or unsubstituted values are unset; the engine setting fetches the engine', async () => {
