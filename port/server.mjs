@@ -146,7 +146,11 @@ export function createServer({ relay } = {}) {
       }
       return fail(404, new RPError('UNKNOWN_ENDPOINT', `No ${req.method} ${url.pathname} here. Endpoints: GET /api/health, GET /api/agent/tools, POST /api/agent/call, POST /api/agent/tools/<name>, GET /api/openapi.json, POST /mcp.`));
     } catch (e) {
-      return fail(STATUS[e.code] ?? 400, e);
+      // Our own errors carry a code and a message written for the caller. Anything else is unexpected: the caller gets
+      // a plain message and the details (stack included) go to this server's log, never into the response.
+      if (e instanceof RPError) return fail(STATUS[e.code] ?? 400, new RPError(e.code, String(e.message)));
+      process.stderr.write(`ReversePort HTTP error on ${req.method} ${url.pathname}: ${e?.stack ?? e}\n`);
+      return fail(500, new RPError('TOOL_FAILED', 'Unexpected server error. The details are in the ReversePort server log.'));
     }
   });
 }

@@ -278,7 +278,7 @@ async function phase(dir, state, a) {
   return { caseId: path.basename(dir), phase: to, warnings: result.warnings };
 }
 
-const md = s => String(s ?? '').replace(/\|/g, '\\|').replace(/\r?\n/g, ' ').replace(/`/g, "'");
+const md = s => String(s ?? '').replace(/\\/g, '\\\\').replace(/\|/g, '\\|').replace(/\r?\n/g, ' ').replace(/`/g, "'");
 
 async function report(dir, state) {
   const { errors, warnings } = await checkCase(dir, state);
