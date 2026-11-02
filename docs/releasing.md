@@ -376,3 +376,34 @@ tag. Do not dispatch a fresh publish phase to repair an already-created
 release: Release Please will not create the same release again. Do not move
 the tag, delete the release, or unpublish npm as a retry. A defective public
 package requires a reviewed correction and a new version.
+
+The npm job can also fail after `npm publish` succeeded, when the new version
+is listed on npm but `npm exec` cannot fetch it yet (`ETARGET`). The package is
+then public; re-run the failed jobs in the same run and the MCP Registry job
+follows.
+
+## Claude plugin directory
+
+The Claude plugin directory (claude.ai/directory/manage) validates and scans
+the branch `claude-directory`, not `main`. That branch holds only what the
+Claude Code plugin loads: `.claude-plugin/plugin.json` and its icon, `skills/`,
+`agents/`, `hooks/`, `port/` without its tests, the license and policy files, a
+`package.json` without dependencies, and the README with every link made
+absolute. The whole repository has thousands of files, more than the
+directory's validation reads in time.
+
+`.github/workflows/claude-directory.yml` rebuilds the branch when a release
+merge changes `.release-please-manifest.json`, checks that the MCP server and
+the guard hook start from the tree alone, and commits the result on top of the
+branch. Run the workflow by hand to rebuild it between releases. To build the
+same tree locally:
+
+```bash
+npm run directory:build -- --out /tmp/claude-directory
+```
+
+The build fails when the tree goes over the directory's limits (more than 512
+files, a file over 5 MiB), when a path the plugin runs is missing, or when the
+README keeps a relative link. The repository has no `.gitattributes` on
+purpose: the directory refuses a repository whose download can differ from its
+files, so neither `main` nor the plugin tree carries one.
