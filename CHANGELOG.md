@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.12.0](https://github.com/laaielichter/Reverseport/compare/reverseport-1.11.0...reverseport-1.12.0) (2026-11-02)
+
+
+### Features
+
+* **port:** import maps, pnpm globs, more archives and game libs; safer output budget ([#72](https://github.com/laaielichter/Reverseport/issues/72)) ([179d3dd](https://github.com/laaielichter/Reverseport/commit/179d3ddaab1ef9833369ff3681a059edf6e617ea))
+
 ## [1.11.0](https://github.com/laaielichter/Reverseport/compare/reverseport-1.10.0...reverseport-1.11.0) (2026-11-02)
 
 
