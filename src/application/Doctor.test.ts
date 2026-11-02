@@ -877,6 +877,58 @@ describe("doctor scoped readiness", () => {
   });
 });
 
+describe("doctor registrations under the previous server name", () => {
+  it("reports a registration under the previous server name with its key and rerun setup", async () => {
+    const remediation =
+      'REA is registered under its previous server name "rea". reverseport setup renames it to "reverseport". Run reverseport setup to refresh this registration, then restart the client.';
+    const result = await runDoctor(
+      undefined,
+      host({
+        clientRegistrations: () =>
+          Promise.resolve([
+            {
+              client: "codex",
+              config_path: "/home/user/.codex/config.toml",
+              command: ["/current/rea", "mcp"],
+              server_key: "rea",
+              state: "stale",
+              remediation,
+            },
+            {
+              client: "cursor",
+              config_path: "/home/user/.cursor/mcp.json",
+              command: [],
+              state: "missing",
+              remediation:
+                "Run reverseport setup to refresh this registration.",
+              server_key_advisory:
+                'A server under REA\'s previous name "rea" is kept unchanged.',
+            },
+          ]),
+      }),
+      { clients: ["codex"] },
+    );
+
+    expect(result.healthy).toBe(false);
+    expect(result.scope_checks).toContainEqual(
+      expect.objectContaining({
+        name: "registration:codex",
+        ok: false,
+        classification: "config_drift",
+        detail: '/home/user/.codex/config.toml (server "rea")',
+        remediation,
+      }),
+    );
+    expect(result.informational_checks).toContainEqual(
+      expect.objectContaining({
+        name: "registration_server_key:cursor",
+        ok: true,
+        detail: 'A server under REA\'s previous name "rea" is kept unchanged.',
+      }),
+    );
+  });
+});
+
 describe("Grok Bot readiness", () => {
   it("does not treat a Grok Bot data directory as an aligned registration", async () => {
     const registrations: readonly ClientRegistrationStatus[] = [

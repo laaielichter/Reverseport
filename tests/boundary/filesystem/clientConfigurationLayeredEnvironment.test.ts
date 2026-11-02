@@ -37,7 +37,7 @@ it.each(["missing", "empty", "legacy", "native"] as const)(
     const originalLower = JSON.stringify({
       mcp: {
         servers: {
-          rea: { type: "local", command, disabled: true },
+          reverseport: { type: "local", command, disabled: true },
           other: { type: "local", command: ["other"], disabled: true },
         },
       },
@@ -51,7 +51,7 @@ it.each(["missing", "empty", "legacy", "native"] as const)(
           ...(shape === "legacy"
             ? {
                 mcp: {
-                  rea: {
+                  reverseport: {
                     type: "local",
                     command,
                     enabled: true,
@@ -80,17 +80,19 @@ it.each(["missing", "empty", "legacy", "native"] as const)(
     expect(
       effective === undefined
         ? undefined
-        : effectiveClientServer(effective, "rea"),
+        : effectiveClientServer(effective, "reverseport"),
     ).toMatchObject({ disabled: false });
     const written = JSON.parse(await readFile(upper, "utf8"));
-    expect(written.mcp.servers.rea).toMatchObject({
+    expect(written.mcp.servers.reverseport).toMatchObject({
       type: "local",
       command,
       disabled: false,
     });
     if (shape === "legacy")
-      expect(written.mcp.servers.rea.future_policy).toEqual({ retain: true });
-    expect(written.mcp.rea).toBeUndefined();
+      expect(written.mcp.servers.reverseport.future_policy).toEqual({
+        retain: true,
+      });
+    expect(written.mcp.reverseport).toBeUndefined();
     expect(await inspectClientConfiguration(client, {}, command)).toEqual({
       status: "already_current",
     });
@@ -112,7 +114,7 @@ const layered = async (lower: unknown, upper: unknown) => {
   const sources = [lower, upper].map((environment) =>
     JSON.stringify({
       mcp: {
-        rea: {
+        reverseport: {
           ...clientRegistrationEntry("opencode", command, {}),
           environment,
         },
@@ -252,7 +254,7 @@ it("keeps higher-priority values and does not copy inherited settings into the w
     await readFile(fixture.client.configPath, "utf8"),
     "opencode",
   );
-  expect(effectiveClientServer(configured, "rea")).toHaveProperty(
+  expect(effectiveClientServer(configured, "reverseport")).toHaveProperty(
     "environment",
     {
       REA_GHIDRA_COMPILER_SPEC_ID: compiler,
@@ -335,7 +337,7 @@ it("uses inherited settings when creating a missing write layer", async () => {
     await readFile(fixture.client.configPath, "utf8"),
     "opencode",
   );
-  expect(effectiveClientServer(parsed, "rea")).toHaveProperty(
+  expect(effectiveClientServer(parsed, "reverseport")).toHaveProperty(
     "environment",
     overrides,
   );
@@ -363,10 +365,13 @@ it("replaces the selected write layer rather than the last loaded layer", async 
     await readFile(client.configPath, "utf8"),
     "opencode",
   );
-  expect(effectiveClientServer(parsed, "rea")).toHaveProperty("environment", {
-    REA_GHIDRA_LANGUAGE_ID: language,
-    ...overrides,
-  });
+  expect(effectiveClientServer(parsed, "reverseport")).toHaveProperty(
+    "environment",
+    {
+      REA_GHIDRA_LANGUAGE_ID: language,
+      ...overrides,
+    },
+  );
   expect(await readFile(fixture.paths[1]!, "utf8")).toBe(fixture.sources[1]);
   expect(await readFile(`${client.configPath}.rea.backup`, "utf8")).toBe(
     fixture.sources[0],

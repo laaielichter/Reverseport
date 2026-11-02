@@ -71,7 +71,7 @@ cliTest(
       model: "caller-model",
       mcp_servers: {
         other: { command: "other" },
-        rea: {
+        reverseport: {
           ...codexToolPolicy,
           startup_timeout_sec: 19,
           tool_timeout_sec: 999,

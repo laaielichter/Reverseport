@@ -31,7 +31,7 @@ if (loaderArgs) env.HOPPER_LOADER_ARGS_JSON = loaderArgs;
 
 const config = {
   mcpServers: {
-    rea: {
+    reverseport: {
       command: "npx",
       args: [
         "-y",

@@ -4,6 +4,7 @@
 // AudioClip banks (FSB5), textures as PNG, and any object as JSON when the file carries type trees (bundles do),
 // or as raw bytes when it does not (most player builds). Nothing is decrypted: encrypted bundles are reported.
 import path from 'node:path';
+import fs from 'node:fs/promises';
 import { RPError, readAt, statOrNull, MiB } from './util.mjs';
 import { lz4Block, lzmaDecode } from './decompress.mjs';
 import { TEXTURE_FORMATS, DECODABLE, chainBytes, textureFile } from './texture.mjs';
@@ -97,7 +98,7 @@ class Bin {
   str() { return this.strBytes().toString('utf8'); }
 }
 
-const utf8 = new TextDecoder('utf-8', { fatal: true });
+const utf8 = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true });
 const textOf = buf => { try { const s = utf8.decode(buf); return /\0/.test(s) ? null : s; } catch { return null; } };
 const looksName = s => s != null && s.length <= 512 && !/[\u0000-\u0008\u000e-\u001f]/.test(s);
 
@@ -163,9 +164,14 @@ class BlockStream {
     const parts = [];
     let need = len, pos = off;
     for (let i = lo; need > 0 && i < this.blocks.length; i++) {
-      const b = this.blocks[i], data = await this.block(i);
+      const b = this.blocks[i];
       const s = pos - b.uOff, take = Math.min(need, b.uSize - s);
-      parts.push(data.subarray(s, s + take)); need -= take; pos += take;
+      if ((b.flags & 0x3f) === 0) { // stored: read the slice straight from the file, whatever the block's size
+        const raw = await readAt(this.abs, b.cOff + s, take);
+        if (raw.length < take) throw new RPError('BAD_FORMAT', 'The bundle is truncated.');
+        parts.push(raw);
+      } else parts.push((await this.block(i)).subarray(s, s + take));
+      need -= take; pos += take;
     }
     return parts.length === 1 ? parts[0] : Buffer.concat(parts);
   }
@@ -187,15 +193,19 @@ async function openBundle(abs, size) {
   const head = await readAt(abs, 0, Math.min(size, 4096));
   const r = new Bin(head, false);
   const sig = r.cstr();
-  if (sig !== 'UnityFS') {
-    return { format: 'unity-bundle', signature: sig, entries: [], note: `${sig} bundles (Unity 5.2 and older) are identified but not unpacked; only UnityFS bundles are.` };
+  const fmt = r.u32();
+  // UnityWeb/UnityRaw format 6 uses the UnityFS layout with one extra byte after the flags; older ones do not.
+  if (sig !== 'UnityFS' && fmt !== 6) {
+    return { format: 'unity-bundle', signature: sig, bundleFormat: fmt, entries: [], note: `${sig} bundles of format ${fmt} (Unity 5.2 and older) are identified but not unpacked; UnityFS bundles and format-6 ${sig} bundles are.` };
   }
-  const fmt = r.u32(), player = r.cstr(), revision = r.cstr();
+  const player = r.cstr(), revision = r.cstr();
   r.i64();
   const cInfo = r.u32(), uInfo = r.u32(), flags = r.u32();
+  if (sig !== 'UnityFS') r.u8();
+  if (cInfo > size - r.p) throw new RPError('BAD_FORMAT', 'The bundle is truncated (block table larger than the file).');
   const ver = versionTuple(revision);
   const oldFlags = vcmp(ver, [2020, 0, 0]) < 0 || (ver[0] === 2020 && vcmp(ver, [2020, 3, 34]) < 0) || (ver[0] === 2021 && vcmp(ver, [2021, 3, 2]) < 0) || (ver[0] === 2022 && vcmp(ver, [2022, 1, 1]) < 0);
-  const base = { format: 'unityfs', bundleFormat: fmt, unityVersion: player === '5.x.x' ? revision : player, unityRevision: revision, compression: COMPRESSION[flags & 0x3f] ?? flags & 0x3f };
+  const base = { format: 'unityfs', ...(sig !== 'UnityFS' ? { signature: sig } : {}), bundleFormat: fmt, unityVersion: player === '5.x.x' ? revision : player, unityRevision: revision, blockInfoCompression: COMPRESSION[flags & 0x3f] ?? flags & 0x3f };
   if (flags & (oldFlags ? 0x200 : 0x1400)) return { ...base, encrypted: true, entries: [], note: 'This bundle uses Unity asset-bundle encryption (as some UnityCN builds do): it is identified, never decrypted.' };
   if (fmt >= 7 || (ver[0] === 2019 && vcmp(ver, [2019, 4, 15]) >= 0)) r.align(16);
   let infoRaw, dataStart;
@@ -216,7 +226,7 @@ async function openBundle(abs, size) {
   const stream = new BlockStream(abs, blocks, dataStart);
   for (const n of nodes) if (n.offset < 0 || n.size < 0 || n.offset + n.size > stream.size) throw new RPError('BAD_FORMAT', `Bundle entry ${n.path} lies outside the bundle data.`);
   const kinds = [...new Set(blocks.map(b => COMPRESSION[b.flags & 0x3f] ?? `compression ${b.flags & 0x3f}`))];
-  return { ...base, blockCompression: kinds, blocks: blocks.length, nodes, stream };
+  return { ...base, compression: kinds.length === 1 ? kinds[0] : kinds.join('+'), blockCompression: kinds, blocks: blocks.length, nodes, stream };
 }
 
 // ---------------------------------------------------------------- serialized files
@@ -269,41 +279,103 @@ const PRIMS = {
 };
 const BYTE_TYPES = new Set(['SInt8', 'UInt8', 'char']);
 
-/** Read one value by its type-tree node. Strings come back as text when valid UTF-8, else as a Buffer. */
-function readValue(node, r) {
+/** Does a node always take at least one byte (so an array of it cannot be longer than the bytes left)? */
+const takesBytes = n => n.byteSize > 0 || !!PRIMS[n.type] || n.type === 'string' || n.type === 'TypelessData' || n.children.some(takesBytes);
+const MAX_EMPTY_ITEMS = 1 << 20;
+
+/**
+ * Read one value by its type-tree node. Strings come back as text when valid UTF-8, else as a Buffer.
+ * `ctx`: { refTypes, registry } — [SerializeReference] data is read with the file's ref-type trees, and only the
+ * first ManagedReferencesRegistry is read (nested ones hold no data), as Unity writes them.
+ */
+function readValue(node, r, ctx = {}) {
   let v, align = node.meta & ALIGNED;
   const prim = PRIMS[node.type];
   if (prim) v = prim(r);
   else if (node.type === 'string') { const b = r.strBytes(); v = b.length > 65536 ? b : textOf(b) ?? b; }
   else if (node.type === 'TypelessData') { const n = r.i32(); v = r.bytes(n); }
-  else if (node.type === 'pair') v = [readValue(node.children[0], r), readValue(node.children[1], r)];
-  else if (node.children[0]?.type === 'Array') {
+  else if (node.type === 'pair') {
+    if (node.children.length < 2) throw new RangeError('pair without two children');
+    v = [readValue(node.children[0], r, ctx), readValue(node.children[1], r, ctx)];
+  } else if (node.type === 'ReferencedObject') {
+    v = {};
+    for (const c of node.children) {
+      if (c.type !== 'ReferencedObjectData') { v[c.name] = readValue(c, r, ctx); continue; }
+      const t = v.type ?? {};
+      if (!t.class) continue; // null reference: no data
+      const tree = ctx.refTypes?.find(x => x.className === t.class && x.namespace === t.ns && x.assembly === t.asm)?.tree;
+      if (!tree) throw new RangeError(`[SerializeReference] type ${t.ns ? `${t.ns}.` : ''}${t.class} is not in the file's ref types`);
+      v[c.name] = readValue(tree, r, ctx);
+    }
+  } else if (node.children[0]?.type === 'Array') {
     const arr = node.children[0];
     if (arr.meta & ALIGNED) align = true;
     const n = r.i32(), item = arr.children[1];
-    if (n < 0 || n > r.left) throw new RangeError('bad array length');
+    if (!item) throw new RangeError('array without an item type');
+    if (n < 0 || n > (takesBytes(item) ? r.left : MAX_EMPTY_ITEMS)) throw new RangeError('bad array length');
     if (BYTE_TYPES.has(item.type)) v = r.bytes(n);
-    else { v = new Array(n); for (let i = 0; i < n; i++) v[i] = readValue(item, r); }
+    else { v = new Array(n); for (let i = 0; i < n; i++) v[i] = readValue(item, r, ctx); }
   } else {
     v = {};
-    for (const c of node.children) v[c.name] = readValue(c, r);
+    for (const c of node.children) {
+      if (c.type === 'ManagedReferencesRegistry') { if (ctx.registry) continue; v[c.name] = readValue(c, r, { ...ctx, registry: true }); continue; }
+      v[c.name] = readValue(c, r, ctx);
+    }
   }
   if (align) r.align();
   return v;
 }
 
 /** Read the root's fields in order until every wanted field is found (or all fields are read). */
-function readFields(root, r, wanted) {
+function readFields(sf, root, r, wanted) {
   const out = {};
+  const ctx = { refTypes: sf.refTypes };
   let left = wanted ? wanted.size : Infinity;
   for (const c of root.children) {
-    out[c.name] = readValue(c, r);
+    if (c.type === 'ManagedReferencesRegistry') { if (ctx.registry) continue; out[c.name] = readValue(c, r, { ...ctx, registry: true }); ctx.registry = true; }
+    else out[c.name] = readValue(c, r, ctx);
     if (wanted?.has(c.name) && --left === 0) break;
   }
   return out;
 }
 
-async function parseSerialized(src, label) {
+/** One SerializedType entry (the object types, or with `ref` the [SerializeReference] types). */
+function readType(r, version, typeTree, label, ref) {
+  const t = { classId: r.i32() };
+  if (version >= 16) r.u8();
+  t.scriptTypeIndex = version >= 17 ? r.i16() : -1;
+  if ((ref && t.scriptTypeIndex >= 0) || (version < 16 && t.classId < 0) || (version >= 16 && t.classId === 114)) r.bytes(16);
+  r.bytes(16);
+  if (typeTree) {
+    let present = true;
+    if (version >= 23) { r.bytes(16); present = r.i32() !== 0; }
+    if (present) t.tree = parseTypeTree(r, version);
+    if (version >= 21) {
+      if (ref) { t.className = r.cstr(); t.namespace = r.cstr(); t.assembly = r.cstr(); }
+      else { const n = r.i32(); if (n < 0 || n * 4 > r.left) throw new RPError('BAD_FORMAT', `${label}: bad type dependencies.`); r.bytes(n * 4); }
+    }
+  }
+  return t;
+}
+
+/**
+ * The Unity version a file's layouts follow. Bundles built with "strip Unity version" write "0.0.0" in the file:
+ * then the bundle's revision is used, else the lowest version that writes this serialized format.
+ */
+function layoutVersion(unityVersion, fallback, version) {
+  const own = versionTuple(unityVersion);
+  if (own[0]) return own;
+  const fb = versionTuple(fallback ?? '');
+  if (fb[0]) return fb;
+  return version >= 22 ? [2020, 1, 0] : version >= 21 ? [2019, 3, 0] : version >= 20 ? [2019, 1, 0] : version >= 19 ? [2018, 3, 0] : version >= 17 ? [5, 5, 0] : [5, 0, 0];
+}
+
+async function parseSerialized(src, label, fallbackVersion) {
+  try { return await parseSerializedRaw(src, label, fallbackVersion); }
+  catch (e) { if (e instanceof RangeError || e instanceof TypeError) throw new RPError('BAD_FORMAT', `${label}: the serialized file is truncated or corrupt (${e.message}).`); throw e; }
+}
+
+async function parseSerializedRaw(src, label, fallbackVersion) {
   const h = new Bin(await src.read(0, Math.min(48, src.size)), false);
   let metadataSize = h.u32(), fileSize = h.u32();
   const version = h.u32();
@@ -318,20 +390,7 @@ async function parseSerialized(src, label) {
   const typeCount = r.i32();
   if (typeCount < 0 || typeCount > r.left) throw new RPError('BAD_FORMAT', `${label}: bad type count.`);
   const types = [];
-  for (let i = 0; i < typeCount; i++) {
-    const t = { classId: r.i32() };
-    if (version >= 16) r.u8();
-    if (version >= 17) t.scriptTypeIndex = r.i16();
-    if ((version < 16 && t.classId < 0) || (version >= 16 && t.classId === 114)) r.bytes(16);
-    r.bytes(16);
-    if (typeTree) {
-      let present = true;
-      if (version >= 23) { r.bytes(16); present = r.i32() !== 0; }
-      if (present) t.tree = parseTypeTree(r, version);
-      if (version >= 21) { const n = r.i32(); if (n < 0 || n * 4 > r.left) throw new RPError('BAD_FORMAT', `${label}: bad type dependencies.`); r.bytes(n * 4); }
-    }
-    types.push(t);
-  }
+  for (let i = 0; i < typeCount; i++) types.push(readType(r, version, typeTree, label, false));
   const objectCount = r.i32();
   if (objectCount < 0 || objectCount > r.left) throw new RPError('BAD_FORMAT', `${label}: bad object count.`);
   const objects = [];
@@ -355,12 +414,24 @@ async function parseSerialized(src, label) {
   if (extCount < 0 || extCount > r.left) throw new RPError('BAD_FORMAT', `${label}: bad externals table.`);
   const externals = [];
   for (let i = 0; i < extCount; i++) { r.cstr(); r.bytes(16); r.i32(); externals.push(r.cstr()); }
-  return { label, src, version, unityVersion, unityTuple: versionTuple(unityVersion), platform: PLATFORMS[platform] ?? platform, typeTree, le: !big, objects, externals };
+  const refTypes = [];
+  if (version >= 20 && r.left >= 4) {
+    const n = r.i32();
+    if (n < 0 || n > r.left) throw new RPError('BAD_FORMAT', `${label}: bad ref type count.`);
+    for (let i = 0; i < n; i++) refTypes.push(readType(r, version, typeTree, label, true));
+  }
+  const unityTuple = layoutVersion(unityVersion, fallbackVersion, version);
+  return { label, src, version, unityVersion: versionTuple(unityVersion)[0] ? unityVersion : fallbackVersion ?? unityVersion, unityVersionStripped: !versionTuple(unityVersion)[0], unityTuple, platform: PLATFORMS[platform] ?? platform, typeTree, le: !big, objects, externals, refTypes };
 }
 
 // ---------------------------------------------------------------- reading objects
 const PEEK = 64 * 1024;
 const objBin = (sf, obj, buf) => new Bin(buf, sf.le, obj.start);
+/** Raw readers in the file's byte order, for the scans that look at fixed offsets. */
+const order = le => ({
+  u32: (b, o) => (le ? b.readUInt32LE(o) : b.readUInt32BE(o)), i32: (b, o) => (le ? b.readInt32LE(o) : b.readInt32BE(o)),
+  u64: (b, o) => Number(le ? b.readBigUInt64LE(o) : b.readBigUInt64BE(o)),
+});
 const pptr = r => ({ fileId: r.i32(), pathId: r.i64() });
 /** The bytes `inspect` needs: the whole object for script, bundle and build-settings objects, else the first 64 KiB. */
 const headOf = (sf, o) => sf.src.read(o.start, [115, 141, 142].includes(o.classId) ? Math.min(o.size, 64 * MiB) : Math.min(o.size, PEEK));
@@ -372,7 +443,7 @@ function inspect(sf, obj, buf) {
   try {
     if (obj.tree) {
       const want = { 114: ['m_Script', 'm_Name'], 115: ['m_Name', 'm_ClassName', 'm_Namespace', 'm_AssemblyName'], 142: ['m_Name', 'm_Container'], 141: ['scenes', 'levels'] }[obj.classId] ?? ['m_Name'];
-      const f = readFields(obj.tree, r, obj.classId === 141 ? new Set(['scenes']) : new Set(want));
+      const f = readFields(sf, obj.tree, r, obj.classId === 141 ? new Set(['scenes']) : new Set(want));
       if (typeof f.m_Name === 'string') out.name = f.m_Name;
       if (f.m_Script && typeof f.m_Script === 'object' && 'm_PathID' in f.m_Script) out.script = { fileId: f.m_Script.m_FileID, pathId: f.m_Script.m_PathID };
       if (obj.classId === 115) out.monoScript = { className: f.m_ClassName, namespace: f.m_Namespace, assembly: f.m_AssemblyName };
@@ -413,36 +484,52 @@ function inspect(sf, obj, buf) {
       out.container = [];
       for (let i = 0; i < n; i++) { const p = r.str(); r.i32(); r.i32(); const a = pptr(r); out.container.push({ path: p, pathId: a.pathId, fileId: a.fileId }); }
     } else if (obj.classId === 28) Object.assign(out, textureHeader(sf, obj, buf));
-  } catch (e) { if (!(e instanceof RangeError)) throw e; }
+  } catch (e) { if (!(e instanceof RangeError || e instanceof TypeError || e?.code === 'BAD_FORMAT')) throw e; }
   return out;
 }
 
 /** Texture2D size and format: from the type tree, or (no type tree) found by checking the size arithmetic. */
 function textureHeader(sf, obj, buf) {
   if (obj.tree) {
-    const f = readFields(obj.tree, objBin(sf, obj, buf), new Set(['m_Width', 'm_Height', 'm_TextureFormat', 'm_MipCount', 'm_CompleteImageSize']));
+    const f = readFields(sf, obj.tree, objBin(sf, obj, buf), new Set(['m_Width', 'm_Height', 'm_TextureFormat', 'm_MipCount', 'm_CompleteImageSize']));
     return { width: f.m_Width, height: f.m_Height, format: f.m_TextureFormat, mips: f.m_MipCount, imageSize: f.m_CompleteImageSize };
   }
   const r = objBin(sf, obj, buf);
   r.str();
-  const from = r.p;
+  const from = r.p, rd = order(sf.le);
+  // Up to 5.2.0 the word after the format holds bools (m_MipMap, m_IsReadable, m_ReadAllowed), not m_MipCount.
+  const boolMips = vcmp(sf.unityTuple, [5, 2, 1]) < 0;
   for (let k = from; k <= from + 32 && k + 24 <= buf.length; k += 4) {
-    const w = buf.readUInt32LE(k), h = buf.readUInt32LE(k + 4), size = buf.readUInt32LE(k + 8);
+    const w = rd.u32(buf, k), h = rd.u32(buf, k + 4), size = rd.u32(buf, k + 8);
     if (!w || !h || w > 16384 || h > 16384 || !size) continue;
     for (const fo of [12, 16]) {
       if (k + fo + 8 > buf.length) continue;
-      const format = buf.readInt32LE(k + fo), mips = buf.readInt32LE(k + fo + 4);
-      if (!TEXTURE_FORMATS[format] || mips < 1 || mips > 15) continue;
-      if (chainBytes(format, w, h, mips) === size) return { width: w, height: h, format, mips, imageSize: size };
+      const format = rd.i32(buf, k + fo);
+      if (!TEXTURE_FORMATS[format]) continue;
+      const mips = boolMips ? (buf[k + fo + 4] ? Math.floor(Math.log2(Math.max(w, h))) + 1 : 1) : rd.i32(buf, k + fo + 4);
+      if (mips < 1 || mips > 15) continue;
+      const expected = chainBytes(format, w, h, mips);
+      if (expected === size) return { width: w, height: h, format, mips, imageSize: size };
+      // Formats without a size rule here (crunched): accept when the pixel data's own size agrees.
+      if (expected == null && (trailingStream(sf, buf)?.size === size || inlineAt(sf, buf, size) >= 0)) return { width: w, height: h, format, mips, imageSize: size };
     }
   }
   return {};
 }
 
+/** Where the inline image data starts (its length prefix), or -1. Texture2D ends with the image data, then m_StreamData. */
+function inlineAt(sf, buf, imageSize) {
+  const rd = order(sf.le), tail = (sf.unityTuple[0] >= 2020 ? 8 : 4) + 8;
+  const exact = buf.length - tail - Math.ceil(imageSize / 4) * 4 - 4;
+  if (exact >= 0 && rd.u32(buf, exact) === imageSize) return exact;
+  for (let p = Math.min(exact, buf.length - 4 - imageSize); p >= 0; p--) if (p % 4 === 0 && rd.u32(buf, p) === imageSize) return p;
+  return -1;
+}
+
 /** Full Texture2D: header plus where its pixels are (inline or in a .resS resource). */
 function textureData(sf, obj, buf) {
   if (obj.tree) {
-    const f = readFields(obj.tree, objBin(sf, obj, buf));
+    const f = readFields(sf, obj.tree, objBin(sf, obj, buf));
     const sd = f.m_StreamData ?? {};
     return { width: f.m_Width, height: f.m_Height, format: f.m_TextureFormat, inline: Buffer.isBuffer(f['image data']) ? f['image data'] : Buffer.alloc(0), stream: sd.path ? { path: sd.path, offset: Number(sd.offset), size: Number(sd.size) } : null };
   }
@@ -450,21 +537,21 @@ function textureData(sf, obj, buf) {
   if (!head.format) return null;
   // Streamed: the object ends with offset, size and a .resS path. Inline: a length prefix equal to the image size,
   // with the pixels running to (nearly) the end of the object.
-  const stream = trailingStream(buf, sf.unityTuple[0] >= 2020 ? 8 : 4);
+  const stream = trailingStream(sf, buf);
   if (stream) return { ...head, inline: Buffer.alloc(0), stream };
-  for (let p = buf.length - 4 - head.imageSize; p >= 0; p--) if (p % 4 === 0 && buf.readUInt32LE(p) === head.imageSize) return { ...head, inline: buf.subarray(p + 4, p + 4 + head.imageSize), stream: null };
-  return { ...head, inline: Buffer.alloc(0), stream: null };
+  const at = inlineAt(sf, buf, head.imageSize);
+  return { ...head, inline: at >= 0 ? buf.subarray(at + 4, at + 4 + head.imageSize) : Buffer.alloc(0), stream: null };
 }
 
-/** A StreamingInfo at the end of an object: offset (4 or 8 bytes), size, aligned path string. */
-function trailingStream(buf, offBytes) {
-  for (let q = buf.length - 4; q >= Math.max(0, buf.length - 1024); q -= 4) {
-    const n = buf.readUInt32LE(q);
+/** A StreamingInfo at the end of an object: offset (8 bytes from 2020.1, else 4), size, aligned path string. */
+function trailingStream(sf, buf) {
+  const rd = order(sf.le), wide = sf.unityTuple[0] >= 2020;
+  for (let q = buf.length - 4; q >= Math.max(wide ? 12 : 8, buf.length - 1024); q -= 4) {
+    const n = rd.u32(buf, q);
     if (n === 0 || q + 4 + n > buf.length || Math.ceil((q + 4 + n) / 4) * 4 !== buf.length) continue;
     const p = buf.toString('latin1', q + 4, q + 4 + n);
     if (!/^[\x20-\x7e]+$/.test(p) || !/\.(resS|resource)$|^archive:/.test(p)) continue;
-    const size = buf.readUInt32LE(q - 4), offset = offBytes === 8 ? Number(buf.readBigUInt64LE(q - 12)) : buf.readUInt32LE(q - 8);
-    return { path: p, offset, size };
+    return { path: p, offset: wide ? rd.u64(buf, q - 12) : rd.u32(buf, q - 8), size: rd.u32(buf, q - 4) };
   }
   return null;
 }
@@ -472,39 +559,49 @@ function trailingStream(buf, offBytes) {
 /** AudioClip's m_Resource { m_Source, m_Offset, m_Size }. */
 function audioResource(sf, obj, buf) {
   if (obj.tree) {
-    const f = readFields(obj.tree, objBin(sf, obj, buf), new Set(['m_Resource', 'm_CompressionFormat']));
+    const f = readFields(sf, obj.tree, objBin(sf, obj, buf), new Set(['m_Resource', 'm_CompressionFormat']));
     const res = f.m_Resource;
     return res?.m_Source ? { path: res.m_Source, offset: Number(res.m_Offset), size: Number(res.m_Size) } : null;
   }
   // No type tree: find the resource path string, then the 8-byte offset and size after its alignment.
+  const rd = order(sf.le);
   for (let q = 0; q + 8 <= buf.length; q += 4) {
-    const n = buf.readUInt32LE(q);
+    const n = rd.u32(buf, q);
     if (n < 5 || n > 512 || q + 4 + n + 16 > buf.length) continue;
     const p = buf.toString('latin1', q + 4, q + 4 + n);
     if (!/^[\x20-\x7e]+$/.test(p) || !/\.(resource|resS)$/.test(p)) continue;
     const at = q + 4 + Math.ceil(n / 4) * 4;
-    return { path: p, offset: Number(buf.readBigUInt64LE(at)), size: Number(buf.readBigUInt64LE(at + 8)) };
+    return { path: p, offset: rd.u64(buf, at), size: rd.u64(buf, at + 8) };
   }
   return null;
 }
 
 // ---------------------------------------------------------------- JSON view of an object
-function jsonSafe(v, depth = 0) {
+/**
+ * A value as JSON for a file on disk: arrays in full, byte arrays up to 16 MiB as { bytes, base64 } (larger ones as a
+ * size only, counted in `stats.omitted`), 64-bit ids as numbers when exact, else strings.
+ */
+function jsonSafe(v, stats = { omitted: 0 }, depth = 0) {
   if (typeof v === 'bigint') return Number.isSafeInteger(Number(v)) ? Number(v) : String(v);
-  if (Buffer.isBuffer(v)) return `<${v.length} bytes>`;
-  if (Array.isArray(v)) {
-    const head = v.slice(0, 256).map(x => jsonSafe(x, depth + 1));
-    return v.length > 256 ? [...head, `… ${v.length - 256} more`] : head;
-  }
-  if (v && typeof v === 'object') { if (depth > 40) return '…'; const o = {}; for (const [k, x] of Object.entries(v)) o[k] = jsonSafe(x, depth + 1); return o; }
+  if (Buffer.isBuffer(v)) { if (v.length > 16 * MiB) { stats.omitted++; return { bytes: v.length }; } return { bytes: v.length, base64: v.toString('base64') }; }
+  if (Array.isArray(v)) return v.map(x => jsonSafe(x, stats, depth + 1));
+  if (v && typeof v === 'object') { const o = {}; for (const [k, x] of Object.entries(v)) o[k] = jsonSafe(x, stats, depth + 1); return o; }
   if (typeof v === 'number' && !Number.isFinite(v)) return String(v);
   return v;
 }
+const jsonFile = value => {
+  const stats = { omitted: 0 };
+  const data = Buffer.from(JSON.stringify(jsonSafe(value, stats), null, 1));
+  return { data, ...(stats.omitted ? { note: `${stats.omitted} byte array(s) over 16 MiB are given by size only` } : {}) };
+};
 
 // ---------------------------------------------------------------- inventory and entries
 const ORDER = [49, 28, 83, 213, 43, 74, 21, 48, 128, 329, 687078895, 91, 115, 142, 141, 1, 114];
 const rank = id => { const i = ORDER.indexOf(id); return i < 0 ? ORDER.length : i; };
-const safeName = s => String(s).replace(/[\u0000-\u001f<>:"/\\|?*]/g, '_').replace(/^\.+/, '_').trim().slice(0, 120);
+const safeName = s => {
+  const n = String(s).replace(/[\u0000-\u001f<>:"/\\|?*]/g, '_').replace(/^\.+/, '_').trim().slice(0, 120).replace(/[. ]+$/, '');
+  return /^(con|prn|aux|nul|com\d|lpt\d)(\..*)?$/i.test(n) ? `_${n}` : n;
+};
 const resourceBase = p => String(p).replace(/^archive:\/[^/]*\//, '').split(/[\\/]/).pop();
 
 /**
@@ -556,9 +653,9 @@ async function inventory(files, resource, resolveExternal) {
       else if (o.classId === 28 && info.format) { kind = 'texture'; ext = DECODABLE.has(info.format) ? '.png' : textureFile(Buffer.alloc(0), info.format, 1, 1).ext; }
       let base = safeName(info.name || (o.classId === 114 && script?.className) || String(o.pathId)) || String(o.pathId);
       let rel = `${prefix}${cls}/${base}${ext}`;
-      if (seen.has(rel)) { base = `${base}~${o.pathId}`; rel = `${prefix}${cls}/${base}${ext}`; }
-      seen.add(rel);
-      const entry = { path: rel, size: o.size, pathId: String(o.pathId) };
+      if (seen.has(rel.toLowerCase())) { base = `${base}~${o.pathId}`; rel = `${prefix}${cls}/${base}${ext}`; }
+      seen.add(rel.toLowerCase());
+      const entry = { path: rel, size: o.size, pathId: String(o.pathId), derived: true, rank: rank(o.classId) };
       if (o.classId === 28 && info.format) Object.assign(entry, { width: info.width, height: info.height, textureFormat: TEXTURE_FORMATS[info.format] ?? info.format });
       if (o.classId === 114 && script?.className) entry.script = [script.namespace, script.className].filter(Boolean).join('.');
       entry.produce = () => produce(sf, o, kind, resource);
@@ -567,6 +664,9 @@ async function inventory(files, resource, resolveExternal) {
     }
   }
   for (const e of entries) { const c = container.get(e.label); if (c) e.asset = c; delete e.label; }
+  // Asset classes first across every file (a data.unity3d starts with managers and scripts).
+  entries.sort((a, b) => a.rank - b.rank);
+  for (const e of entries) delete e.rank;
   const scripts = [...used.values()].sort((a, b) => b.instances - a.instances);
   return {
     entries,
@@ -574,13 +674,18 @@ async function inventory(files, resource, resolveExternal) {
       objects: entries.length, named,
       classes: Object.fromEntries(Object.entries(classes).sort((a, b) => b[1] - a[1])),
       ...(scripts.length ? { scripts: scripts.slice(0, 100), scriptsTotal: scripts.length } : {}),
-      ...(scenes.length ? { scenes } : {}),
+      ...(scenes.length ? { scenes: scenes.slice(0, 50), ...(scenes.length > 50 ? { scenesTotal: scenes.length } : {}) } : {}),
       ...(container.size ? { containerPaths: container.size } : {}),
     },
   };
 }
 
 async function produce(sf, o, kind, resource) {
+  try { return await produceRaw(sf, o, kind, resource); }
+  catch (e) { if (e instanceof RangeError || e instanceof TypeError) throw new RPError('BAD_FORMAT', `Object ${o.pathId} could not be read (${e.message}).`); throw e; }
+}
+
+async function produceRaw(sf, o, kind, resource) {
   const buf = await sf.src.read(o.start, o.size);
   const fromResource = async (ref, what) => {
     if (!ref?.path || !ref.size) return null;
@@ -589,7 +694,12 @@ async function produce(sf, o, kind, resource) {
     return res.read(ref.offset, ref.size);
   };
   if (kind === 'text') {
-    if (o.tree) { const f = readFields(o.tree, objBin(sf, o, buf), new Set(['m_Script'])); const s = f.m_Script; return { data: Buffer.isBuffer(s) ? s : Buffer.from(s ?? '', 'utf8') }; }
+    if (o.tree) {
+      // Read up to m_Script with the type tree, then take its bytes as stored (no text round trip).
+      const r = objBin(sf, o, buf);
+      for (const c of o.tree.children) { if (c.name === 'm_Script') return { data: r.strBytes() }; readValue(c, r, { refTypes: sf.refTypes }); }
+      throw new RPError('BAD_FORMAT', 'TextAsset without m_Script.');
+    }
     const r = objBin(sf, o, buf); r.str(); const n = r.i32(); return { data: r.bytes(n) };
   }
   if (kind === 'audio') {
@@ -606,30 +716,49 @@ async function produce(sf, o, kind, resource) {
     return { data: file.data, note: file.note };
   }
   if (kind === 'mesh') {
-    const fields = readFields(o.tree, objBin(sf, o, buf));
-    const obj = await meshToObj(fields, sf.unityTuple, (p, offset, size) => fromResource({ path: p, offset, size }, 'Mesh'));
+    const fields = readFields(sf, o.tree, objBin(sf, o, buf));
+    const obj = await meshToObj(fields, sf.unityTuple, (p, offset, size) => fromResource({ path: p, offset, size }, 'Mesh'), { le: sf.le });
     if (obj) return { data: Buffer.from(obj.text), note: `${obj.vertices} vertices, ${obj.faces} triangles` };
-    return { data: Buffer.from(JSON.stringify(jsonSafe(fields), null, 1)), note: 'no readable vertex data: written as JSON' };
+    return { ...jsonFile(fields), note: 'no readable vertex data: written as JSON' };
   }
-  if (o.tree) return { data: Buffer.from(JSON.stringify(jsonSafe(readFields(o.tree, objBin(sf, o, buf))), null, 1)) };
+  if (o.tree) return jsonFile(readFields(sf, o.tree, objBin(sf, o, buf)));
   return { data: buf };
 }
 
-const SUMMARY = sf => ({ file: sf.label, serializedVersion: sf.version, unityVersion: sf.unityVersion, platform: sf.platform, typeTree: sf.typeTree, objects: sf.objects.length, ...(sf.externals.length ? { externals: sf.externals.slice(0, 20) } : {}) });
+/** Per-file rows (first 20) with the values every file shares hoisted out. */
+function summarize(list) {
+  const rows = list.map(sf => ({ file: sf.label, serializedVersion: sf.version, unityVersion: sf.unityVersion, platform: sf.platform, typeTree: sf.typeTree, objects: sf.objects.length, ...(sf.externals.length ? { externals: sf.externals.length } : {}), ...(sf.unityVersionStripped ? { unityVersionStripped: true } : {}) }));
+  const shared = {};
+  for (const k of ['serializedVersion', 'unityVersion', 'platform', 'typeTree']) if (rows.length && rows.every(r => r[k] === rows[0][k])) { shared[k] = rows[0][k]; for (const r of rows) delete r[k]; }
+  return { ...shared, serializedFiles: rows.slice(0, 20), ...(rows.length > 20 ? { serializedFilesTotal: rows.length } : {}) };
+}
 
 const NO_TREE_NOTE = 'This file has no type trees (player builds strip them): names, scripts, TextAssets, audio and most textures still come out; other objects extract as raw bytes instead of JSON.';
 
+/** The bundle's files that are not serialized files (.resS, .resource…), first 20. */
+function otherFiles(nodes, serialized) {
+  const names = new Set(serialized.map(s => s.node.path));
+  const rest = nodes.filter(n => !names.has(n.path)).map(n => ({ path: n.path, size: n.size }));
+  return rest.length ? { otherFiles: rest.slice(0, 20), ...(rest.length > 20 ? { otherFilesTotal: rest.length } : {}) } : {};
+}
+
 /** A UnityFS bundle: its files, and the objects of the serialized files inside. */
 export async function readUnityBundle(abs, size) {
-  const b = await openBundle(abs, size);
+  let b;
+  try { b = await openBundle(abs, size); }
+  catch (e) { if (e instanceof RangeError || e instanceof TypeError) throw new RPError('BAD_FORMAT', `The bundle header or block table is truncated or corrupt (${e.message}).`); throw e; }
   if (!b.stream) return b;
   const { stream, nodes, ...head } = b;
   const entries = nodes.map(n => ({ path: `raw/${n.path}`, size: n.size, produce: async () => ({ chunks: (async function* () { for (let o = 0; o < n.size; o += 16 * MiB) yield await stream.read(n.offset + o, Math.min(16 * MiB, n.size - o)); })() }) }));
-  const serialized = [];
+  const serialized = [], skippedFiles = [];
   for (const n of nodes) {
     const src = new SliceSource(stream, n.offset, n.size);
-    if (!looksLikeSerializedFile(await src.read(0, Math.min(48, n.size)), n.size)) continue;
-    serialized.push({ sf: await parseSerialized(src, n.path), node: n });
+    let sf;
+    try {
+      if (!looksLikeSerializedFile(await src.read(0, Math.min(48, n.size)), n.size)) continue;
+      sf = await parseSerialized(src, n.path, head.unityRevision);
+    } catch (e) { if (e.code !== 'TOO_LARGE' && e.code !== 'UNSUPPORTED_ARCHIVE') throw e; skippedFiles.push({ path: n.path, reason: e.message }); continue; }
+    serialized.push({ sf, node: n });
   }
   const multi = serialized.length > 1;
   const byName = new Map(nodes.map(n => [n.path.split('/').pop(), n]));
@@ -639,7 +768,7 @@ export async function readUnityBundle(abs, size) {
   return {
     ...head,
     entries: [...inv.entries, ...entries],
-    assets: { ...inv.assets, serializedFiles: serialized.map(s => SUMMARY(s.sf)), bundleFiles: nodes.map(n => ({ path: n.path, size: n.size })) },
+    assets: { ...inv.assets, ...summarize(serialized.map(s => s.sf)), ...otherFiles(nodes, serialized), ...(skippedFiles.length ? { unreadFiles: skippedFiles } : {}) },
     ...(serialized.some(s => !s.sf.typeTree) ? { note: NO_TREE_NOTE } : {}),
   };
 }
@@ -671,6 +800,20 @@ export async function readUnityAssets(abs, size) {
     } catch { return null; }
   };
   const inv = await inventory([{ sf, prefix: '' }], resource, resolveExternal);
-  return { format: 'unity-assets', unityVersion: sf.unityVersion, entries: inv.entries, assets: { ...inv.assets, serializedFiles: [SUMMARY(sf)] }, ...(sf.typeTree ? {} : { note: NO_TREE_NOTE }) };
+  const siblings = await siblingAssets(dir, path.basename(abs));
+  return {
+    format: 'unity-assets', unityVersion: sf.unityVersion, entries: inv.entries,
+    assets: { ...inv.assets, ...summarize([sf]), ...(siblings.length ? { otherAssetFiles: siblings } : {}) },
+    ...(sf.typeTree ? {} : { note: NO_TREE_NOTE }),
+    ...(siblings.length ? { next: `Each serialized file is read on its own: run re_archive on ${siblings.slice(0, 3).join(', ')}${siblings.length > 3 ? '…' : ''} too (same folder).` } : {}),
+  };
+}
+
+/** The other serialized files of a player build next to this one (level*, sharedassets*, resources.assets…), first 20. */
+async function siblingAssets(dir, self) {
+  let names = [];
+  try { names = await fs.readdir(dir); } catch { return []; }
+  return names.filter(n => n !== self && /^(data\.unity3d|level\d+|sharedassets\d+\.assets|resources\.assets|globalgamemanagers(\.assets)?)$/.test(n))
+    .sort((a, b) => a.localeCompare(b, 'en', { numeric: true })).slice(0, 20);
 }
 

@@ -40,7 +40,9 @@ const skillDirectory = join(
   "skills",
   "reverse-engineer-anything",
 );
-const expectedNames = TOOL_CONTRACTS.map((tool) => "rea__" + tool.name).sort();
+const expectedNames = TOOL_CONTRACTS.map(
+  (tool) => "reverseport__" + tool.name,
+).sort();
 let clientVersion = null;
 let expectedSkill;
 let turn = 0;
@@ -282,9 +284,9 @@ await withVerifierCleanup(async () => {
             diagnosticsVerified = true;
           }
           if (discovery?.status !== "ready")
-            return call("search_tool", { query: "rea", limit: 255 });
+            return call("search_tool", { query: "reverseport", limit: 255 });
           const inventory = discovery.results
-            .filter((result) => result.server === "rea")
+            .filter((result) => result.server === "reverseport")
             .flatMap((result) => result.tools);
           catalogSize = inventory.length;
           assert.deepEqual(
@@ -307,7 +309,7 @@ await withVerifierCleanup(async () => {
           catalogChecked = true;
           analysisRequested = true;
           return call("use_tool", {
-            tool_name: "rea__analyze_javascript_application",
+            tool_name: "reverseport__analyze_javascript_application",
             tool_input: { input_path: target, format: "directory" },
           });
         }
@@ -385,6 +387,11 @@ max_completion_tokens = 4096
 [mcp_servers.other]
 command = "unrelated-server"
 enabled = false
+# An owned registration under the previous server name, disabled by name:
+# setup must move it to the current name and re-enable it.
+[mcp_servers.rea]
+command = "rea"
+args = ["mcp"]
 `;
     await writeFile(configPath, original);
     const rea = async (args) =>
@@ -449,6 +456,12 @@ enabled = false
       configured.includes("unrelated-server") &&
         configured.includes("# Keep unrelated settings"),
     );
+    assert(
+      configured.includes("[mcp_servers.reverseport]") &&
+        !/^\[mcp_servers\.rea[.\]]/mu.test(configured) &&
+        !/^disabled_mcp_servers = \[[^\]]*"rea"/mu.test(configured),
+      "Setup must migrate the owned rea registration and re-enable it",
+    );
     const repeated = JSON.parse(
       (await rea(["setup", "--client", "grok_build", "--yes"])).stdout,
     );
@@ -500,10 +513,10 @@ enabled = false
     const init = events.find(
       (event) => event.type === "system" && event.subtype === "init",
     );
-    assert(init?.mcp_servers?.some((server) => server.name === "rea"));
+    assert(init?.mcp_servers?.some((server) => server.name === "reverseport"));
     assert(
       init.mcp_servers.every((server) =>
-        ["rea", "other"].includes(server.name),
+        ["reverseport", "other"].includes(server.name),
       ),
       "Do not inherit foreign MCP configuration",
     );

@@ -402,7 +402,7 @@ await withVerifierCleanup(async () => {
             "--approval-mode",
             mode === "chat" ? "default" : "yolo",
             "--allowed-mcp-server-names",
-            "rea",
+            "reverseport",
             "--output-format",
             "stream-json",
             "-p",

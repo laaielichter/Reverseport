@@ -7,9 +7,9 @@ import { cliTest, type TestCli } from "../../support/cli/cliFixture.js";
 
 // JSON.parse, JSONC parse, and native Claude Code read the last duplicate.
 const shadowParent = '"mcpServers": {"shadow": {"command": "/usr/bin/false"}},';
-const shadowLeaf = '"rea": {"command": "/usr/bin/false"},';
+const shadowLeaf = '"reverseport": {"command": "/usr/bin/false"},';
 const owned =
-  '"rea": {"command": "npx", "args": ["-y", "reverseport@6.6.0", "mcp"]}';
+  '"reverseport": {"command": "npx", "args": ["-y", "reverseport@6.6.0", "mcp"]}';
 
 const runIn = (cli: TestCli, home: string) => (arguments_: readonly string[]) =>
   cli.run({
@@ -41,8 +41,8 @@ for (const [layout, original] of [
     `{\n  ${shadowParent}\n  "mcpServers": {"peer": {"command": "/usr/bin/true"}}\n}\n`,
   ],
   [
-    "a repeated rea member",
-    `{\n  "mcpServers": {${shadowLeaf} "rea": {"command": "/usr/bin/true"}}\n}\n`,
+    "a repeated reverseport member",
+    `{\n  "mcpServers": {${shadowLeaf} "reverseport": {"command": "/usr/bin/true"}}\n}\n`,
   ],
 ] as const)
   cliTest(
@@ -65,7 +65,9 @@ for (const [layout, original] of [
         layout === "a repeated server table" ? shadowParent : shadowLeaf,
       );
       expect(JSON.parse(configured)).toMatchObject({
-        mcpServers: { rea: { command: expect.not.stringMatching(/^\/usr/) } },
+        mcpServers: {
+          reverseport: { command: expect.not.stringMatching(/^\/usr/) },
+        },
       });
 
       const repeated = await run(setupArguments("claude_code"));
@@ -98,7 +100,7 @@ cliTest(
     const configured = await readFile(config, "utf8");
     expect(configured.startsWith(head)).toBe(true);
     expect(configured).toContain("// peer");
-    expect(configured.indexOf('"rea"')).toBeGreaterThan(head.length);
+    expect(configured.indexOf('"reverseport"')).toBeGreaterThan(head.length);
   },
 );
 
@@ -158,7 +160,7 @@ cliTest(
     const home = await createTestTempDirectory("rea-json-owned-repeats-");
     const config = join(home, ".claude.json");
     const inactive = '{"inactivePeer":{"command":"/usr/bin/false"}}';
-    const active = `{"rea":{"command":"npx","args":["-y","reverseport@6.6.0","mcp"]},"peer":{"command":"/usr/bin/true"},"rea":{"command":"npx","args":["-y","reverseport@6.5.0","mcp"]}}`;
+    const active = `{"reverseport":{"command":"npx","args":["-y","reverseport@6.6.0","mcp"]},"peer":{"command":"/usr/bin/true"},"reverseport":{"command":"npx","args":["-y","reverseport@6.5.0","mcp"]}}`;
     const original = `{"mcpServers":${inactive},"mcpServers":${active}}\n`;
     await writeFile(config, original);
 
@@ -195,7 +197,7 @@ cliTest(
     const claudeOriginal = `{"mcpServers":{${owned}}}\n`;
     await writeFile(claude, claudeOriginal);
     const cursor = join(home, ".cursor", "mcp.json");
-    const cursorOriginal = `{"mcpServers":{"rea":null,${owned}}}\n`;
+    const cursorOriginal = `{"mcpServers":{"reverseport":null,${owned}}}\n`;
     await writeConfiguration(cursor, cursorOriginal);
 
     const removed = await runIn(cli, home)(["uninstall", "--json"]);
@@ -228,7 +230,7 @@ cliTest(
     const claudeOriginal = `{"mcpServers":{${owned}}}\n`;
     await writeFile(claude, claudeOriginal);
     const openCode = join(home, ".config", "opencode", "opencode.json");
-    const openCodeOriginal = `{"mcp":{"servers":{"rea":${openCodeOwned}},"rea":${openCodeForeign}}}\n`;
+    const openCodeOriginal = `{"mcp":{"servers":{"reverseport":${openCodeOwned}},"reverseport":${openCodeForeign}}}\n`;
     await writeConfiguration(openCode, openCodeOriginal);
 
     const removed = await runIn(cli, home)(["uninstall", "--json"]);
@@ -258,7 +260,7 @@ cliTest(
   async ({ cli }) => {
     const home = await createTestTempDirectory("rea-json-opencode-migration-");
     const config = join(home, ".config", "opencode", "opencode.json");
-    const original = `{"mcp":{"servers":{"peer":{"type":"local","command":["/usr/bin/true"]}},"rea":${openCodeForeign},"rea":${openCodeForeign}}}\n`;
+    const original = `{"mcp":{"servers":{"peer":{"type":"local","command":["/usr/bin/true"]}},"reverseport":${openCodeForeign},"reverseport":${openCodeForeign}}}\n`;
     await writeConfiguration(config, original);
 
     const setup = await runIn(cli, home)(setupArguments("opencode"));
@@ -269,11 +271,11 @@ cliTest(
     const { mcp } = JSON.parse(await readFile(config, "utf8")) as {
       mcp: Record<string, unknown> & { servers: Record<string, unknown> };
     };
-    expect(Object.hasOwn(mcp, "rea")).toBe(false);
+    expect(Object.hasOwn(mcp, "reverseport")).toBe(false);
     const launcher = resolve("scripts/rea.mjs");
     expect(mcp.servers).toMatchObject({
       peer: { command: ["/usr/bin/true"] },
-      rea: {
+      reverseport: {
         type: "local",
         command:
           process.platform === "win32"

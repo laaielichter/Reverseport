@@ -151,7 +151,7 @@ export function lzmaDecode(props, data, outSize, { endMarker = false } = {}) {
       if (rep0 >= o) throw corrupt('LZMA');
     }
     len += 2;
-    if (o + len > outSize) throw corrupt('LZMA');
+    if (o + len > outSize) { if (endMarker) return out; throw corrupt('LZMA'); } // past the limit: the caller sees a full buffer
     for (let i = 0; i < len; i++, o++) out[o] = out[o - rep0 - 1];
   }
   if (o !== outSize) { if (endMarker) return out.subarray(0, o); throw corrupt('LZMA'); }
@@ -162,7 +162,11 @@ export function lzmaDecode(props, data, outSize, { endMarker = false } = {}) {
 export function lzmaAlone(buf, maxSize) {
   if (buf.length < 13) throw corrupt('LZMA');
   const size = buf.readBigUInt64LE(5);
-  if (size === 0xffffffffffffffffn) return lzmaDecode(buf.subarray(0, 5), buf.subarray(13), maxSize, { endMarker: true }); // size unknown: ends with a marker
+  if (size === 0xffffffffffffffffn) { // size unknown: the stream ends with a marker, which must come within the limit
+    const out = lzmaDecode(buf.subarray(0, 5), buf.subarray(13), maxSize + 1, { endMarker: true });
+    if (out.length > maxSize) throw new RPError('TOO_LARGE', `The LZMA stream unpacks to more than the ${maxSize}-byte limit.`);
+    return out;
+  }
   if (size > BigInt(maxSize)) throw new RPError('TOO_LARGE', `The LZMA stream unpacks to ${size} bytes, over the ${maxSize}-byte limit.`);
   return lzmaDecode(buf.subarray(0, 5), buf.subarray(13), Number(size));
 }

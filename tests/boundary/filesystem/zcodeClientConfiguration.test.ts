@@ -78,7 +78,7 @@ describe("ZCode JSON registration", () => {
       client.configPath,
       `{
   "mcp": {
-    "rea": { "unrelated": true },
+    "reverseport": { "unrelated": true },
     "servers": {
       "other": { "command": "other-server" }
     }
@@ -90,9 +90,9 @@ describe("ZCode JSON registration", () => {
       (await configureClientConfiguration(client, {}, command)).status,
     ).toBe("configured");
     const parsed = JSON.parse(await readFile(client.configPath, "utf8"));
-    expect(parsed.mcp.rea).toEqual({ unrelated: true });
+    expect(parsed.mcp.reverseport).toEqual({ unrelated: true });
     expect(parsed.mcp.servers.other).toEqual({ command: "other-server" });
-    expect(parsed.mcp.servers.rea).toEqual({
+    expect(parsed.mcp.servers.reverseport).toEqual({
       command: command[0],
       args: command.slice(1),
     });
@@ -121,7 +121,7 @@ describe("ZCode JSON registration", () => {
     ).toBe("configured");
     const parsed = JSON.parse(await readFile(client.configPath, "utf8"));
     expect(parsed.ui).toEqual({ theme: "dark" });
-    expect(parsed.mcp.servers.rea).toEqual({
+    expect(parsed.mcp.servers.reverseport).toEqual({
       command: command[0],
       args: command.slice(1),
     });
@@ -134,7 +134,7 @@ describe("ZCode JSON registration", () => {
       (await configureClientConfiguration(client, {}, command)).status,
     ).toBe("configured");
     const parsed = JSON.parse(await readFile(client.configPath, "utf8"));
-    expect(parsed.mcp.servers.rea).toEqual({
+    expect(parsed.mcp.servers.reverseport).toEqual({
       command: command[0],
       args: command.slice(1),
     });
@@ -157,7 +157,7 @@ describe("ZCode JSON registration", () => {
     );
     const parsed = JSON.parse(await readFile(client.configPath, "utf8"));
     expect(parsed.mcp.servers.other).toEqual({ command: "other-server" });
-    expect(parsed.mcp.servers.rea).toBeUndefined();
+    expect(parsed.mcp.servers.reverseport).toBeUndefined();
   });
 });
 
@@ -176,7 +176,7 @@ describe("ZCode .agents fallback preservation", () => {
           {
             mcpServers: {
               other: { command: "other-server", env: { TOKEN: "x" } },
-              rea: {
+              reverseport: {
                 command: "old-rea",
                 args: ["mcp"],
                 env: {
@@ -200,7 +200,7 @@ describe("ZCode .agents fallback preservation", () => {
         command: "other-server",
         env: { TOKEN: "x" },
       });
-      expect(parsed.mcp.servers.rea).toEqual({
+      expect(parsed.mcp.servers.reverseport).toEqual({
         command: command[0],
         args: command.slice(1),
         env: {
@@ -253,7 +253,7 @@ describe("ZCode .agents fallback preservation", () => {
     expect(parsed.mcp.servers.existing).toEqual({
       command: "existing-server",
     });
-    expect(parsed.mcp.servers.rea).toEqual({
+    expect(parsed.mcp.servers.reverseport).toEqual({
       command: command[0],
       args: command.slice(1),
     });
@@ -278,7 +278,7 @@ describe("ZCode fallback uninstall", () => {
       // must not block a removal the file's owner can perform.
       const { home } = await zcodeClient();
       const valid = await writeFallback(home, {
-        rea: owned,
+        reverseport: owned,
         other: { command: "other-server" },
       });
       const original =
@@ -312,10 +312,10 @@ describe("ZCode fallback uninstall", () => {
     const { home, client } = await zcodeClient();
     await writeFile(
       client.configPath,
-      JSON.stringify({ mcp: { servers: { rea: owned } } }),
+      JSON.stringify({ mcp: { servers: { reverseport: owned } } }),
     );
     const original = await writeFallback(home, {
-      rea: owned,
+      reverseport: owned,
       other: { command: "other-server" },
     });
 
@@ -339,10 +339,10 @@ describe("ZCode fallback uninstall", () => {
 
   it("removes a fallback-only REA entry and keeps a foreign rea entry", async () => {
     for (const [servers, expected] of [
-      [{ rea: owned }, {}],
+      [{ reverseport: owned }, {}],
       [
-        { rea: { command: "someone-else" } },
-        { rea: { command: "someone-else" } },
+        { reverseport: { command: "someone-else" } },
+        { reverseport: { command: "someone-else" } },
       ],
     ] as const) {
       const { home } = await zcodeClient();
@@ -365,7 +365,7 @@ describe("ZCode fallback admission", () => {
       const { home, client } = await zcodeClient();
       await mkdir(join(home, ".agents"), { recursive: true });
       const original = JSON.stringify({
-        mcpServers: { rea: { command: "old-rea", env } },
+        mcpServers: { reverseport: { command: "old-rea", env } },
       });
       await writeFile(fallbackPath(home), original);
       expect(
@@ -444,7 +444,7 @@ describe("ZCode disabled registrations", () => {
         {
           mcp: {
             servers: {
-              rea: {
+              reverseport: {
                 command: command[0],
                 args: command.slice(1),
                 enable: false,
@@ -486,7 +486,7 @@ describe("ZCode disabled registrations", () => {
       fallback,
       JSON.stringify({
         mcpServers: {
-          rea: { command: command[0], args: command.slice(1) },
+          reverseport: { command: command[0], args: command.slice(1) },
         },
       }),
     );
@@ -531,7 +531,11 @@ describe("ZCode disabled registrations", () => {
       fallback,
       JSON.stringify({
         mcpServers: {
-          rea: { command: command[0], args: command.slice(1), enable: false },
+          reverseport: {
+            command: command[0],
+            args: command.slice(1),
+            enable: false,
+          },
         },
       }),
     );
@@ -562,7 +566,7 @@ describe("ZCode disabled registrations", () => {
       fallback,
       JSON.stringify({
         mcpServers: {
-          rea: { command: "fallback-command", args: ["mcp"] },
+          reverseport: { command: "fallback-command", args: ["mcp"] },
         },
       }),
     );
@@ -570,7 +574,9 @@ describe("ZCode disabled registrations", () => {
       client.configPath,
       JSON.stringify({
         mcp: {
-          servers: { rea: { command: command[0], args: command.slice(1) } },
+          servers: {
+            reverseport: { command: command[0], args: command.slice(1) },
+          },
         },
       }),
     );

@@ -12,7 +12,7 @@ import { createTestTempDirectory } from "../../fixtures/temporaryDirectory.js";
 const codexSource = (invalid: string): string =>
   [
     'caller_root = "keep"',
-    "[mcp_servers.rea]",
+    "[mcp_servers.reverseport]",
     `command = "${PRODUCT_IDENTITY.cliBinary}"`,
     'args = ["mcp"]',
     invalid,
@@ -53,7 +53,7 @@ it.each([
       caller_root: "keep",
       mcp: {
         servers: {
-          rea: {
+          reverseport: {
             type: "local",
             command: [PRODUCT_IDENTITY.cliBinary, "mcp"],
             environment: { CALLER_SETTING: 42 },
@@ -119,7 +119,7 @@ it("retains an OpenCode remote registration with a REA-like command", async () =
     caller_root: "keep",
     mcp: {
       servers: {
-        rea: {
+        reverseport: {
           type: "remote",
           url: "https://caller.example/mcp",
           command: [PRODUCT_IDENTITY.cliBinary, "mcp"],

@@ -33,6 +33,7 @@ import {
   inspectClientConfiguration,
 } from "../../src/application/SetupClientConfiguration.js";
 import type { SetupClient } from "../../src/application/SupportedClients.js";
+import { PRODUCT_IDENTITY } from "../../src/identity.js";
 import { createTestTempDirectory } from "../fixtures/temporaryDirectory.js";
 
 afterEach(() => {
@@ -57,7 +58,10 @@ it.each(["inspect", "configure"] as const)(
         platform: process.platform,
       },
     };
-    await writeFile(configPath, JSON.stringify({ mcp: { excluded: ["rea"] } }));
+    await writeFile(
+      configPath,
+      JSON.stringify({ mcp: { excluded: [PRODUCT_IDENTITY.mcpServerKey] } }),
+    );
     const repaired = '{"caller_setting":true}\n';
     refresh.afterDiscovery = () => writeFile(configPath, repaired);
     if (operation === "inspect") {
@@ -71,7 +75,9 @@ it.each(["inspect", "configure"] as const)(
       ).toMatchObject({ status: "configured" });
       expect(JSON.parse(await readFile(configPath, "utf8"))).toMatchObject({
         caller_setting: true,
-        mcpServers: { rea: { command: "rea", args: ["mcp"] } },
+        mcpServers: {
+          [PRODUCT_IDENTITY.mcpServerKey]: { command: "rea", args: ["mcp"] },
+        },
       });
       expect(await readFile(`${configPath}.rea.backup`, "utf8")).toBe(repaired);
     }

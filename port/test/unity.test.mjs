@@ -74,7 +74,8 @@ test('player build without type trees: scenes, scripts in use, names; TextAsset,
   assert.equal(level.unityVersion, '2019.4.40f1');
   assert.deepEqual(level.assets.classes, { MonoBehaviour: 3, GameObject: 3, Transform: 1 });
   assert.deepEqual(level.assets.scripts, [{ class: 'Game.AI.Enemy', assembly: 'Assembly-CSharp.dll', instances: 2 }, { class: 'Game.Player', assembly: 'Assembly-CSharp.dll', instances: 1 }]);
-  assert.equal(level.assets.serializedFiles[0].typeTree, false);
+  assert.equal(level.assets.typeTree, false);
+  assert.match(level.next, /sharedassets0\.assets/, 'points at the sibling serialized files');
   assert.match(level.note, /no type trees/);
   const paths = level.entries.map(e => e.path);
   assert.ok(paths.includes('GameObject/Hero.bin') && paths.includes('GameObject/Goblin.bin') && paths.some(p => /^GameObject\/Goblin~\d+\.bin$/.test(p)), paths.join(', '));
@@ -138,8 +139,12 @@ test('UnityFS bundle with type trees (LZ4): container paths, scripts, JSON objec
   await fs.writeFile(file, unityBundle([{ path: 'CAB-test', data: cab, flags: 4 }, { path: 'CAB-test.resS', data: resS }]));
   const list = await archiveTool({ file });
   assert.equal(list.format, 'unityfs');
-  assert.deepEqual([list.unityVersion, list.bundleFormat, list.blockCompression], ['2022.3.10f1', 7, ['LZ4']]);
-  assert.equal(list.assets.serializedFiles[0].typeTree, true);
+  assert.deepEqual([list.unityVersion, list.bundleFormat, list.compression, list.blockInfoCompression], ['2022.3.10f1', 7, 'LZ4', 'LZ4']);
+  assert.equal(list.assets.typeTree, true);
+  assert.deepEqual(list.assets.otherFiles, [{ path: 'CAB-test.resS', size: 48 }]);
+  assert.equal(list.totalBytes, cab.length + 48, 'totals count the bundle files, not the objects again');
+  assert.equal(list.entries[0].path, 'TextAsset/story.txt', 'asset classes first');
+  assert.ok(list.entries.every(e => !('derived' in e)));
   assert.equal(list.assets.containerPaths, 2);
   assert.deepEqual(list.assets.scripts, [{ class: 'Game.Player', assembly: 'Assembly-CSharp.dll', instances: 1 }]);
   const byPath = Object.fromEntries(list.entries.map(e => [e.path, e]));
@@ -169,7 +174,7 @@ test('UnityFS variants: LZMA blocks with the table at the end, format 6, encrypt
   const lzma = path.join(dir, 'lzma.bundle');
   await fs.writeFile(lzma, unityBundle(files, { compression: 'lzma', infoAtEnd: true, format: 6, revision: '2018.4.11f1' }));
   const list = await archiveTool({ file: lzma });
-  assert.deepEqual([list.bundleFormat, list.blockCompression, list.assets.objects], [6, ['LZMA'], 5]);
+  assert.deepEqual([list.bundleFormat, list.compression, list.assets.objects], [6, 'LZMA', 5]);
   const ex = await archiveTool({ file: lzma, action: 'extract', match: 'TextAsset/*', out: path.join(dir, 'out') });
   assert.equal(await fs.readFile(path.join(dir, 'out', 'TextAsset/story.txt'), 'utf8'), 'Er was eens…');
   assert.equal(ex.extracted, 1);
@@ -209,4 +214,35 @@ test('meshes → OBJ: vertex streams (float and half UVs), external vertex data,
   const c = await meshToObj(compressed, [2019, 4, 0], null);
   assert.equal(c.text, 'g c\nv 0 0 0\nv -1 0 0\nv 0 1 0\ng c_0\nf 3 2 1\n');
   assert.equal(await meshToObj({ m_Name: 'empty', m_SubMeshes: [] }, [2022, 1, 0], null), null);
+});
+
+test('review fixes: stripped "0.0.0" version, BOM kept, malformed objects skipped, budget on output size, safe names', async () => {
+  const dir = await tempDir();
+  // A bundle whose serialized file says "0.0.0" (built with "strip Unity version"): layouts follow the bundle's revision.
+  const v = { version: 22, unityVersion: '0.0.0' };
+  const bom = Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from('id,naam\n1,held\n')]);
+  const cab = serializedFile({ ...v, types: [{ classId: 1 }, { classId: 49 }], objects: [
+    { pathId: 1, type: 0, data: obj.gameObject('Held', [[0, 2], [0, 3]]) },
+    { pathId: 2, type: 1, data: obj.textAsset('table', bom) },
+    { pathId: 3, type: 1, data: Buffer.concat([W.str('broken'), W.i32(0x7ffffff0)]) },
+    { pathId: 4, type: 1, data: obj.textAsset('CON', 'reserved name') },
+    { pathId: 5, type: 1, data: obj.textAsset('con', 'same name, other case') },
+  ] });
+  const file = path.join(dir, 'stripped.bundle');
+  await fs.writeFile(file, unityBundle([{ path: 'CAB-s', data: cab }], { revision: '2021.3.5f1' }));
+  const list = await archiveTool({ file });
+  assert.equal(list.assets.unityVersion, '2021.3.5f1');
+  assert.ok(list.entries.some(e => e.path === 'GameObject/Held.bin'), 'GameObject name found with the 2021 layout');
+  const names = list.entries.filter(e => e.path.startsWith('TextAsset/')).map(e => e.path);
+  assert.ok(names.includes('TextAsset/_CON.txt') && names.some(n => /^TextAsset\/_con~5\.txt$/.test(n)), names.join(', '));
+  const ex = await archiveTool({ file, action: 'extract', match: 'TextAsset/*', out: path.join(dir, 'out') });
+  assert.deepEqual(await fs.readFile(path.join(dir, 'out', 'TextAsset/table.txt')), bom, 'byte-identical, BOM included');
+  assert.deepEqual(ex.skipped.map(s => s.path), ['TextAsset/broken.txt'], 'a malformed object is skipped, the rest extracts');
+  await assert.rejects(fs.access(path.join(dir, 'out', 'TextAsset/broken.txt')), 'no partial file left');
+  // Budget counts the decoded output: a 4x4 texture's PNG is larger than a tiny budget.
+  const build = await playerBuild(path.join(dir, 'b'));
+  const small = await archiveTool({ file: path.join(build.data, 'sharedassets0.assets'), action: 'extract', match: 'Texture2D/*', maxBytes: 40, out: path.join(dir, 'tiny') });
+  assert.equal(small.extracted, 0);
+  assert.ok(small.skipped.every(s => /budget/.test(s.reason)));
+  await fs.rm(dir, { recursive: true, force: true });
 });

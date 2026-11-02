@@ -97,7 +97,7 @@ describe("Factory Droid JSON registration", () => {
     expect(parsed.persistentPermissions).toEqual({
       servers: { other: { approvedAt: "2026-01-01T00:00:00.000Z" } },
     });
-    expect(parsed.mcpServers.rea).toEqual({
+    expect(parsed.mcpServers.reverseport).toEqual({
       command: command[0],
       args: command.slice(1),
     });
@@ -126,7 +126,7 @@ describe("Factory Droid JSON registration", () => {
     ).toBe("configured");
     const parsed = JSON.parse(await readFile(client.configPath, "utf8"));
     expect(parsed.persistentPermissions).toEqual({ servers: {} });
-    expect(parsed.mcpServers.rea).toEqual({
+    expect(parsed.mcpServers.reverseport).toEqual({
       command: command[0],
       args: command.slice(1),
     });
@@ -139,7 +139,7 @@ describe("Factory Droid JSON registration", () => {
       (await configureClientConfiguration(client, {}, command)).status,
     ).toBe("configured");
     const parsed = JSON.parse(await readFile(client.configPath, "utf8"));
-    expect(parsed.mcpServers.rea).toEqual({
+    expect(parsed.mcpServers.reverseport).toEqual({
       command: command[0],
       args: command.slice(1),
     });
@@ -162,6 +162,6 @@ describe("Factory Droid JSON registration", () => {
     );
     const parsed = JSON.parse(await readFile(client.configPath, "utf8"));
     expect(parsed.mcpServers.other).toEqual({ command: "other-server" });
-    expect(parsed.mcpServers.rea).toBeUndefined();
+    expect(parsed.mcpServers.reverseport).toBeUndefined();
   });
 });

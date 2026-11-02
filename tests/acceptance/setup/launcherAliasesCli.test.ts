@@ -88,7 +88,7 @@ cliTest.skipIf(process.platform === "win32").for([
         : [process.execPath, launcher, "mcp"];
     const original = JSON.stringify({
       mcpServers: {
-        rea: { command: command[0], args: command.slice(1) },
+        reverseport: { command: command[0], args: command.slice(1) },
         unrelated: { command: "other-server" },
       },
     });
@@ -148,7 +148,7 @@ cliTest.skipIf(process.platform === "win32")(
     expect(await readFile(candidate, "utf8")).toContain("printf foreign");
     const original = JSON.stringify({
       mcpServers: {
-        rea: { command: candidate, args: ["mcp"] },
+        reverseport: { command: candidate, args: ["mcp"] },
         unrelated: { command: "other-server" },
       },
     });

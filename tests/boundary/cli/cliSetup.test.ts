@@ -194,14 +194,14 @@ cliTest.skipIf(process.platform === "win32")(
       'approval_policy = "on-request"',
       'sandbox_mode = "read-only"',
       "",
-      "[mcp_servers.rea]",
+      "[mcp_servers.reverseport]",
       `command = ${JSON.stringify(process.execPath)}`,
       `args = ${JSON.stringify([alias, "mcp"])}`,
       "startup_timeout_sec = 0",
       "tool_timeout_sec = 900",
       'default_tools_approval_mode = "prompt"',
       "",
-      "[mcp_servers.rea.tools.open_binary]",
+      "[mcp_servers.reverseport.tools.open_binary]",
       'approval_mode = "approve"',
       "output_token_limit = 2048",
       "",
@@ -253,7 +253,7 @@ cliTest.skipIf(process.platform === "win32")(
       approval_policy: "on-request",
       sandbox_mode: "read-only",
       mcp_servers: {
-        rea: {
+        reverseport: {
           command: process.execPath,
           args: [alias, "mcp"],
           startup_timeout_sec: 30,
