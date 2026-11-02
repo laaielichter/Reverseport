@@ -17,8 +17,10 @@ that fits your agent; all of them reach the same tools.
 | Agents that can only run commands                                                                         | CLI with JSON                   | `reverseport describe <tool>`, `reverseport <tool> --args '{…}'` |
 
 `reverseport connect` without a client lists them all. Add `--mode local` to point a snippet at your checkout
-instead of `npx`. Setup and `connect` both register the server under the name `rea`, so doing both never adds it
-twice. In Claude Code, use either `setup` or the plugin, not both: the plugin brings its own copy of the server.
+instead of `npx`. Setup and `connect` both register the server under the name `reverseport`, so doing both never
+adds it twice. Earlier releases used `rea`; see the [server name change](installation.md#server-name-change). In
+Claude Code, use either `setup` or the plugin, not both: the plugin brings its own copy of the server, listed as
+`plugin_reverseport_reverseport`, so with both you run two servers.
 
 The Claude Code plugin installed from GitHub has no built deep-analysis engine; it starts with ReversePort's own
 tools. Turn on the plugin's **Deep-analysis engine** setting (`/plugin` → reverseport → configure) to have it run

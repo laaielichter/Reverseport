@@ -54,7 +54,7 @@ cliTest(
     expect(await readFile(`${config}.rea.backup`, "utf8")).toBe(original);
     const configured = await readFile(config, "utf8");
     expect(configured.startsWith(original)).toBe(true);
-    expect(configured).toContain("[mcp_servers.rea]");
+    expect(configured).toContain("[mcp_servers.reverseport]");
 
     const repeated = await run([...setupArguments, "--yes"]);
     expect(repeated.exitCode, repeated.stdout).toBe(0);
@@ -79,7 +79,7 @@ cliTest(
     const original =
       "# retained comment\n" +
       'mcp_servers = { other = { command = "other", budget = 9007199254740993 }, ' +
-      'rea = { command = "previous", tool_timeout_sec = 9223372036854775807 } }\n';
+      'reverseport = { command = "previous", tool_timeout_sec = 9223372036854775807 } }\n';
     await mkdir(dirname(config), { recursive: true });
     await writeFile(config, original);
     const applied = await cli.run({

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { parseClientConfiguration } from "./application/ClientConfigurationDocument.js";
 import { clientRegistrationEnvironmentDetails } from "./application/ClientRegistrationEnvironment.js";
 import { explicitSetupRegistrationEnvironment } from "./application/SetupRegistrationEnvironment.js";
+import { PRODUCT_IDENTITY } from "./identity.js";
 import {
   mcpProviderDeadlineAllowanceMs,
   recommendedMcpToolTimeoutSeconds,
@@ -42,7 +43,7 @@ describe("MCP tool deadline allowance for a Ghidra decompile limit", () => {
       parseClientConfiguration(
         JSON.stringify({
           mcpServers: {
-            rea: {
+            [PRODUCT_IDENTITY.mcpServerKey]: {
               command: "rea",
               args: ["mcp"],
               env: {

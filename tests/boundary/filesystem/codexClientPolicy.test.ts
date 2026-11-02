@@ -48,7 +48,7 @@ it.each(["tables", "inline table"] as const)(
       parseToml(configured, { integersAsBigInt: "asNeeded" }),
     ).toMatchObject({
       mcp_servers: {
-        rea: {
+        reverseport: {
           ...codexToolPolicy,
           startup_timeout_sec: 19,
           tool_timeout_sec: 999,
@@ -89,7 +89,7 @@ it.each([
     const configPath = join(home, ".codex/config.toml");
     await mkdir(dirname(configPath));
     const original = [
-      "[mcp_servers.rea]",
+      "[mcp_servers.reverseport]",
       'command = "npx"',
       `args = ["-y", "${PRODUCT_IDENTITY.registrationPackageSpecifier}", "mcp"]`,
       "startup_timeout_sec = 30",
@@ -131,7 +131,7 @@ it.each([{ tools: ["binary_session"] }, { tools: ["*"] }, { tools: [] }])(
     await mkdir(dirname(configPath));
     const original = JSON.stringify({
       mcpServers: {
-        rea: {
+        reverseport: {
           command: "npx",
           args: ["-y", PRODUCT_IDENTITY.registrationPackageSpecifier, "mcp"],
           type: "stdio",
@@ -163,7 +163,7 @@ it.each([{ tools: ["binary_session"] }, { tools: ["*"] }, { tools: [] }])(
     ).toMatchObject({ status: "configured" });
     expect(JSON.parse(await readFile(configPath, "utf8"))).toMatchObject({
       mcpServers: {
-        rea: {
+        reverseport: {
           type: "stdio",
           tools,
           future_policy: { requireReview: true },

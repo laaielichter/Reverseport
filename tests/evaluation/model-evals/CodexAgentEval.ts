@@ -7,6 +7,7 @@ import {
 } from "./KnownAnswerEvaluation.js";
 import { canonicalJson } from "../../../src/domain/comparisonSemantics.js";
 import { TOOL_CONTRACTS } from "../../../src/contracts/toolContracts.js";
+import { PRODUCT_IDENTITY } from "../../../src/identity.js";
 
 /** One REA MCP invocation observed in a Codex JSONL transcript. */
 interface CodexMcpCall {
@@ -159,7 +160,7 @@ export const evaluateCodexEvents = (
   );
 
   const reaCalls = state.calls.filter(
-    ({ server }) => server?.toLowerCase() === "rea",
+    ({ server }) => server?.toLowerCase() === PRODUCT_IDENTITY.mcpServerKey,
   );
   const signatures = new Map<string, number>();
   let targetRevision = 0;

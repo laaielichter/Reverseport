@@ -24,6 +24,11 @@ import { clearClientLocationEnvironment } from "../../fixtures/clientEnvironment
  * wraps it in `cmd.exe /d /c`, so the expected entry follows the host too.
  */
 const command = npxRegistrationCommand(process.platform);
+const registered = {
+  command: command[0],
+  args: command.slice(1),
+  enabled: true,
+};
 
 beforeEach(clearClientLocationEnvironment);
 afterEach(() => vi.unstubAllEnvs());
@@ -144,8 +149,8 @@ const hermesClient = async () => {
 describe("Hermes YAML shape diagnostics", () => {
   it.each(
     [
-      "!!set {rea: null}",
-      "!!omap [{rea: {command: rea, args: [mcp]}}]",
+      "!!set {reverseport: null}",
+      "!!omap [{reverseport: {command: rea, args: [mcp]}}]",
       "!!timestamp 2001-12-15",
       "!!binary cmVh",
     ]
@@ -180,7 +185,7 @@ describe("Hermes YAML shape diagnostics", () => {
       const { home, client } = await hermesClient();
       const cursor = join(home, ".cursor", "mcp.json");
       const cursorOriginal =
-        '{"mcpServers":{"rea":{"command":"rea","args":["mcp"]}}}';
+        '{"mcpServers":{"reverseport":{"command":"rea","args":["mcp"]}}}';
       await mkdir(join(home, ".cursor"));
       await writeFile(cursor, cursorOriginal);
       await writeFile(client.configPath, original);
@@ -240,7 +245,7 @@ mcp_servers:
       display: { language: "en" },
       mcp_servers: {
         other: { command: "other-server" },
-        rea: { command: command[0], args: command.slice(1), enabled: true },
+        reverseport: registered,
       },
     });
 
@@ -311,7 +316,7 @@ mcp_servers:
     expect(text.startsWith(original)).toBe(true);
     expect(parseYaml(text, { intAsBigInt: true })).toMatchObject({
       mcp_servers: {
-        rea: { command: command[0], args: command.slice(1), enabled: true },
+        reverseport: registered,
       },
     });
     expect((await systemUninstallHost(home).removeClient(client)).status).toBe(
@@ -330,7 +335,7 @@ mcp_servers:
       parseYaml(await readFile(client.configPath, "utf8"), { version: "1.1" }),
     ).toEqual({
       mcp_servers: {
-        rea: {
+        reverseport: {
           command: command[0],
           args: command.slice(1),
           env: environment,
@@ -344,7 +349,7 @@ mcp_servers:
     "refuses an environment value %s that Hermes parses as a non-string",
     async (value) => {
       const { home, client } = await hermesClient();
-      const original = `mcp_servers:\n  rea:\n    command: rea\n    args: [mcp]\n    env:\n      CUSTOM_SETTING: ${value}\n`;
+      const original = `mcp_servers:\n  reverseport:\n    command: rea\n    args: [mcp]\n    env:\n      CUSTOM_SETTING: ${value}\n`;
       await writeFile(client.configPath, original);
       expect(
         await inspectClientConfiguration(client, {}, command),
@@ -377,7 +382,7 @@ describe("Hermes YAML empty configurations", () => {
   it("rejects multiple YAML documents before treating an empty first root as absent", async () => {
     const { client } = await hermesClient();
     const original =
-      "---\n---\nmcp_servers:\n  rea:\n    command: rea\n    args: [mcp]\n";
+      "---\n---\nmcp_servers:\n  reverseport:\n    command: rea\n    args: [mcp]\n";
     await writeFile(client.configPath, original);
     expect(await inspectClientConfiguration(client, {}, command)).toMatchObject(
       { status: "invalid" },
@@ -411,7 +416,7 @@ describe("Hermes YAML empty configurations", () => {
       expect(text.slice(0, kept.length)).toBe(kept);
       expect(parseYaml(text)).toEqual({
         mcp_servers: {
-          rea: { command: command[0], args: command.slice(1), enabled: true },
+          reverseport: registered,
         },
       });
       expect(

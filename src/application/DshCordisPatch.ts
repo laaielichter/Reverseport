@@ -6,6 +6,7 @@ import {
 } from "../config/environment.js";
 import { ConfigurationError } from "../domain/configurationErrors.js";
 import { err, ok, type Result } from "../domain/result.js";
+import { PRODUCT_IDENTITY } from "../identity.js";
 import type { ClientConfigurationDocument } from "./ClientConfigurationDocument.js";
 import { CordisExpression, DshCordisYaml } from "./DshCordisYaml.js";
 import {
@@ -446,7 +447,10 @@ export const parseDshCordisDocument = (
   const source = new DshCordisDocument(text);
   return {
     document: { cordis: source },
-    servers: source.config === undefined ? {} : { rea: source.config },
+    servers:
+      source.config === undefined
+        ? {}
+        : { [PRODUCT_IDENTITY.mcpServerKey]: source.config },
     serversPath: [],
     dialect: "dsh",
     environmentKey: "env",
@@ -472,7 +476,7 @@ export const dshClientRegistrationEntry = (
 ): Record<string, unknown> => {
   const [executable = "rea", ...args] = command;
   return {
-    serverName: "rea",
+    serverName: PRODUCT_IDENTITY.mcpServerKey,
     transport: "stdio",
     command: executable,
     args,

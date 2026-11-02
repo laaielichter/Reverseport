@@ -16,8 +16,10 @@ die bij je agent past; ze komen allemaal uit bij dezelfde tools.
 | LangChain/LlamaIndex OpenAPI tools, Semantic Kernel, CrewAI, AutoGen, n8n HTTP                                   | OpenAPI 3.1                         | `GET /api/openapi.json`                                          |
 | Agents die alleen opdrachten kunnen uitvoeren                                                                    | CLI met JSON                        | `reverseport describe <tool>`, `reverseport <tool> --args '{…}'` |
 
-`reverseport connect` zonder client toont ze allemaal. Voeg `--mode local` toe om een fragment naar je checkout te laten verwijzen in plaats van `npx`. Zowel setup als `connect` registreren de server onder de naam `rea`, dus beide uitvoeren voegt hem
-twee keer. Gebruik in Claude Code `setup` of de plugin, niet beide: de plugin bevat zijn eigen kopie van de server.
+`reverseport connect` zonder client toont ze allemaal. Voeg `--mode local` toe om een fragment naar je checkout te laten verwijzen in plaats van `npx`. Zowel setup als `connect` registreren de server onder de naam `reverseport`, dus beide uitvoeren voegt hem
+nooit twee keer toe. Eerdere versies gebruikten `rea`; zie de [wijziging van de servernaam](installation.md#server-name-change).
+Gebruik in Claude Code `setup` of de plugin, niet beide: de plugin bevat zijn eigen kopie van de server, als
+`plugin_reverseport_reverseport`, dus met beide draai je twee servers.
 
 The Claude Code plugin installed from GitHub has no built deep-analysis engine; it starts with ReversePort's own
 tools. Zet de plugin-instelling **Deep-analysis engine** aan (`/plugin` → reverseport → configure) om de

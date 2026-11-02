@@ -151,7 +151,7 @@ await withVerifierCleanup(async () => {
             "Claude must expose REA tools or its native pending-server wait",
           );
           pendingServerWaits++;
-          return call(wait.name, { servers: ["rea"] });
+          return call(wait.name, { servers: ["reverseport"] });
         }
         const prefix = analysis.name.slice(
           0,
@@ -400,8 +400,10 @@ await withVerifierCleanup(async () => {
                 allow: [
                   "Skill",
                   "WaitForMcpServers",
-                  "mcp__rea__analyze_javascript_application",
-                  ...(mode === "call" ? ["mcp__rea__binary_session"] : []),
+                  "mcp__reverseport__analyze_javascript_application",
+                  ...(mode === "call"
+                    ? ["mcp__reverseport__binary_session"]
+                    : []),
                 ],
               },
             }),

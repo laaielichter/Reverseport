@@ -40,6 +40,15 @@ import {
 } from "./ClientRegistrationEnvironment.js";
 
 import { refreshClientRegistration } from "./ClientRegistration.js";
+import {
+  migratedClientConfiguration,
+  migrationEditedPaths,
+  migrationPending,
+  serverKeyListEdits,
+  serverKeyMigration,
+  serverKeyMigrationNotes,
+  type ServerKeyMigration,
+} from "./SetupServerKeyMigration.js";
 
 import { PRODUCT_IDENTITY } from "../identity.js";
 import { snapshotEnvironment } from "../process/snapshotEnvironment.js";
@@ -171,7 +180,10 @@ const configureClientDocument = async (
         client,
         environment,
         command,
-        parsed,
+        migratedClientConfiguration(
+          parsed,
+          serverKeyMigration(client, parsed, original),
+        ),
         files.value,
         resolveProviderRequestBudget,
       ),
@@ -193,18 +205,21 @@ const configureClientDocument = async (
     throwCleanupFailure(fallback.error);
     return { status: "failed", reason: "readback" };
   }
+  const merged = {
+    ...parsed,
+    servers: { ...fallback.value, ...parsed.servers },
+  };
+  const migration = serverKeyMigration(client, merged, original);
   const desired = await clientConfigurationDesired(
     client,
     environment,
     command,
-    {
-      ...parsed,
-      servers: { ...fallback.value, ...parsed.servers },
-    },
+    migratedClientConfiguration(merged, migration),
     files.value,
     resolveProviderRequestBudget,
   );
-  if (registrationCurrent(parsed, desired)) return { status: "unchanged" };
+  if (registrationCurrent(client, parsed, original, desired))
+    return { status: "unchanged" };
   return persistClientConfiguration({
     client,
     transactionPath,
@@ -214,6 +229,7 @@ const configureClientDocument = async (
     parsed,
     desired,
     fallbackServers: fallback.value,
+    migration,
   });
 };
 
@@ -228,6 +244,8 @@ interface ClientConfigurationUpdate {
   readonly parsed: ClientConfigurationDocument;
   readonly desired: unknown;
   readonly fallbackServers: Readonly<Record<string, unknown>>;
+  /** Previous-name entries this write removes, decided on `parsed` plus fallback. */
+  readonly migration: ServerKeyMigration;
 }
 
 const persistClientConfiguration = async ({
@@ -239,6 +257,7 @@ const persistClientConfiguration = async ({
   parsed,
   desired,
   fallbackServers,
+  migration,
 }: ClientConfigurationUpdate): Promise<ClientConfigurationResult> => {
   // The plan chose this file; an MSIX package may have switched to its
   // private copy since, for example when it quit.
@@ -265,14 +284,20 @@ const persistClientConfiguration = async ({
     parsed,
     PRODUCT_IDENTITY.mcpServerKey,
   );
+  // REA-owned entries under a previous name move to the current name; every
+  // other entry, including an unowned previous-name entry, is kept.
+  const removed = new Set(migration.removeNative);
   const registered = withClientServers(
     parsed,
     {
-      ...fallbackServers,
-      ...parsed.servers,
+      ...Object.fromEntries(
+        Object.entries({ ...fallbackServers, ...parsed.servers }).filter(
+          ([name]) => !removed.has(name),
+        ),
+      ),
       [PRODUCT_IDENTITY.mcpServerKey]: desired,
     },
-    PRODUCT_IDENTITY.mcpServerKey,
+    [PRODUCT_IDENTITY.mcpServerKey, ...migration.removeLegacy],
   );
   // OMP's denylist would hide the registration; keep every other listed name.
   const ompDisabled =
@@ -282,15 +307,23 @@ const persistClientConfiguration = async ({
   const enableOmp =
     Array.isArray(ompDisabled) &&
     ompDisabled.includes(PRODUCT_IDENTITY.mcpServerKey);
-  const document =
-    enableOmp && Array.isArray(ompDisabled)
+  const merged = {
+    ...parsed,
+    servers: { ...fallbackServers, ...parsed.servers },
+  };
+  const lists = serverKeyListEdits(merged, migration).lists;
+  const document = {
+    ...(enableOmp && Array.isArray(ompDisabled)
       ? {
           ...registered,
           [OMP_DISABLED_SERVERS_KEY]: ompDisabled.filter(
             (name: unknown) => name !== PRODUCT_IDENTITY.mcpServerKey,
           ),
         }
-      : registered;
+      : registered),
+    ...lists,
+  };
+  const migrationPaths = migrationEditedPaths(parsed, migration);
   let serialized: ReturnType<typeof serializeClientConfiguration>;
   try {
     serialized = serializeClientConfiguration(
@@ -299,15 +332,31 @@ const persistClientConfiguration = async ({
       original,
       [
         ...Object.keys(fallbackServers)
-          .filter((name) => name !== PRODUCT_IDENTITY.mcpServerKey)
+          .filter(
+            (name) =>
+              name !== PRODUCT_IDENTITY.mcpServerKey && !removed.has(name),
+          )
           .map((name) => clientServerPath(parsed, name)),
         clientServerPath(parsed, PRODUCT_IDENTITY.mcpServerKey),
         ...(legacyPath === undefined ? [] : [legacyPath]),
-        ...(enableOmp ? [[OMP_DISABLED_SERVERS_KEY]] : []),
+        ...migrationPaths,
+        ...Array.from(
+          new Set([
+            ...(enableOmp ? [OMP_DISABLED_SERVERS_KEY] : []),
+            ...Object.keys(lists),
+          ]),
+          (key) => [key],
+        ),
       ],
-      // Setup deletes only REA's OpenCode V1 name, which the native V2 entry
-      // supersedes whatever its launcher; every repeat goes, as one member does.
-      { removeShadowedMembersAt: legacyPath === undefined ? [] : [legacyPath] },
+      // Setup deletes REA's OpenCode V1 name, which the native V2 entry
+      // supersedes whatever its launcher, and previous-name entries whose every
+      // repeat is REA-owned; every repeat goes, as one member does.
+      {
+        removeShadowedMembersAt: [
+          ...(legacyPath === undefined ? [] : [legacyPath]),
+          ...migrationPaths,
+        ],
+      },
     );
   } catch (cause: unknown) {
     // An unserializable edit is reported before any file is written.
@@ -369,12 +418,14 @@ const persistClientConfiguration = async ({
       await publication.assertCurrent(text);
       const readback = parseClientConfiguration(text, format);
       if (
-        !registrationCurrent(readback, desired) ||
+        !registrationCurrent(client, readback, text, desired) ||
         Object.entries(fallbackServers).some(
           ([name, entry]) =>
             name !== PRODUCT_IDENTITY.mcpServerKey &&
+            !removed.has(name) &&
             !clientConfigurationValuesEqual(readback.servers[name], entry),
-        )
+        ) ||
+        !migrationReadBack(merged, readback, migration, document, lists)
       ) {
         return await rollbackOrReadbackFailure(
           publication,
@@ -434,7 +485,10 @@ export const clientConfigurationAligned = async (
       client,
       providerEnvironment,
       command,
-      parsed,
+      migratedClientConfiguration(
+        parsed,
+        serverKeyMigration(client, parsed, original),
+      ),
       files.value,
       resolveProviderRequestBudget,
     );
@@ -443,7 +497,10 @@ export const clientConfigurationAligned = async (
       throwCleanupFailure(policy.error);
       return false;
     }
-    return policy.value === undefined && registrationCurrent(parsed, desired);
+    return (
+      policy.value === undefined &&
+      registrationCurrent(client, parsed, original, desired)
+    );
   } catch (cause: unknown) {
     if (cause instanceof RegularFileCleanupFailure) throw cause;
     // Unreadable configuration is treated as not aligned so setup repairs it.
@@ -561,6 +618,7 @@ const inspectClientDocument = async (
       remediation: `The configuration file could not be read. Check its permissions before rerunning setup. ${cause instanceof Error ? cause.message : String(cause)}`,
     };
   }
+  let notes: readonly string[];
   try {
     const parsed = clientConfigurationForWrite(
       parseClientConfiguration(original, client.format),
@@ -570,7 +628,10 @@ const inspectClientDocument = async (
       client,
       providerEnvironment,
       command,
-      parsed,
+      migratedClientConfiguration(
+        parsed,
+        serverKeyMigration(client, parsed, original),
+      ),
       files.value,
       resolveProviderRequestBudget,
     );
@@ -584,13 +645,34 @@ const inspectClientDocument = async (
     }
     if (policy.value !== undefined)
       return { status: "invalid", remediation: policy.value };
-    if (registrationCurrent(parsed, desired))
+    if (registrationCurrent(client, parsed, original, desired))
       return { status: "already_current" };
     const fallback = await readZcodeFallbackServers(client, parsed);
     if (!fallback.ok) {
       throwCleanupFailure(fallback.error);
       return { status: "invalid", remediation: fallback.error.detail };
     }
+    const merged = {
+      ...parsed,
+      servers: { ...fallback.value, ...parsed.servers },
+    };
+    const migration = serverKeyMigration(client, merged, original);
+    notes = serverKeyMigrationNotes({
+      client,
+      parsed: merged,
+      original,
+      migration,
+      listNotes: serverKeyListEdits(merged, migration).notes,
+      sources: files.value,
+      ...(client.zcodeFallbackPath !== undefined &&
+      migration.removeNative.some(
+        (name) =>
+          Object.hasOwn(fallback.value, name) &&
+          !Object.hasOwn(parsed.servers, name),
+      )
+        ? { fallbackPath: client.zcodeFallbackPath }
+        : {}),
+    });
   } catch (cause: unknown) {
     if (
       cause instanceof RegularFileCleanupFailure ||
@@ -617,6 +699,7 @@ const inspectClientDocument = async (
   return {
     status: "update",
     backupPath: backupSelection.value.backupPath,
+    ...(notes.length === 0 ? {} : { notes }),
   };
 };
 
@@ -738,9 +821,14 @@ const conflictFailure = (
 const errorDetail = (cause: unknown): string =>
   cause instanceof Error ? cause.message : String(cause);
 
-/** Whether REA's entry matches, no legacy entry remains, and no client disable list suppresses it. */
+/**
+ * Whether REA's entry matches, no legacy entry remains, no client disable list
+ * suppresses it, and no REA-owned entry remains under a previous name.
+ */
 const registrationCurrent = (
+  client: SetupClient,
   parsed: ClientConfigurationDocument,
+  text: string | undefined,
   desired: unknown,
 ): boolean =>
   (parsed.dialect !== "dsh" || dshDocument(parsed.document).ready) &&
@@ -749,7 +837,43 @@ const registrationCurrent = (
     desired,
   ) &&
   !Object.hasOwn(parsed.legacyServers, PRODUCT_IDENTITY.mcpServerKey) &&
-  !clientServerListedDisabled(parsed, PRODUCT_IDENTITY.mcpServerKey);
+  !clientServerListedDisabled(parsed, PRODUCT_IDENTITY.mcpServerKey) &&
+  !migrationPending(serverKeyMigration(client, parsed, text));
+
+/**
+ * The written file holds the migration as planned: removed previous-name
+ * entries are gone, kept ones are unchanged, and edited lists hold the
+ * planned names (Grok drops an emptied list, which reads as empty).
+ */
+const migrationReadBack = (
+  parsed: ClientConfigurationDocument,
+  readback: ClientConfigurationDocument,
+  migration: ServerKeyMigration,
+  document: Readonly<Record<string, unknown>>,
+  lists: Readonly<Record<string, readonly unknown[]>>,
+): boolean =>
+  PRODUCT_IDENTITY.previousMcpServerKeys.every(
+    (name) =>
+      (migration.removeNative.includes(name)
+        ? !Object.hasOwn(readback.servers, name)
+        : parsed.dialect === "dsh" ||
+          clientConfigurationValuesEqual(
+            readback.servers[name],
+            parsed.servers[name],
+          )) &&
+      (migration.removeLegacy.includes(name)
+        ? !Object.hasOwn(readback.legacyServers, name)
+        : clientConfigurationValuesEqual(
+            readback.legacyServers[name],
+            parsed.legacyServers[name],
+          )),
+  ) &&
+  Object.keys(lists).every((key) =>
+    clientConfigurationValuesEqual(
+      readback.document[key] ?? [],
+      document[key] ?? [],
+    ),
+  );
 
 const clientConfigurationDesired = async (
   client: SetupClient,

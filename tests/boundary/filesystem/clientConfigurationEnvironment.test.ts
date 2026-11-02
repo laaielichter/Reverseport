@@ -30,7 +30,7 @@ it("awaits the owner-parsed provider request budget without changing caller stri
   const parsed = parseClientConfiguration(
     JSON.stringify({
       mcpServers: {
-        rea: {
+        reverseport: {
           command: "rea",
           args: ["mcp"],
           env: {
@@ -70,7 +70,7 @@ it("preserves owner-parsed registration facts and revalidates later inspections"
   };
   const original = JSON.stringify({
     mcpServers: {
-      rea: {
+      reverseport: {
         command: "rea",
         args: ["mcp"],
         env: environment,
@@ -125,7 +125,7 @@ it.each(["win32", "linux"] as const)(
       path,
       JSON.stringify({
         mcpServers: {
-          rea: clientRegistrationEntry(
+          reverseport: clientRegistrationEntry(
             "json",
             npxRegistrationCommand(platform),
             { rea_analysis_provider: "invalid provider" },
@@ -163,7 +163,7 @@ it.skipIf(process.platform !== "win32").each([
   async ({ key, override, value, duplicate }) => {
     const root = await createTestTempDirectory("rea-dsh-alias-comments-");
     const configPath = join(root, "cordis.patch.yml");
-    const source = `- insert:\n    - id: rea-mcp\n      name: "@deepseek-ai/dsh-mcp-client"\n      config:\n        serverName: rea\n        transport: stdio\n        command: old-rea\n        args: [mcp]\n        env:\n          # retain preceding rationale\n          ${key}: "hopper" # retain inline rationale\n${duplicate ? `          ${override}: "ghidra" # retain winning rationale\n` : ""}          CUSTOM: !!js caller.custom\n`;
+    const source = `- insert:\n    - id: rea-mcp\n      name: "@deepseek-ai/dsh-mcp-client"\n      config:\n        serverName: reverseport\n        transport: stdio\n        command: old-rea\n        args: [mcp]\n        env:\n          # retain preceding rationale\n          ${key}: "hopper" # retain inline rationale\n${duplicate ? `          ${override}: "ghidra" # retain winning rationale\n` : ""}          CUSTOM: !!js caller.custom\n`;
     await writeFile(configPath, source);
     const client = { name: "dsh", format: "dsh", configPath } as const;
     const result = await configureClientConfiguration(
@@ -210,7 +210,7 @@ it.skipIf(process.platform !== "win32")(
       configPath,
       JSON.stringify({
         mcpServers: {
-          rea: {
+          reverseport: {
             command: "old-rea",
             args: ["mcp"],
             env: { rea_mcp_input_schema_profile: "full" },
@@ -230,7 +230,7 @@ it.skipIf(process.platform !== "win32")(
       await readFile(configPath, "utf8"),
       "kimi",
     );
-    expect(effectiveClientServer(parsed, "rea")).toHaveProperty("env", {
+    expect(effectiveClientServer(parsed, "reverseport")).toHaveProperty("env", {
       rea_mcp_input_schema_profile: "full",
     });
     const statuses = await readClientRegistrationStatuses(home, "rea", {
@@ -249,7 +249,7 @@ it
   async (stored) => {
     const root = await createTestTempDirectory("rea-dsh-case-");
     const configPath = join(root, "cordis.patch.yml");
-    const source = `- insert:\n    - id: rea-mcp\n      name: "@deepseek-ai/dsh-mcp-client"\n      config:\n        serverName: rea\n        transport: stdio\n        command: old-rea\n        args: [mcp]\n        env:\n          rea_analysis_provider: ${stored}\n          CUSTOM: !!js caller.custom\n`;
+    const source = `- insert:\n    - id: rea-mcp\n      name: "@deepseek-ai/dsh-mcp-client"\n      config:\n        serverName: reverseport\n        transport: stdio\n        command: old-rea\n        args: [mcp]\n        env:\n          rea_analysis_provider: ${stored}\n          CUSTOM: !!js caller.custom\n`;
     await writeFile(configPath, source);
     const client = { name: "dsh", format: "dsh", configPath } as const;
     const overrides = { REA_ANALYSIS_PROVIDER: "ghidra" };
@@ -292,7 +292,9 @@ it.skipIf(process.platform !== "win32").each([
   ({ existing, overrides, expected }) => {
     const parsed = parseClientConfiguration(
       JSON.stringify({
-        mcpServers: { rea: { command: "rea", args: ["mcp"], env: existing } },
+        mcpServers: {
+          reverseport: { command: "rea", args: ["mcp"], env: existing },
+        },
       }),
       "json",
     );
@@ -327,7 +329,7 @@ it.skipIf(process.platform !== "win32")(
     const configPath = join(root, "config.json");
     const original = JSON.stringify({
       mcpServers: {
-        rea: {
+        reverseport: {
           command: "rea",
           args: ["mcp"],
           env: { rea_analysis_provider: "invalid provider" },
@@ -378,7 +380,11 @@ it.each([
       {
         ["__proto__"]: { caller: "retain root value" },
         [serversKey]: {
-          rea: clientRegistrationEntry(format, ["rea-old", "mcp"], custom),
+          reverseport: clientRegistrationEntry(
+            format,
+            ["rea-old", "mcp"],
+            custom,
+          ),
           other: clientRegistrationEntry(format, ["other"], { OTHER: "keep" }),
           ["__proto__"]: clientRegistrationEntry(format, ["peer"], {}),
         },
@@ -407,7 +413,7 @@ it.each([
     expect(effectiveClientServer(parsed, "__proto__")).toEqual(
       effectiveClientServer(originalParsed, "__proto__"),
     );
-    expect(effectiveClientServer(parsed, "rea")).toHaveProperty(
+    expect(effectiveClientServer(parsed, "reverseport")).toHaveProperty(
       environmentKey,
       { ...custom, ...providers },
     );
@@ -435,7 +441,7 @@ it.each(["linux", "win32"] as const)(
     - id: rea-mcp
       name: "@deepseek-ai/dsh-mcp-client"
       config:
-        serverName: rea
+        serverName: reverseport
         transport: stdio
         command: rea
         args: [mcp]
@@ -619,7 +625,7 @@ it("rejects a non-string caller environment key before editing configuration", a
   const root = await createTestTempDirectory("rea-invalid-own-environment-");
   const configPath = join(root, "config.json");
   const source =
-    '{"mcpServers":{"rea":{"command":"old-rea","args":["mcp"],"env":{"__proto__":123}}}}';
+    '{"mcpServers":{"reverseport":{"command":"old-rea","args":["mcp"],"env":{"__proto__":123}}}}';
   await writeFile(configPath, source);
   const details = clientRegistrationEnvironmentDetails(
     parseClientConfiguration(source, "json"),
@@ -650,7 +656,11 @@ it("retains legacy OpenCode environment when migrating into a native server tabl
     configPath,
     JSON.stringify({
       mcp: {
-        rea: clientRegistrationEntry("opencode", ["old", "mcp"], custom),
+        reverseport: clientRegistrationEntry(
+          "opencode",
+          ["old", "mcp"],
+          custom,
+        ),
         servers: {
           other: clientRegistrationEntry("opencode_v2", ["other"], {}),
         },
@@ -665,7 +675,7 @@ it("retains legacy OpenCode environment when migrating into a native server tabl
     "opencode",
   );
   expect(parsed.legacyServers).toEqual({});
-  expect(parsed.servers.rea).toEqual(
+  expect(parsed.servers.reverseport).toEqual(
     clientRegistrationEntry("opencode_v2", ["rea", "mcp"], custom),
   );
   expect(
@@ -805,7 +815,7 @@ it.each([
     const configPath = join(directory, "mcp.json");
     await mkdir(directory);
     const original = JSON.stringify({
-      mcpServers: { rea: { command: "rea", args: ["mcp"], env } },
+      mcpServers: { reverseport: { command: "rea", args: ["mcp"], env } },
     });
     await writeFile(configPath, original);
     const client = { name: "cursor", format: "json", configPath } as const;

@@ -20,20 +20,20 @@ function launch(mode) {
 const json = v => JSON.stringify(v, null, 2);
 
 export const CLIENTS = {
-  'claude-code': { file: 'shell', snippet: l => `claude mcp add rea -- ${l.command} ${l.args.join(' ')}\n# or instead (not both), the plugin with skills and the porting agent:\n/plugin marketplace add laaielichter/reverseport\n/plugin install reverseport@reverseport` },
-  'claude-desktop': { file: 'claude_desktop_config.json', snippet: l => json({ mcpServers: { rea: l } }) },
-  cursor: { file: '~/.cursor/mcp.json', snippet: l => json({ mcpServers: { rea: l } }) },
-  windsurf: { file: '~/.codeium/windsurf/mcp_config.json', snippet: l => json({ mcpServers: { rea: l } }) },
-  cline: { file: 'cline_mcp_settings.json', snippet: l => json({ mcpServers: { rea: { ...l, disabled: false } } }) },
-  'roo-code': { file: 'mcp_settings.json', snippet: l => json({ mcpServers: { rea: l } }) },
-  vscode: { file: '.vscode/mcp.json (GitHub Copilot agent mode)', snippet: l => json({ servers: { rea: { type: 'stdio', ...l } } }) },
-  codex: { file: '~/.codex/config.toml', snippet: l => `[mcp_servers.rea]\ncommand = ${JSON.stringify(l.command)}\nargs = ${JSON.stringify(l.args)}\nstartup_timeout_sec = 60\ntool_timeout_sec = 600` },
-  'gemini-cli': { file: '~/.gemini/settings.json', snippet: l => json({ mcpServers: { rea: { ...l, env: { REVERSEPORT_SCHEMA: 'portable' }, timeout: 600000 } } }) },
-  opencode: { file: 'opencode.json', snippet: l => json({ mcp: { rea: { type: 'local', command: [l.command, ...l.args], enabled: true } } }) },
-  zed: { file: 'Zed settings.json', snippet: l => json({ context_servers: { rea: { source: 'custom', command: l.command, args: l.args } } }) },
-  continue: { file: '.continue/mcpServers/reverseport.yaml', snippet: l => `name: ReversePort\nversion: 1.0.0\nschema: v1\nmcpServers:\n  - name: rea\n    command: ${l.command}\n    args:\n${l.args.map(a => `      - ${JSON.stringify(a)}`).join('\n')}` },
-  goose: { file: '~/.config/goose/config.yaml', snippet: l => `extensions:\n  rea:\n    type: stdio\n    name: rea\n    cmd: ${l.command}\n    args: ${JSON.stringify(l.args)}\n    enabled: true\n    timeout: 600` },
-  'lm-studio': { file: 'LM Studio mcp.json', snippet: l => json({ mcpServers: { rea: l } }) },
+  'claude-code': { file: 'shell', snippet: l => `claude mcp add reverseport -- ${l.command} ${l.args.join(' ')}\n# or instead (not both), the plugin with skills and the porting agent:\n/plugin marketplace add laaielichter/reverseport\n/plugin install reverseport@reverseport` },
+  'claude-desktop': { file: 'claude_desktop_config.json', snippet: l => json({ mcpServers: { reverseport: l } }) },
+  cursor: { file: '~/.cursor/mcp.json', snippet: l => json({ mcpServers: { reverseport: l } }) },
+  windsurf: { file: '~/.codeium/windsurf/mcp_config.json', snippet: l => json({ mcpServers: { reverseport: l } }) },
+  cline: { file: 'cline_mcp_settings.json', snippet: l => json({ mcpServers: { reverseport: { ...l, disabled: false } } }) },
+  'roo-code': { file: 'mcp_settings.json', snippet: l => json({ mcpServers: { reverseport: l } }) },
+  vscode: { file: '.vscode/mcp.json (GitHub Copilot agent mode)', snippet: l => json({ servers: { reverseport: { type: 'stdio', ...l } } }) },
+  codex: { file: '~/.codex/config.toml', snippet: l => `[mcp_servers.reverseport]\ncommand = ${JSON.stringify(l.command)}\nargs = ${JSON.stringify(l.args)}\nstartup_timeout_sec = 60\ntool_timeout_sec = 600` },
+  'gemini-cli': { file: '~/.gemini/settings.json', snippet: l => json({ mcpServers: { reverseport: { ...l, env: { REVERSEPORT_SCHEMA: 'portable' }, timeout: 600000 } } }) },
+  opencode: { file: 'opencode.json', snippet: l => json({ mcp: { reverseport: { type: 'local', command: [l.command, ...l.args], enabled: true } } }) },
+  zed: { file: 'Zed settings.json', snippet: l => json({ context_servers: { reverseport: { source: 'custom', command: l.command, args: l.args } } }) },
+  continue: { file: '.continue/mcpServers/reverseport.yaml', snippet: l => `name: ReversePort\nversion: 1.0.0\nschema: v1\nmcpServers:\n  - name: reverseport\n    command: ${l.command}\n    args:\n${l.args.map(a => `      - ${JSON.stringify(a)}`).join('\n')}` },
+  goose: { file: '~/.config/goose/config.yaml', snippet: l => `extensions:\n  reverseport:\n    type: stdio\n    name: reverseport\n    cmd: ${l.command}\n    args: ${JSON.stringify(l.args)}\n    enabled: true\n    timeout: 600` },
+  'lm-studio': { file: 'LM Studio mcp.json', snippet: l => json({ mcpServers: { reverseport: l } }) },
   'mcp-http': { file: 'any client that takes an MCP URL (n8n, LangChain MultiServerMCPClient, Vercel AI SDK, Open WebUI via mcpo…)', snippet: () => 'reverseport serve\n# then connect to: http://127.0.0.1:32147/mcp   (set REVERSEPORT_TOKEN to require a bearer token)' },
   openai: { file: 'OpenAI Chat Completions / Responses, and OpenAI-compatible servers (vLLM, Ollama, LM Studio, llama.cpp)', snippet: () => 'reverseport serve\ncurl -s "http://127.0.0.1:32147/api/agent/tools?format=openai-strict"   # tools=…   (format=responses for the Responses API)\n# run a call: POST http://127.0.0.1:32147/api/agent/call {"name": "...", "arguments": {...}}' },
   anthropic: { file: 'Anthropic Messages API tool use', snippet: () => 'reverseport serve\ncurl -s "http://127.0.0.1:32147/api/agent/tools?format=anthropic"   # tools=…\n# run a call: POST http://127.0.0.1:32147/api/agent/call {"name": "...", "arguments": {...}}' },
@@ -58,5 +58,5 @@ export function connect({ client, mode } = {}) {
     const near = closest(key, Object.keys(CLIENTS), 3);
     throw new RPError('INVALID_ARGUMENT', `Unknown client "${client}".${near ? ` Did you mean "${near}"?` : ''} Clients: ${Object.keys(CLIENTS).join(', ')}.`);
   }
-  return { client: key, where: c.file, snippet: c.snippet(how === 'local' ? launch('local') : l), serverName: 'rea — the name `reverseport setup` registers, so using both never registers the server twice', ...(how === 'npx' ? { version: `${PACKAGE} — pinned on purpose; after an update run \`reverseport connect ${key}\` again for the new number` } : {}), tools: 'ReversePort lists its own tools plus the engine core; REVERSEPORT_TOOLS=all lists every engine tool, REVERSEPORT_TOOLS=port only ReversePort\'s.' };
+  return { client: key, where: c.file, snippet: c.snippet(how === 'local' ? launch('local') : l), serverName: 'reverseport — the name both `reverseport setup` and the Claude plugin use, so a snippet and setup write the same entry instead of a second one (in Claude Code pick the plugin or a registration, not both). Older setups registered it as "rea": rerunning `reverseport setup` moves that entry to "reverseport"; for a client setup does not edit, remove the old "rea" entry by hand.', ...(how === 'npx' ? { version: `${PACKAGE} — pinned on purpose; after an update run \`reverseport connect ${key}\` again for the new number` } : {}), tools: 'ReversePort lists its own tools plus the engine core; REVERSEPORT_TOOLS=all lists every engine tool, REVERSEPORT_TOOLS=port only ReversePort\'s.' };
 }

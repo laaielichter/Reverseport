@@ -81,6 +81,8 @@ export const clientRegistrationEnvironmentDetails = (
   overrides: Readonly<Record<string, string>> = {},
   validation: "fragment" | "effective" = "effective",
   platform: NodeJS.Platform = process.platform,
+  /** The entry to read; status reads a previous REA name's entry too. */
+  serverKey: string = PRODUCT_IDENTITY.mcpServerKey,
 ): Result<ClientRegistrationEnvironmentDetails, ConfigurationError> => {
   if (parsed?.dialect === "dsh") {
     const environment = dshDocument(parsed.document).environment(
@@ -99,9 +101,7 @@ export const clientRegistrationEnvironmentDetails = (
   }
   const key = parsed?.environmentKey ?? "env";
   const registration =
-    parsed === undefined
-      ? undefined
-      : effectiveClientServer(parsed, PRODUCT_IDENTITY.mcpServerKey);
+    parsed === undefined ? undefined : effectiveClientServer(parsed, serverKey);
   const raw =
     typeof registration === "object" && registration !== null
       ? Reflect.get(registration, key)
@@ -134,6 +134,7 @@ export const clientRegistrationEnvironmentDetailsWithBudget = async (
   validation: "fragment" | "effective",
   resolveProviderRequestBudget: ProviderRequestBudgetResolver | undefined,
   platform: NodeJS.Platform = process.platform,
+  serverKey: string = PRODUCT_IDENTITY.mcpServerKey,
 ): Promise<
   Result<ResolvedClientRegistrationEnvironmentDetails, ConfigurationError>
 > => {
@@ -142,6 +143,7 @@ export const clientRegistrationEnvironmentDetailsWithBudget = async (
     overrides,
     validation,
     platform,
+    serverKey,
   );
   if (!details.ok) return details;
   const unresolved = [...details.value.unresolvedSettings].filter(

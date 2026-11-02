@@ -210,7 +210,7 @@ installs the matching skill and on-demand references in the same plan, and adds
 ## Limit ReversePort to one project or agent profile
 
 Setup registers ReversePort for the whole client. For Claude Code it writes
-`mcpServers.rea` in `~/.claude.json` and installs the bundled skill under
+`mcpServers.reverseport` in `~/.claude.json` and installs the bundled skill under
 `~/.claude/skills`, so every project that Claude Code opens can call ReversePort. To
 offer ReversePort's tools only where they're wanted, use one of the routes below.
 
@@ -227,7 +227,8 @@ For Claude Code, check existing default-profile state before choosing either
 route. Setup is additive: a previous user-level ReversePort registration and personal
 skill remain active in other projects. Back up the default configuration and
 ReversePort skill first, then, with `CLAUDE_CONFIG_DIR` unset, remove the ReversePort user
-registration with `claude mcp remove --scope user rea` and remove the known
+registration with `claude mcp remove --scope user reverseport` (`rea` for a registration made before the
+[server name change](#server-name-change)) and remove the known
 REA-installed `~/.claude/skills/reverse-engineer-anything` directory. Preserve
 unrelated registrations and skills. `reverseport uninstall` applies to other clients
 as well, so it is broader than this Claude-only migration.
@@ -262,7 +263,7 @@ CLAUDE_CONFIG_DIR=~/.claude-rea npx -y reverseport@latest setup --client claude_
 
 After reviewing an update plan, rerun that same prefixed setup command without
 `--dry-run` and approve its exact changes. Profile removal likewise needs the
-prefix on `claude mcp remove --scope user rea` and any `reverseport uninstall` command;
+prefix on `claude mcp remove --scope user reverseport` and any `reverseport uninstall` command;
 keep the broader client scope of uninstall in mind. Restart the selected
 profile after changing its pinned registration.
 
@@ -287,7 +288,7 @@ try {
   # After reviewing the plan, repeat setup without --dry-run and approve it.
   claude
   # Profile removal, when intended, also belongs inside this selected scope:
-  # claude mcp remove --scope user rea
+  # claude mcp remove --scope user reverseport
 } finally {
   if ($null -eq $previousClaudeConfigDir) {
     Remove-Item Env:CLAUDE_CONFIG_DIR -ErrorAction SilentlyContinue
@@ -319,14 +320,14 @@ Register with the variable unset:
 <!-- x-release-please-start-version -->
 
 ```bash
-claude mcp add --scope local rea -- npx -y reverseport@1.14.0 mcp
+claude mcp add --scope local reverseport -- npx -y reverseport@1.14.0 mcp
 ```
 
 On native Windows, use the same project directory and wrap the package-runner
 shim so the stdio client can launch it:
 
 ```powershell
-claude mcp add --scope local rea -- cmd.exe /d /c npx -y reverseport@1.14.0 mcp
+claude mcp add --scope local reverseport -- cmd.exe /d /c npx -y reverseport@1.14.0 mcp
 ```
 
 <!-- x-release-please-end -->
@@ -336,12 +337,13 @@ so other projects don't load it. This route doesn't install the bundled skill.
 Avoid `--scope project`, which writes `.mcp.json` into the repository where it
 can be committed or copied. `reverseport doctor` and `reverseport uninstall` read only the
 user-level entry, so they don't report or remove a local-scope registration;
-remove it with `claude mcp remove --scope local rea` from the same directory.
+remove it with `claude mcp remove --scope local reverseport` from the same directory
+(`rea` for an entry added before the [server name change](#server-name-change)).
 `reverseport update` doesn't refresh it either, so it stays on the version it names.
 To move it to a newer release, first back up the project entry in
 `~/.claude.json` and record its environment and other metadata. In particular,
 preserve caller-selected overrides such as `REA_MCP_INPUT_SCHEMA_PROFILE` and
-`REA_MCP_MAX_RESPONSE_BYTES`. Run `claude mcp remove --scope local rea` from the
+`REA_MCP_MAX_RESPONSE_BYTES`. Run `claude mcp remove --scope local reverseport` from the
 same directory, then recreate it with the platform-appropriate command above
 and the new version. Reapply every recorded environment value with Claude
 Code's `mcp add --env NAME=value` options and restore any other retained entry
@@ -436,7 +438,7 @@ candidate `configuration_path` with its outcome. A client with multiple files
 keeps their individual `actions` alongside its aggregate status and detail,
 including earlier removals when a later file fails. The paths name
 the discovered configuration candidates, not resolved physical file identities.
-For JSON clients, uninstall removes every repeated `rea` member in the effective
+For JSON clients, uninstall removes every repeated `reverseport` or `rea` member in the effective
 server table only when each registration is ReversePort-owned. An unowned earlier
 member, or an unowned OpenCode V1 entry that removing V2 would expose, stops
 preflight before any
@@ -445,6 +447,46 @@ unchanged. A purge path that is a
 symbolic link is retained and reported rather than followed. Uninstall checks
 ReversePort's managed shared and Claude Code personal skill locations. See the
 [CLI guide](cli.md#output-and-exit-status) for exit statuses.
+
+### Server name change
+
+ReversePort registers and reports its MCP server as `reverseport`. Earlier releases used `rea`, the deep-analysis
+engine's historical name, so clients exposed its tools as `mcp__rea__<tool>` and now expose them as
+`mcp__reverseport__<tool>`. The CLI command `rea` stays as an alias of `reverseport`; only the server name changed.
+
+- **Setup moves what ReversePort owns.** Rerun `reverseport setup` (or `reverseport update`). For each client that
+  holds a ReversePort-owned `rea` entry, the plan shows one change that moves it to `reverseport`. It needs your
+  approval, backs up the file first, reads the result back and rolls back on failure. Settings you added to the old
+  entry, such as environment values, Kimi timeouts and Codex per-tool `[mcp_servers.rea.tools.<name>]` tables, move
+  with it. Until then, doctor reports the old-name registration as stale and says to rerun setup.
+- **Other `rea` entries stay.** An entry named `rea` that ReversePort cannot prove it owns is kept byte for byte and
+  reported in the plan. Ownership is checked separately from validity: a broken entry is not proof of ownership.
+- **Name lists.** When setup moves an owned entry, it drops `rea` from OMP `disabledServers` and Grok Build
+  `disabled_mcp_servers` (the plan says this re-enables a server disabled under the old name) and replaces `rea`
+  with `reverseport` in OMP `enabledServers`. Lists that name an unowned `rea` are not touched, and Pi's lists never
+  are.
+- **Gemini CLI and Qwen Code policy.** Setup never edits `mcp.allowed` or `mcp.excluded`. If any settings layer
+  allows `rea` but not `reverseport`, or excludes `rea` in any letter case, setup stops for that client and names the
+  setting to update. A workspace or system `mcpServers.rea` is never edited, only reported.
+- **Tool permissions.** Permission rules and allowlists that name the old tools (`mcp__rea__*`, `rea_*`) are not
+  rewritten. Setup adds a note to the plan with the number of old-name references in each file it reads; update
+  them by hand.
+- **Uninstall** removes ReversePort-owned entries under both names, in one edit and backup per file, and reports any
+  `rea` entry it keeps.
+
+Some registrations are outside setup's reach and need a manual step:
+
+- **Claude Code local scope.** An entry added with `claude mcp add --scope local rea` used to hide the user-level
+  `rea` entry. After setup moves the user entry, both load. In each such project, run
+  `claude mcp remove --scope local rea`, then re-add it under the new name with the
+  [one-project commands](#limit-reverseport-to-one-project-or-agent-profile).
+- **Grok Bot.** A connector added under the name `rea` keeps that name. Rename it in the Grok Bot chat.
+- **Pi project files.** A project `.pi/mcp.json` entry named `rea` no longer overrides the user entry, so both load.
+  Remove or rename it.
+- **Amp and `add-mcp` targets.** Earlier `rea mcp add` runs wrote `amp.mcpServers.rea` to
+  `~/.config/amp/settings.json` and `rea` entries to `add-mcp`'s global targets. Remove those by hand.
+- **Older versions.** Setup or uninstall pinned to a release before this change (`npx -y reverseport@<old> setup`)
+  writes `rea` again and does not know `reverseport`. Use the current release; doctor reports a duplicate.
 
 ### Disk use (agentdisk, optional)
 
@@ -1479,7 +1521,7 @@ For a client that requires manual configuration, use:
 ```json
 {
   "mcpServers": {
-    "rea": {
+    "reverseport": {
       "command": "npx",
       "args": ["-y", "reverseport@1.14.0", "mcp"]
     }
