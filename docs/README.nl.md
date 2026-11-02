@@ -46,6 +46,19 @@ Haal het alleen van npm (`reverseport`), uit de MCP Registry (`io.github.laaieli
 kopieën onder andere namen zijn niet van ons. Er is geen telemetrie: [PRIVACY.md](https://github.com/laaielichter/reverseport/blob/main/PRIVACY.md) noemt de paar keer
 dat het het netwerk gebruikt.
 
+## Nieuw
+
+**1.12** — meer formaten en sterkere resultaten: Doom WAD, Quake- en Half-Life-WAD2/WAD3, XNB (XNA/MonoGame) en Valve
+VPK worden herkend, naast Quake PAK. `re_scan` kent nu ook melonJS, Kontra, Matter.js, Rapier, cannon-es, Planck.js,
+Howler.js, Tone.js en React Three Fiber. Grote resultaten passen altijd binnen het budget. Nieuw is een
+[walkthrough van Godot naar three.js](walkthrough-godot-to-threejs.md) waarin elk commando echt is uitgevoerd.
+
+**1.11** — een nieuwe motor en een nieuw protocol: de diepe analyse draait op REA 6.8. Op MCP 2026-07-28 worden lange
+klussen (een koude Ghidra-import, een groot port-plan) een taak met voortgang in plaats van een time-out. `run_batch`
+doet tot 20 aanroepen in één keer, en `re_compare` laat zien welke .NET-typen en -methodes veranderd zijn.
+
+Alles staat in de [changelog](https://github.com/laaielichter/reverseport/blob/main/CHANGELOG.md).
+
 ## Wat het kan
 
 - **Verkennen** — `re_scan` herkent engine en versie (Godot, Unity, Unreal, GameMaker, RPG Maker, Ren'Py, LÖVE,
@@ -87,6 +100,13 @@ functie die de instellingen opslaat en leg uit wat ze doet.", "Port mijn Godot-g
 
 Werkmap: `~/.reverseport` (verplaatsen met `REVERSEPORT_HOME`). Alleen voor eigen software of software die je mag
 analyseren; ReversePort kraakt, ontsleutelt of omzeilt niets. Licentie: MIT.
+
+## Meehelpen
+
+Nieuwe formaten, engines en game-bibliotheken zijn de makkelijkste eerste pull request: een detector, een voorbeeld en
+een test. Kies een [good first issue](https://github.com/laaielichter/reverseport/labels/good%20first%20issue); elk
+issue noemt de bestanden en zegt wanneer het klaar is. Vragen en ideeën kunnen in
+[Discussions](https://github.com/laaielichter/reverseport/discussions).
 
 ## Steunen
 

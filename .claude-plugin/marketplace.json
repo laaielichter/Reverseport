@@ -8,7 +8,18 @@
     {
       "name": "reverseport",
       "source": "./",
-      "description": "Reverse engineer anything. Port it anywhere. Recon, decompile and trace apps, games, binaries and websites; rebuild and port them between Godot, Unity, Unreal, three.js and languages."
+      "description": "Reverse engineer anything. Port it anywhere. Recon, decompile and trace apps, games, binaries and websites; read Godot packs and Unity IL2CPP; compare builds; keep proof cases; and port between Godot, Unity, Unreal, three.js and languages.",
+      "homepage": "https://laaielichter.github.io/Reverseport/",
+      "license": "MIT",
+      "keywords": [
+        "reverse-engineering",
+        "porting",
+        "godot",
+        "unity",
+        "il2cpp",
+        "ghidra",
+        "mcp"
+      ]
     },
     {
       "name": "stashpad",

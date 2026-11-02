@@ -50,6 +50,10 @@ describe("release configuration", () => {
               path: ".claude-plugin/plugin.json",
               jsonpath: "$.version",
             },
+            {
+              type: "generic",
+              path: "CITATION.cff",
+            },
           ],
         },
       },
@@ -85,6 +89,16 @@ describe("release configuration", () => {
     });
     const changelog = await readFile("CHANGELOG.md", "utf8");
     expect(/^## \[([^\]]+)\]/mu.exec(changelog)?.[1]).toBe(packageJson.version);
+  });
+
+  it("keeps the citation version aligned with the package version", async () => {
+    const packageJson = (await readJson("package.json")) as {
+      version: string;
+    };
+    const citation = await readFile("CITATION.cff", "utf8");
+    expect(
+      /^version: (\S+) # x-release-please-version$/mu.exec(citation)?.[1],
+    ).toBe(packageJson.version);
   });
 
   it("keeps the npm package and MCP Registry metadata aligned", async () => {
