@@ -7,6 +7,13 @@ on:
 permissions:
   contents: read
 
+env:
+  # The repository has no .gitattributes (the Claude plugin directory requires a
+  # clone to match the download), so Windows runners must not convert to CRLF.
+  GIT_CONFIG_COUNT: "1"
+  GIT_CONFIG_KEY_0: core.autocrlf
+  GIT_CONFIG_VALUE_0: "false"
+
 jobs:
   windows-fixture:
     name: Build Windows x64 NativeAOT fixture

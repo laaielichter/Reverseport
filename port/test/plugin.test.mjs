@@ -63,6 +63,15 @@ test('listing metadata: registry limits, tags, and gift details only in the READ
   for (const f of ['README.md', 'docs/README.nl.md']) assert.ok((await read(f)).includes(address), `${f}: support section`);
 });
 
+test('Claude plugin directory: no .gitattributes, and the .cmd fixtures keep CRLF without one', async () => {
+  // The directory rejects a repository when a .gitattributes rule can make a clone differ from its download.
+  await assert.rejects(fs.access(path.join(REPO, '.gitattributes')), '.gitattributes: the Claude plugin directory rejects the repository');
+  for (const f of ['tests/fixtures/captureGhidraLaunch.cmd', 'tests/fixtures/pcap/capinfos-stub.cmd', 'tests/fixtures/pcap/tshark-stub.cmd']) {
+    const text = await read(f);
+    assert.ok(text.includes('\r\n') && !/(?:^|[^\r])\n/.test(text), `${f}: keep CRLF line endings`);
+  }
+});
+
 test('plugin settings: empty or unsubstituted values are unset; the engine setting fetches the engine', async () => {
   const { applyPluginSettings } = await import('../plugin/mcp-launch.mjs');
   const env = applyPluginSettings({ REVERSEPORT_PLUGIN_ENGINE: 'true', REVERSEPORT_PROFILE: 'compact', REVERSEPORT_HOME: '', GHIDRA_INSTALL_DIR: '${user_config.ghidra_install_dir}' });

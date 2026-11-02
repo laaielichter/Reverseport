@@ -1,0 +1,10 @@
+root = true
+
+# LF everywhere, matching the formatter. Git does not normalize line endings
+# here: the repository has no .gitattributes (see CONTRIBUTING.md).
+[*]
+end_of_line = lf
+
+# Windows command fixtures keep their native line endings.
+[*.cmd]
+end_of_line = crlf
