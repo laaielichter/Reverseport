@@ -6,6 +6,7 @@ import zlib from 'node:zlib';
 import { tempDir } from './helpers.mjs';
 import { archiveTool, openArchive } from '../src/archive.mjs';
 import { unpickle } from '../src/gamearchives.mjs';
+import { lzmaLiteral } from './unity-fixture.mjs';
 
 const u16 = n => { const b = Buffer.alloc(2); b.writeUInt16LE(n); return b; };
 const u32 = n => { const b = Buffer.alloc(4); b.writeUInt32LE(n); return b; };
@@ -208,9 +209,14 @@ test('FMOD bank: event paths and FSB5 samples; Wwise bank: media, objects and na
   assert.equal(fmod.format, 'fmod-bank');
   assert.deepEqual(fmod.events, ['event:/Player/Jump']);
   assert.equal(fmod.fsb.codec, 'PCM16');
-  assert.equal(fmod.entries[0].path, 'samples/jump.pcm');
+  assert.equal(fmod.entries[0].path, 'samples/jump.wav');
   assert.equal(fmod.entries[0].frequency, 44100);
-  assert.equal(fmod.entries[0].size, 64);
+  assert.equal(fmod.entries[0].size, 64 + 44, 'the PCM data plus a WAV header');
+  const pcm = await archiveTool({ file: path.join(dir, 'Master.bank'), action: 'extract', out: path.join(dir, 'pcm') });
+  const wav = await fs.readFile(pcm.files.find(f => f.path === 'samples/jump.wav').file);
+  assert.equal(wav.length, 108);
+  assert.equal(wav.toString('latin1', 0, 4) + wav.toString('latin1', 8, 12), 'RIFFWAVE');
+  assert.deepEqual([wav.readUInt16LE(22), wav.readUInt32LE(24), wav.readUInt16LE(34), wav.readUInt32LE(40)], [1, 44100, 16, 64]);
   const ww = await archiveTool({ file: await buildWwise(dir) });
   assert.equal(ww.format, 'wwise-bank');
   assert.equal(ww.bankVersion, 134);
@@ -237,7 +243,7 @@ test('Unreal pak v8: footer, index, stored and zlib entries extract; Oodle/encry
   await fs.rm(dir, { recursive: true, force: true });
 });
 
-test('SWF: stage, tags, AS3 classes, symbols, assets; compressed SWF inflates on extract', async () => {
+test('SWF: stage, tags, AS3 classes, symbols, assets; zlib and LZMA SWFs inflate on extract', async () => {
   const dir = await tempDir();
   const list = await archiveTool({ file: await buildSwf(dir, false) });
   assert.equal(list.format, 'swf');
@@ -257,6 +263,16 @@ test('SWF: stage, tags, AS3 classes, symbols, assets; compressed SWF inflates on
   assert.ok(cex.files.some(f => f.path === 'swf-inflated.swf'));
   const again = await archiveTool({ file: path.join(dir, 'out2', 'swf-inflated.swf') });
   assert.equal(again.compression, 'none');
+  // ZWS: "ZWS", version, uncompressed length, LZMA data length, 5 property bytes, LZMA data.
+  const body = swfBody();
+  const { props, data } = lzmaLiteral(body);
+  const zws = path.join(dir, 'game-z.swf');
+  await fs.writeFile(zws, Buffer.concat([Buffer.from('ZWS'), Buffer.from([13]), u32(8 + body.length), u32(data.length), props, data]));
+  const z = await archiveTool({ file: zws });
+  assert.deepEqual([z.compression, z.documentClass, z.entries.length], ['LZMA', 'com.game.Main', 3]);
+  const zex = await archiveTool({ file: zws, action: 'extract', out: path.join(dir, 'out3') });
+  const inflated = await fs.readFile(zex.files.find(f => f.path === 'swf-inflated.swf').file);
+  assert.deepEqual(inflated.subarray(8), body);
   await fs.rm(dir, { recursive: true, force: true });
 });
 

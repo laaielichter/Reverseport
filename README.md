@@ -39,7 +39,8 @@ unit, verified. No files at all? Give it a name or a store page.
 ReversePort gives agents one consistent way to do all of that:
 
 - 🎮 **Game formats built in** — Godot `.pck` (also inside the `.exe`) and `.gdc`/`.scn`/`.res` back to an editable
-  project, Unity IL2CPP `global-metadata.dat`, `.unitypackage`, GameMaker, Ren'Py, RPG Maker, Unreal `.pak`, FMOD and
+  project, Unity asset bundles and `.assets` (textures as PNG, meshes as OBJ, audio, scripts in use), Unity IL2CPP
+  `global-metadata.dat`, `.unitypackage`, GameMaker, Ren'Py, RPG Maker, Unreal `.pak`, FMOD and
   Wwise banks; it also recognises Quake PAK, Doom WAD, XNB and VPK. No engine install needed.
 - 🔍 **Understand anything** — engine and version of any project or exported game, dependency graphs, scenes, symbols
   in 30+ languages, executables, packs and unknown data. JS/TS monorepos (pnpm, Turborepo, Nx, Lerna, Rush, tsconfig
@@ -196,6 +197,7 @@ the version you have and `reverseport skills get <name>` prints the matching gui
 | _What is this game made with, and how is it built?_                                | `re_scan` → engine + version, languages, entry points, how it starts                                                              |
 | _I only have the exported Godot game, not the project._                            | `re_archive` extracts the .pck, `re_decode` turns .gdc/.scn/.res/project.binary back into an editable project                     |
 | _A Unity IL2CPP game without its C# source._                                       | `re_il2cpp`: classes, methods and literals from global-metadata.dat, plus a C# skeleton                                           |
+| _Get the art, models and audio out of my Unity build._                             | `re_archive` on data.unity3d, .assets or a bundle: PNG, OBJ, FSB5, text, JSON, plus which C# scripts each object uses             |
 | _What changed between build 43 and 44?_                                            | `re_compare` folder-to-folder, pack-to-pack and .NET types and methods, biggest changes first                                     |
 | _Keep this investigation honest — I need to show why._                             | `re_case`: evidence → claims that cite it → unknowns → decision → tests → report                                                  |
 | _Map this codebase and write ARCHITECTURE.md._                                     | `re_graph`, `re_symbols`, `re_report`                                                                                             |
@@ -236,6 +238,7 @@ Agent:  re_scan → Godot 4.3, 6 scripts, 5 scenes, main scene main.tscn, autolo
 | Source projects and exported games | Engine + version (Godot, Unity, Unreal, GameMaker, RPG Maker, Ren'Py, LÖVE, Defold, Bevy, MonoGame, web, Electron, Flutter, .NET, Go, Rust…), dependencies, cycles, scenes, symbols | Nothing                                                                        |
 | Packs and archives                 | Godot `.pck` (also embedded in the `.exe`), zip/apk/jar, `.unitypackage`, tar.gz, asar — list and extract; Quake PAK, Doom WAD, XNB, VPK and more recognised                        | Nothing                                                                        |
 | Unity IL2CPP                       | Classes, methods and literals from `global-metadata.dat`, plus a C# skeleton                                                                                                        | Nothing                                                                        |
+| Unity builds and asset bundles     | Every object by class and name, scenes, C# scripts in use; textures → PNG, meshes → OBJ, audio, text, JSON (UnityFS LZ4/LZMA)                                                       | Nothing                                                                        |
 | Native binaries                    | Mach-O, ELF, PE, wasm: functions, pseudocode, strings, xrefs, call paths, layout                                                                                                    | Ghidra, Hopper or IDA for decompilation ([setup](docs/installation.md#hopper)) |
 | .NET assemblies                    | Metadata, CIL, native boundaries, type- and method-level build comparisons                                                                                                          | Nothing                                                                        |
 | Android                            | Manifest, classes, decompiled methods, references, resources, devices                                                                                                               | JADX / Apktool / adb ([guide](docs/android-analysis.md))                       |

@@ -83,6 +83,9 @@ Alles staat in de [changelog](https://github.com/laaielichter/reverseport/blob/m
   4, `re_save` leest savebestanden, `port_shader` zet shaders om, `port_convert {physics}` houdt springen en vallen
   gelijk, `port_trace` vindt de eerste tick waarop twee versies verschillen, en `re_il2cpp` en `port_rpgmaker` helpen
   bij Unity IL2CPP en RPG Maker.
+- **Unity-builds en asset bundles** — `re_archive` op `data.unity3d`, `sharedassets0.assets` of een bundle (LZ4/LZMA)
+  toont elk object met klasse en naam, de scènes en welke C#-scripts de objecten gebruiken; `action:"extract"` schrijft
+  textures als PNG, meshes als OBJ, audio (FSB5), TextAssets en objecten als JSON. Zonder Unity, zonder extra software.
 - **Monorepo's en websites** — `re_scan` en `re_graph` begrijpen JS/TS-monorepo's (pnpm, Turborepo, Nx, tsconfig
   paths, `#imports`, Deno-import-maps) en Rust-workspaces. `capture_web_screenshot` met een `selector` geeft van één element op een site een
   bijgesneden afbeelding, de HTML en de CSS.
