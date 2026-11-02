@@ -63,6 +63,21 @@ test('listing metadata: registry limits, tags, and gift details only in the READ
   for (const f of ['README.md', 'docs/README.nl.md']) assert.ok((await read(f)).includes(address), `${f}: support section`);
 });
 
+test('the plugin directory can read the repository as it is: no content-changing git attributes', async () => {
+  // The Claude plugin directory refuses a repository whose archive differs from its files: export-ignore, filters
+  // (Git LFS) and line-ending conversion all change what an archive contains.
+  const rules = (await read('.gitattributes')).split('\n').map(l => l.trim()).filter(l => l && !l.startsWith('#'));
+  for (const rule of rules) {
+    const [pattern, ...attrs] = rule.split(/\s+/);
+    for (const a of attrs) {
+      assert.doesNotMatch(a, /^(export-ignore|export-subst|filter=|ident|working-tree-encoding=)/, `.gitattributes: ${rule}`);
+      if (pattern !== '*') assert.doesNotMatch(a, /^eol=/, `.gitattributes: ${rule} converts line endings on export; store the file as is with -text`);
+    }
+  }
+  const main = rules.find(r => r.startsWith('* '));
+  assert.ok(!main || !/eol=crlf/.test(main), '.gitattributes: the repository default must not convert to CRLF');
+});
+
 test('plugin settings: empty or unsubstituted values are unset; the engine setting fetches the engine', async () => {
   const { applyPluginSettings } = await import('../plugin/mcp-launch.mjs');
   const env = applyPluginSettings({ REVERSEPORT_PLUGIN_ENGINE: 'true', REVERSEPORT_PROFILE: 'compact', REVERSEPORT_HOME: '', GHIDRA_INSTALL_DIR: '${user_config.ghidra_install_dir}' });

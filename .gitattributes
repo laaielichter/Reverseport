@@ -1,8 +1,9 @@
 # Keep text checkouts consistent with the repository formatter on every platform.
 * text=auto eol=lf
 
-# Windows command fixtures retain their native line endings.
-*.cmd text eol=crlf
+# Windows command fixtures are stored with CRLF line endings and never converted, so a checkout and an archive of
+# the repository (which the Claude plugin directory validates) have the same bytes as the repository itself.
+*.cmd -text
 
 # Preserve whitespace in original upstream licensing texts.
 licenses/npm-runtime-notices.txt whitespace=-blank-at-eol
