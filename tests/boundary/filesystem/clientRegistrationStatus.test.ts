@@ -27,7 +27,7 @@ describe("client registration status", () => {
       join(home, ".claude.json"),
       JSON.stringify({
         mcpServers: {
-          rea: {
+          reverseport: {
             command: "npx",
             args: ["-y", PRODUCT_IDENTITY.registrationPackageSpecifier, "mcp"],
           },
@@ -61,13 +61,17 @@ describe("client registration status", () => {
     ]);
     await writeFile(
       join(home, ".codex/config.toml"),
-      `[mcp_servers.rea]\ncommand = "npx"\nargs = ["-y", "${PRODUCT_IDENTITY.registrationPackageSpecifier}", "mcp"]\nstartup_timeout_sec = 30\ntool_timeout_sec = 450\n`,
+      `[mcp_servers.reverseport]\ncommand = "npx"\nargs = ["-y", "${PRODUCT_IDENTITY.registrationPackageSpecifier}", "mcp"]\nstartup_timeout_sec = 30\ntool_timeout_sec = 450\n`,
     );
     await writeFile(
       join(home, ".cursor/mcp.json"),
       JSON.stringify({
         mcpServers: {
-          rea: { command: foreignEntry, args: ["mcp"], env: { SECRET: "x" } },
+          reverseport: {
+            command: foreignEntry,
+            args: ["mcp"],
+            env: { SECRET: "x" },
+          },
         },
       }),
     );
@@ -130,7 +134,7 @@ describe("client registration launcher identity", () => {
     await mkdir(join(home, ".codex"));
     await writeFile(
       join(home, ".codex/config.toml"),
-      '[mcp_servers.rea]\ncommand = "npx"\nargs = ["-y", "reverseport", "mcp"]\n',
+      '[mcp_servers.reverseport]\ncommand = "npx"\nargs = ["-y", "reverseport", "mcp"]\n',
     );
 
     const statuses = await readClientRegistrationStatuses(home);
@@ -150,7 +154,7 @@ describe("client registration launcher identity", () => {
       join(home, ".claude.json"),
       JSON.stringify({
         mcpServers: {
-          rea: { command: "bunx", args: ["reverseport", "mcp"] },
+          reverseport: { command: "bunx", args: ["reverseport", "mcp"] },
         },
       }),
     );
@@ -171,7 +175,9 @@ describe("client registration launcher identity", () => {
     await writeFile(
       join(home, ".cursor/mcp.json"),
       JSON.stringify({
-        mcpServers: { rea: { command: command[0], args: [command[1]] } },
+        mcpServers: {
+          reverseport: { command: command[0], args: [command[1]] },
+        },
       }),
     );
 
@@ -203,7 +209,7 @@ describe("client registration launcher identity", () => {
       executable = process.execPath,
     ) => ({
       mcpServers: {
-        rea: { command: executable, args: [scriptPath, "mcp"] },
+        reverseport: { command: executable, args: [scriptPath, "mcp"] },
       },
     });
     await writeFile(configPath, JSON.stringify(registration("./rea.mjs")));
@@ -258,7 +264,7 @@ describe("client registration package version identity", () => {
       const command = ["npx", "-y", reference, "mcp"];
       await writeFile(
         join(home, ".codex/config.toml"),
-        `[mcp_servers.rea]\ncommand = "${command[0]}"\nargs = ["${command[1]}", "${command[2]}", "${command[3]}"]\n`,
+        `[mcp_servers.reverseport]\ncommand = "${command[0]}"\nargs = ["${command[1]}", "${command[2]}", "${command[3]}"]\n`,
       );
 
       const [status] = await readClientRegistrationStatuses(home);
@@ -301,7 +307,7 @@ describe("commandcode registration status", () => {
     await mkdir(join(home, ".commandcode"));
     await writeFile(
       join(home, ".commandcode/mcp.json"),
-      JSON.stringify({ mcpServers: { rea: registration } }),
+      JSON.stringify({ mcpServers: { reverseport: registration } }),
     );
   };
 
@@ -361,7 +367,7 @@ describe("client activation keys", () => {
       const entry = resolve("scripts/rea.mjs");
       await writeFile(
         join(home, ".codex/config.toml"),
-        `[mcp_servers.rea]\ncommand = ${JSON.stringify(process.execPath)}\nargs = [${JSON.stringify(entry)}, "mcp"]\nstartup_timeout_sec = 30\ntool_timeout_sec = 450\n${activation}\n`,
+        `[mcp_servers.reverseport]\ncommand = ${JSON.stringify(process.execPath)}\nargs = [${JSON.stringify(entry)}, "mcp"]\nstartup_timeout_sec = 30\ntool_timeout_sec = 450\n${activation}\n`,
       );
       expect(
         await readClientRegistrationStatuses(home, entry, { environment: {} }),
@@ -369,7 +375,7 @@ describe("client activation keys", () => {
     },
   );
 
-  // Each JSON client loads rea under the key it ignores and skips it under the key it honors.
+  // Each JSON client loads REA under the key it ignores and skips it under the key it honors.
   it.each([
     ["kimi", { disabled: true }, "aligned"],
     ["kimi", { enabled: false }, "stale"],
@@ -404,7 +410,7 @@ describe("client activation keys", () => {
         config,
         JSON.stringify({
           mcpServers: {
-            rea: {
+            reverseport: {
               command: process.execPath,
               args: [entry, "mcp"],
               ...fields,
@@ -436,7 +442,7 @@ describe("Ghidra multi-function deadline registration advice", () => {
       const configPath = join(home, ".codex/config.toml");
       // Two 600-second Ghidra decompiles plus startup/headroom would need an
       // estimated 1650 seconds. A caller's shorter or longer choice stays theirs.
-      const original = `[mcp_servers.rea]\ncommand = ${JSON.stringify(process.execPath)}\nargs = [${JSON.stringify(entry)}, "mcp"]\nstartup_timeout_sec = 30\ntool_timeout_sec = ${timeout}\n[mcp_servers.rea.env]\nREA_ANALYSIS_PROVIDER = "${provider}"\nREA_GHIDRA_DECOMPILE_TIMEOUT_SECONDS = "600"\n`;
+      const original = `[mcp_servers.reverseport]\ncommand = ${JSON.stringify(process.execPath)}\nargs = [${JSON.stringify(entry)}, "mcp"]\nstartup_timeout_sec = 30\ntool_timeout_sec = ${timeout}\n[mcp_servers.reverseport.env]\nREA_ANALYSIS_PROVIDER = "${provider}"\nREA_GHIDRA_DECOMPILE_TIMEOUT_SECONDS = "600"\n`;
       await writeFile(configPath, original);
       const [status] = await readClientRegistrationStatuses(home, entry, {
         environment: {},
@@ -471,7 +477,7 @@ describe("Node-wrapped registration policy", () => {
       const entry = resolve("scripts/rea.mjs");
       await writeFile(
         join(home, ".codex/config.toml"),
-        `[mcp_servers.rea]\ncommand = ${JSON.stringify(process.execPath)}\nargs = [${JSON.stringify(entry)}, "mcp"]\nstartup_timeout_sec = ${String(timeout)}\ntool_timeout_sec = 450\n`,
+        `[mcp_servers.reverseport]\ncommand = ${JSON.stringify(process.execPath)}\nargs = [${JSON.stringify(entry)}, "mcp"]\nstartup_timeout_sec = ${String(timeout)}\ntool_timeout_sec = 450\n`,
       );
       const statuses = await readClientRegistrationStatuses(home, entry, {
         environment: {},
@@ -491,7 +497,7 @@ describe("Node-wrapped registration policy", () => {
     const entry = resolve("scripts/rea.mjs");
     await writeFile(
       join(home, ".codex/config.toml"),
-      `[mcp_servers.rea]\ncommand = ${JSON.stringify(process.execPath)}\nargs = [${JSON.stringify(entry)}, "mcp"]\nstartup_timeout_sec = 5\ntool_timeout_sec = 10\n`,
+      `[mcp_servers.reverseport]\ncommand = ${JSON.stringify(process.execPath)}\nargs = [${JSON.stringify(entry)}, "mcp"]\nstartup_timeout_sec = 5\ntool_timeout_sec = 10\n`,
     );
     const [status] = await readClientRegistrationStatuses(home, entry, {
       environment: {},
@@ -511,7 +517,7 @@ describe("Node-wrapped registration policy", () => {
       const entry = resolve("scripts/rea.mjs");
       await writeFile(
         join(home, ".grok/config.toml"),
-        `[mcp_servers.rea]\ncommand = ${JSON.stringify(process.execPath)}\nargs = [${JSON.stringify(entry)}, "mcp"]\nstartup_timeout_sec = ${String(timeout)}\n`,
+        `[mcp_servers.reverseport]\ncommand = ${JSON.stringify(process.execPath)}\nargs = [${JSON.stringify(entry)}, "mcp"]\nstartup_timeout_sec = ${String(timeout)}\n`,
       );
       const statuses = await readClientRegistrationStatuses(home, entry, {
         environment: {},
@@ -525,13 +531,13 @@ describe("Node-wrapped registration policy", () => {
     },
   );
 
-  it("reports Grok Build stale when rea is listed in disabled_mcp_servers", async () => {
+  it("reports Grok Build stale when reverseport is listed in disabled_mcp_servers", async () => {
     const home = await createTestTempDirectory("rea-grok-disabled-status-");
     await mkdir(join(home, ".grok"));
     const entry = resolve("scripts/rea.mjs");
     await writeFile(
       join(home, ".grok/config.toml"),
-      `disabled_mcp_servers = ["rea"]\n[mcp_servers.rea]\ncommand = ${JSON.stringify(process.execPath)}\nargs = [${JSON.stringify(entry)}, "mcp"]\nstartup_timeout_sec = 30\n`,
+      `disabled_mcp_servers = ["reverseport"]\n[mcp_servers.reverseport]\ncommand = ${JSON.stringify(process.execPath)}\nargs = [${JSON.stringify(entry)}, "mcp"]\nstartup_timeout_sec = 30\n`,
     );
     expect(
       await readClientRegistrationStatuses(home, entry, { environment: {} }),
@@ -545,7 +551,7 @@ describe("Node-wrapped registration policy", () => {
     await mkdir(join(home, ".codex"));
     await writeFile(
       join(home, ".codex/config.toml"),
-      '[mcp_servers.rea]\ncommand = "/current/rea"\nargs = ["mcp"]\nstartup_timeout_sec = 1\n',
+      '[mcp_servers.reverseport]\ncommand = "/current/rea"\nargs = ["mcp"]\nstartup_timeout_sec = 1\n',
     );
     const statuses = await readClientRegistrationStatuses(
       home,
@@ -569,7 +575,7 @@ describe("Node-wrapped registration policy", () => {
         join(home, ".copilot/mcp-config.json"),
         JSON.stringify({
           mcpServers: {
-            rea: {
+            reverseport: {
               type: "stdio",
               command: process.execPath,
               args: [entry, "mcp"],
@@ -675,7 +681,7 @@ it.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
     await writeFile(
       target,
       JSON.stringify({
-        mcpServers: { rea: { command: "rea", args: ["mcp"] } },
+        mcpServers: { reverseport: { command: "rea", args: ["mcp"] } },
       }),
     );
     const path = join(home, ".claude.json");
@@ -745,3 +751,138 @@ it("reports a dangling configuration entry as missing without losing the detecte
     ),
   ).toMatchObject({ config_path: path, state: "missing", command: [] });
 });
+
+describe("registrations under the previous server name", () => {
+  const owned = {
+    command: "npx",
+    args: ["-y", PRODUCT_IDENTITY.registrationPackageSpecifier, "mcp"],
+  };
+  const cursor = async (
+    servers: Record<string, unknown>,
+  ): Promise<{ readonly home: string; readonly path: string }> => {
+    const home = await createTestTempDirectory("rea-previous-server-key-");
+    await mkdir(join(home, ".cursor"));
+    const path = join(home, ".cursor", "mcp.json");
+    await writeFile(path, JSON.stringify({ mcpServers: servers }));
+    return { home, path };
+  };
+  const inspect = async (home: string) => {
+    const inspections = await readClientRegistrationInspections(
+      home,
+      "/current/rea",
+    );
+    const inspection = inspections.find(
+      ({ status }) => status.client === "cursor",
+    );
+    if (inspection === undefined) throw new Error("cursor was not inspected");
+    return inspection;
+  };
+
+  it("names the current and previous keys as decided", () => {
+    expect(PRODUCT_IDENTITY.mcpServerKey).toBe("reverseport");
+    expect(PRODUCT_IDENTITY.previousMcpServerKeys).toEqual(["rea"]);
+  });
+
+  it("reports an owned previous-name entry alone as stale under that key", async () => {
+    const { home, path } = await cursor({ rea: owned });
+    expect(await inspect(home)).toEqual({
+      status: {
+        client: "cursor",
+        config_path: path,
+        command: [owned.command, ...owned.args],
+        package_reference: PRODUCT_IDENTITY.registrationPackageSpecifier,
+        server_key: "rea",
+        state: "stale",
+        remediation: expect.stringContaining(
+          'previous server name "rea". reverseport setup renames it to "reverseport"',
+        ),
+      },
+      activation: "enabled",
+      commandIdentity: "owned",
+    });
+  });
+
+  it.each(["rea", "reverseport"])(
+    "reads the %s entry's own environment",
+    async (key) => {
+      const home = await createTestTempDirectory("rea-previous-server-env-");
+      await mkdir(join(home, ".codex"));
+      await writeFile(
+        join(home, ".codex", "config.toml"),
+        `[mcp_servers.${key}]\ncommand = "npx"\nargs = ["-y", "${PRODUCT_IDENTITY.registrationPackageSpecifier}", "mcp"]\nstartup_timeout_sec = 30\ntool_timeout_sec = 450\n[mcp_servers.${key}.env]\nREA_ANALYSIS_PROVIDER = 5\n`,
+      );
+      const statuses = await readClientRegistrationStatuses(
+        home,
+        "/current/rea",
+      );
+      expect(statuses.find(({ client }) => client === "codex")).toMatchObject({
+        state: "invalid",
+        command: [],
+      });
+    },
+  );
+
+  it("keeps an unresolved previous-name entry unknown", async () => {
+    const { home } = await cursor({
+      rea: { command: join(tmpdirMissing, "rea"), args: ["mcp"] },
+    });
+    expect(await inspect(home)).toMatchObject({
+      status: { state: "unknown", server_key: "rea" },
+      commandIdentity: "unknown",
+    });
+  });
+
+  it("reports a foreign previous-name entry alone as missing with an advisory", async () => {
+    const { home, path } = await cursor({
+      rea: { command: "foreign-server", args: [] },
+    });
+    const inspection = await inspect(home);
+    expect(inspection).toMatchObject({
+      status: { state: "missing", command: [] },
+      activation: "unknown",
+      commandIdentity: "unknown",
+    });
+    expect(inspection.status.server_key).toBeUndefined();
+    expect(inspection.status.server_key_advisory).toContain(
+      `${path} registers a server under REA's previous name "rea" that reverseport setup keeps unchanged: its launcher is not REA's.`,
+    );
+  });
+
+  it("flags an owned enabled previous-name entry beside the current one as a duplicate", async () => {
+    const { home } = await cursor({ reverseport: owned, rea: owned });
+    const inspection = await inspect(home);
+    expect(inspection).toMatchObject({
+      status: {
+        state: "stale",
+        remediation: expect.stringContaining(
+          'An REA-owned registration under the previous server name "rea" is also enabled',
+        ),
+      },
+      activation: "enabled",
+      commandIdentity: "owned",
+    });
+    expect(inspection.status.server_key).toBeUndefined();
+  });
+
+  it.each([
+    ["a disabled owned", { ...owned, disabled: true }, "is not enabled in"],
+    [
+      "a foreign",
+      { command: "foreign-server", args: [] },
+      "its launcher is not REA's",
+    ],
+  ])(
+    "keeps the current entry aligned beside %s previous-name entry and reports it",
+    async (_label, previous, advisory) => {
+      const { home } = await cursor({ reverseport: owned, rea: previous });
+      const inspection = await inspect(home);
+      expect(inspection.status).toMatchObject({
+        state: "aligned",
+        server_key_advisory: expect.stringContaining(advisory),
+      });
+      expect(inspection.status.server_key).toBeUndefined();
+    },
+  );
+});
+
+const tmpdirMissing = resolve("/nonexistent-rea-release");

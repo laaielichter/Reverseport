@@ -22,6 +22,7 @@ import {
   type McpToolTimeoutInputs,
 } from "../mcpStartupPolicy.js";
 import {
+  classifyClientRegistration,
   inspectClientRegistrationCommand,
   type ClientRegistrationCommandFacts,
   type ClientRegistrationCommandIdentity,
@@ -53,6 +54,13 @@ interface ClientRegistrationStatusBase {
   readonly package_reference?: string;
   /** Non-blocking timeout guidance; caller-selected values remain aligned. */
   readonly advisory?: string;
+  /**
+   * The server name this status describes, present only when it is a previous
+   * REA name rather than PRODUCT_IDENTITY.mcpServerKey.
+   */
+  readonly server_key?: string;
+  /** Non-blocking report of entries under previous REA server names. */
+  readonly server_key_advisory?: string;
 }
 
 type RegistrationCommand = readonly [string, ...string[]];
@@ -85,6 +93,12 @@ export type UnhealthyClientRegistrationStatus = Exclude<
   ClientRegistrationStatus,
   { readonly state: "aligned" }
 >;
+
+/** Diagnostic detail: the path, and the server name when it is a previous one. */
+export const registrationDetail = (status: ClientRegistrationStatus): string =>
+  status.server_key === undefined
+    ? status.config_path
+    : `${status.config_path} (server "${status.server_key}")`;
 
 interface ClientRegistrationReadOptions {
   readonly platform?: NodeJS.Platform;
@@ -229,7 +243,38 @@ export const readClientRegistrationInspections = async (
         continue;
       }
       const policyBlock = policy.value;
-      const raw = effectiveClientServer(parsed, PRODUCT_IDENTITY.mcpServerKey);
+      const effectiveClient: SetupClient =
+        parsed.dialect === "zcode_fallback"
+          ? {
+              ...client,
+              configPath,
+              configPaths: [configPath],
+              format: "zcode_fallback",
+            }
+          : client;
+      const evaluate = (
+        serverKey: string,
+        raw: unknown,
+      ): Promise<ClientRegistrationInspection> =>
+        inspectRegistrationEntry({
+          client,
+          effectiveClient,
+          parsed,
+          configPath,
+          serverKey,
+          raw,
+          policyBlock,
+          currentCommandPath,
+          options,
+        });
+      const current = PRODUCT_IDENTITY.mcpServerKey;
+      const raw = effectiveClientServer(parsed, current);
+      const previous = previousRegistrations(
+        parsed,
+        client,
+        effectiveClient,
+        currentCommandPath,
+      );
       if (raw === undefined) {
         const editabilityError =
           parsed.dialect === "dsh"
@@ -245,123 +290,62 @@ export const readClientRegistrationInspections = async (
           });
           continue;
         }
-        record(unavailableStatus(client, "missing", configPath));
+        // Setup migrates an owned previous-name entry, so it is REA's stale
+        // registration; an unresolved one stays unknown, and a foreign one
+        // leaves REA missing.
+        const candidate =
+          previous.find(({ identity }) => identity === "owned") ??
+          previous.find(({ identity }) => identity === "unknown");
+        if (candidate === undefined) {
+          record(
+            withServerKeyAdvisory(
+              unavailableStatus(client, "missing", configPath),
+              [previousServerKeyAdvisory(previous, configPath)],
+            ),
+          );
+          continue;
+        }
+        const inspection = await evaluate(candidate.name, candidate.raw);
+        inspections.push({
+          ...inspection,
+          status: previousServerKeyStatus(
+            inspection.status,
+            candidate,
+            effectiveClient,
+          ),
+        });
         continue;
       }
-      const effectiveClient: SetupClient =
-        parsed.dialect === "zcode_fallback"
+      const inspection = await evaluate(current, raw);
+      const duplicate = previous.find(
+        ({ identity, activation }) =>
+          identity === "owned" && activation === "enabled",
+      );
+      const advisory = previousServerKeyAdvisory(
+        previous.filter((entry) => entry !== duplicate),
+        configPath,
+      );
+      const status = withServerKeyAdvisory(
+        duplicate !== undefined && inspection.status.state === "aligned"
           ? {
-              ...client,
-              configPath,
-              configPaths: [configPath],
-              format: "zcode_fallback",
+              client: inspection.status.client,
+              config_path: inspection.status.config_path,
+              command: inspection.status.command,
+              ...(inspection.status.package_reference === undefined
+                ? {}
+                : { package_reference: inspection.status.package_reference }),
+              state: "stale",
+              remediation: duplicateRemediation(
+                duplicate.name,
+                effectiveClient,
+              ),
             }
-          : client;
-      const parsedRegistration = parseClientRegistration(raw, effectiveClient);
-      if (!parsedRegistration.ok) {
-        record({
-          client: client.name,
-          config_path: configPath,
-          command: [],
-          state: "invalid",
-          remediation: `${parsedRegistration.error.message}: ${parsedRegistration.error.settings.map(({ setting, constraint }) => `${setting}: ${constraint}`).join("; ")}`,
-        });
-        continue;
-      }
-      const registration = parsedRegistration.value;
-      const registrationEnvironment =
-        client.name === "kimi" || client.name === "codex"
-          ? await clientRegistrationEnvironmentDetailsWithBudget(
-              parsed,
-              {},
-              "effective",
-              options.resolveProviderRequestBudget,
-              options.platform,
-            )
-          : undefined;
-      if (
-        registrationEnvironment !== undefined &&
-        !registrationEnvironment.ok
-      ) {
-        record({
-          client: client.name,
-          config_path: configPath,
-          command: [],
-          state: "invalid",
-          remediation: registrationEnvironment.error.message,
-        });
-        continue;
-      }
-      const command: RegistrationCommand = [
-        registration.command,
-        ...registration.args,
-      ];
-      const commandFacts = inspectClientRegistrationCommand(
-        command,
-        currentCommandPath,
+          : inspection.status,
+        duplicate !== undefined && inspection.status.state !== "aligned"
+          ? [duplicateAdvisory(duplicate.name), advisory]
+          : [advisory],
       );
-      const packageReference = commandFacts.package?.reference;
-      const activation = registrationActivation(registration, client, parsed);
-      const packageVersion = commandFacts.package?.exactVersion;
-      const packageVersionDrift =
-        packageVersion !== undefined &&
-        packageVersion !== PRODUCT_IDENTITY.packageVersion;
-      const alignment = registrationAligned({
-        registration,
-        client: effectiveClient,
-        command,
-        commandFacts,
-        platform: options.platform ?? process.platform,
-        kimiInputSchemaProfileSelected:
-          registrationEnvironment?.ok === true &&
-          snapshotEnvironment(
-            registrationEnvironment.value.values,
-            options.platform,
-          ).REA_MCP_INPUT_SCHEMA_PROFILE !== undefined,
-      });
-      record(
-        configuredStatus(
-          effectiveClient,
-          command,
-          alignment === "unknown"
-            ? "unknown"
-            : activation === "enabled" &&
-                !packageVersionDrift &&
-                alignment === "aligned" &&
-                (parsed.dialect !== "dsh" ||
-                  dshDocument(parsed.document).ready) &&
-                policyBlock === undefined
-              ? "aligned"
-              : "stale",
-          policyBlock ??
-            (packageVersionDrift
-              ? packageVersionRemediation(packageReference ?? "", client)
-              : alignment === "unknown"
-                ? unknownEntryPointRemediation()
-                : undefined) ??
-            // Only a target whose setup preserves the flag is a manual
-            // conflict; a native row (for example ZCode's own storage) is
-            // still repaired by its setup run below.
-            (activation === "disabled" &&
-            registration.enable === false &&
-            setupPreservesDisabledActivation(
-              effectiveClient,
-              effectiveClient.format,
-            )
-              ? sharedDisabledActivationRemediation()
-              : undefined),
-          packageReference,
-          registrationEnvironment?.ok === true
-            ? timeoutAdvisory(
-                client,
-                registration,
-                registrationEnvironment.value.timeoutInputs,
-              )
-            : undefined,
-        ),
-        activation,
-        commandFacts.identity,
-      );
+      inspections.push({ ...inspection, status });
     } catch (cause: unknown) {
       if (
         options.resources === undefined &&
@@ -380,6 +364,231 @@ export const readClientRegistrationInspections = async (
   return inspections.sort((left, right) =>
     compareUnicodeCodePoints(left.status.client, right.status.client),
   );
+};
+
+/** Evaluate the entry under `serverKey` against what setup would write. */
+const inspectRegistrationEntry = async ({
+  client,
+  effectiveClient,
+  parsed,
+  configPath,
+  serverKey,
+  raw,
+  policyBlock,
+  currentCommandPath,
+  options,
+}: {
+  readonly client: SetupClient;
+  readonly effectiveClient: SetupClient;
+  readonly parsed: ClientConfigurationDocument;
+  readonly configPath: string;
+  readonly serverKey: string;
+  readonly raw: unknown;
+  readonly policyBlock: string | undefined;
+  readonly currentCommandPath: string | undefined;
+  readonly options: ClientRegistrationReadOptions;
+}): Promise<ClientRegistrationInspection> => {
+  const invalid = (remediation: string): ClientRegistrationInspection => ({
+    status: {
+      client: client.name,
+      config_path: configPath,
+      command: [],
+      state: "invalid",
+      remediation,
+    },
+    activation: "unknown",
+    commandIdentity: "unknown",
+  });
+  const parsedRegistration = parseClientRegistration(raw, effectiveClient);
+  if (!parsedRegistration.ok)
+    return invalid(
+      `${parsedRegistration.error.message}: ${parsedRegistration.error.settings.map(({ setting, constraint }) => `${setting}: ${constraint}`).join("; ")}`,
+    );
+  const registration = parsedRegistration.value;
+  const registrationEnvironment =
+    client.name === "kimi" || client.name === "codex"
+      ? await clientRegistrationEnvironmentDetailsWithBudget(
+          parsed,
+          {},
+          "effective",
+          options.resolveProviderRequestBudget,
+          options.platform,
+          serverKey,
+        )
+      : undefined;
+  if (registrationEnvironment !== undefined && !registrationEnvironment.ok)
+    return invalid(registrationEnvironment.error.message);
+  const command: RegistrationCommand = [
+    registration.command,
+    ...registration.args,
+  ];
+  const commandFacts = inspectClientRegistrationCommand(
+    command,
+    currentCommandPath,
+  );
+  const packageReference = commandFacts.package?.reference;
+  const activation = registrationActivation(
+    registration,
+    client,
+    parsed,
+    serverKey,
+  );
+  const packageVersion = commandFacts.package?.exactVersion;
+  const packageVersionDrift =
+    packageVersion !== undefined &&
+    packageVersion !== PRODUCT_IDENTITY.packageVersion;
+  const alignment = registrationAligned({
+    registration,
+    client: effectiveClient,
+    command,
+    commandFacts,
+    platform: options.platform ?? process.platform,
+    kimiInputSchemaProfileSelected:
+      registrationEnvironment?.ok === true &&
+      snapshotEnvironment(
+        registrationEnvironment.value.values,
+        options.platform,
+      ).REA_MCP_INPUT_SCHEMA_PROFILE !== undefined,
+  });
+  return {
+    status: configuredStatus(
+      effectiveClient,
+      command,
+      alignment === "unknown"
+        ? "unknown"
+        : activation === "enabled" &&
+            !packageVersionDrift &&
+            alignment === "aligned" &&
+            (parsed.dialect !== "dsh" || dshDocument(parsed.document).ready) &&
+            policyBlock === undefined
+          ? "aligned"
+          : "stale",
+      policyBlock ??
+        (packageVersionDrift
+          ? packageVersionRemediation(packageReference ?? "", client)
+          : alignment === "unknown"
+            ? unknownEntryPointRemediation()
+            : undefined) ??
+        // Only a target whose setup preserves the flag is a manual
+        // conflict; a native row (for example ZCode's own storage) is
+        // still repaired by its setup run below.
+        (activation === "disabled" &&
+        registration.enable === false &&
+        setupPreservesDisabledActivation(
+          effectiveClient,
+          effectiveClient.format,
+        )
+          ? sharedDisabledActivationRemediation()
+          : undefined),
+      packageReference,
+      registrationEnvironment?.ok === true
+        ? timeoutAdvisory(
+            client,
+            registration,
+            registrationEnvironment.value.timeoutInputs,
+          )
+        : undefined,
+    ),
+    activation,
+    commandIdentity: commandFacts.identity,
+  };
+};
+
+/** An entry under a previous REA server name, with setup's ownership proof. */
+interface PreviousRegistration {
+  readonly name: string;
+  readonly raw: unknown;
+  readonly identity: ClientRegistrationCommandIdentity;
+  readonly activation: "enabled" | "disabled" | "unknown";
+}
+
+/**
+ * Entries under previous REA server names. Ownership uses the proof setup and
+ * uninstall share, so status calls an entry REA's exactly when setup would
+ * migrate it. The Harness row is owned by its entry id, not by its name.
+ */
+const previousRegistrations = (
+  parsed: ClientConfigurationDocument,
+  client: SetupClient,
+  effectiveClient: SetupClient,
+  currentCommandPath: string | undefined,
+): readonly PreviousRegistration[] => {
+  if (parsed.dialect === "dsh") return [];
+  const entries: PreviousRegistration[] = [];
+  for (const name of PRODUCT_IDENTITY.previousMcpServerKeys) {
+    const raw = effectiveClientServer(parsed, name);
+    if (raw === undefined) continue;
+    const registration = parseClientRegistration(raw, effectiveClient);
+    entries.push({
+      name,
+      raw,
+      identity: classifyClientRegistration(
+        raw,
+        effectiveClient,
+        currentCommandPath,
+      ),
+      activation: registration.ok
+        ? registrationActivation(registration.value, client, parsed, name)
+        : "unknown",
+    });
+  }
+  return entries;
+};
+
+/** Report an owned or unresolved previous-name entry under its own key. */
+const previousServerKeyStatus = (
+  status: ClientRegistrationStatus,
+  previous: PreviousRegistration,
+  client: SetupClient,
+): ClientRegistrationStatus => {
+  const current = PRODUCT_IDENTITY.mcpServerKey;
+  if (status.state === "aligned" || status.state === "stale")
+    return previous.identity === "owned"
+      ? {
+          client: status.client,
+          config_path: status.config_path,
+          command: status.command,
+          ...(status.package_reference === undefined
+            ? {}
+            : { package_reference: status.package_reference }),
+          server_key: previous.name,
+          state: "stale",
+          remediation: `REA is registered under its previous server name "${previous.name}". reverseport setup renames it to "${current}". ${remediation(client)}`,
+        }
+      : { ...status, server_key: previous.name };
+  return { ...status, server_key: previous.name };
+};
+
+/** Name previous-name entries setup keeps, which the client still loads. */
+const previousServerKeyAdvisory = (
+  previous: readonly PreviousRegistration[],
+  configPath: string,
+): string | undefined => {
+  const current = PRODUCT_IDENTITY.mcpServerKey;
+  const lines = previous.map(({ name, identity }) =>
+    identity === "owned"
+      ? `An REA-owned registration under the previous server name "${name}" is not enabled in ${configPath}; reverseport setup removes it when it registers "${current}".`
+      : `${configPath} registers a server under REA's previous name "${name}" that reverseport setup keeps unchanged: ${
+          identity === "foreign"
+            ? "its launcher is not REA's"
+            : "REA cannot confirm its launcher"
+        }. REA registers as "${current}". If "${name}" is an older REA registration, remove it yourself; otherwise the client loads REA under both names.`,
+  );
+  return lines.length === 0 ? undefined : lines.join(" ");
+};
+
+const duplicateAdvisory = (name: string): string =>
+  `An REA-owned registration under the previous server name "${name}" is also enabled, so the client loads REA under both names; reverseport setup removes "${name}".`;
+
+const duplicateRemediation = (name: string, client: SetupClient): string =>
+  `${duplicateAdvisory(name)} ${remediation(client)}`;
+
+const withServerKeyAdvisory = (
+  status: ClientRegistrationStatus,
+  advisories: readonly (string | undefined)[],
+): ClientRegistrationStatus => {
+  const text = advisories.filter((line) => line !== undefined).join(" ");
+  return text.length === 0 ? status : { ...status, server_key_advisory: text };
 };
 
 /** Shared registration storage doubles as ZCode's fallback, so its
@@ -410,15 +619,16 @@ const registrationActivation = (
   registration: ClientRegistration,
   client: SetupClient,
   parsed: ClientConfigurationDocument,
+  serverKey: string = PRODUCT_IDENTITY.mcpServerKey,
 ): "enabled" | "disabled" =>
   (client.format !== "grok" &&
     !ignoresDisabledKey.has(client.name) &&
     registration.disabled === true) ||
   (registration.enabled === false &&
     !ignoresEnabledKey.has(client.name) &&
-    !clientServerForcedEnabled(parsed, PRODUCT_IDENTITY.mcpServerKey)) ||
+    !clientServerForcedEnabled(parsed, serverKey)) ||
   sharedEnableFlagBinds(registration, client, parsed) ||
-  clientServerListedDisabled(parsed, PRODUCT_IDENTITY.mcpServerKey)
+  clientServerListedDisabled(parsed, serverKey)
     ? "disabled"
     : "enabled";
 
@@ -459,11 +669,12 @@ const registrationAligned = ({
   )
     return "stale";
   if (client.name === "kimi" && !kimiInputSchemaProfileSelected) return "stale";
-  // A Harness registration only connects as the rea stdio server; another
-  // server name or transport leaves the session without REA tools.
+  // A Harness registration connects as REA's stdio server under its current
+  // name; another server name or transport is refreshed by setup.
   if (
     client.format === "dsh" &&
-    (registration.serverName !== "rea" || registration.transport !== "stdio")
+    (registration.serverName !== PRODUCT_IDENTITY.mcpServerKey ||
+      registration.transport !== "stdio")
   )
     return "stale";
   if (

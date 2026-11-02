@@ -1,8 +1,9 @@
 import { uniqueSorted } from "../domain/canonicalOrdering.js";
 import { blocksProcessStart } from "../config/processStart.js";
-import type {
-  ClientRegistrationStatus,
-  UnhealthyClientRegistrationStatus,
+import {
+  registrationDetail,
+  type ClientRegistrationStatus,
+  type UnhealthyClientRegistrationStatus,
 } from "./ClientRegistrationStatus.js";
 import { manualRegistrationRemediation } from "./SupportedClients.js";
 import type {
@@ -202,7 +203,7 @@ const registrationCheck = (
   name: `registration:${status.client}`,
   ok: false,
   classification: status.state === "unknown" ? "unknown" : "config_drift",
-  detail: status.config_path,
+  detail: registrationDetail(status),
   remediation: status.remediation,
 });
 

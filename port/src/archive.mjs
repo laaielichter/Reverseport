@@ -271,13 +271,15 @@ export async function archiveTool({ file, action = 'list', match, limit = 500, o
   const want = compileMatcher(match);
   const selected = arc.entries.filter(e => want(e.path));
   const summary = { format: arc.format, file: arc.abs, size: arc.size };
-  for (const k of ['packVersion', 'godotVersion', 'embedded', 'embeddedVia', 'start', 'encryptedDirectory', 'unityVersion', 'unityRevision', 'compression', 'pakVersion', 'bundleFormat', 'note', 'rpaVersion', 'keyed', 'renpy', 'chunks', 'game', 'counts', 'names', 'fsb', 'events', 'buses', 'vcas', 'bankVersion', 'bankId', 'objects', 'objectCount', 'namedIds', 'mountPoint', 'encryptedIndex', 'encryptionKeyGuid', 'compressionMethods', 'unreal', 'swfVersion', 'stage', 'tags', 'actionScript', 'documentClass', 'symbolClasses', 'frameLabels', 'classes', 'identifierStrings', 'loader', 'packageSize', 'engine', 'unity', 'blockCompression', 'blocks', 'encrypted', 'signature', 'assets']) if (arc[k] !== undefined) summary[k] = arc[k];
+  for (const k of ['packVersion', 'godotVersion', 'embedded', 'embeddedVia', 'start', 'encryptedDirectory', 'unityVersion', 'unityRevision', 'compression', 'pakVersion', 'bundleFormat', 'note', 'rpaVersion', 'keyed', 'renpy', 'chunks', 'game', 'counts', 'names', 'fsb', 'events', 'buses', 'vcas', 'bankVersion', 'bankId', 'objects', 'objectCount', 'namedIds', 'mountPoint', 'encryptedIndex', 'encryptionKeyGuid', 'compressionMethods', 'unreal', 'swfVersion', 'stage', 'tags', 'actionScript', 'documentClass', 'symbolClasses', 'frameLabels', 'classes', 'identifierStrings', 'loader', 'packageSize', 'engine', 'unity', 'blockCompression', 'blockInfoCompression', 'blocks', 'encrypted', 'signature', 'assets', 'next']) if (arc[k] !== undefined) summary[k] = arc[k];
   const byExt = {};
-  for (const e of arc.entries) { const ext = path.extname(e.path).toLowerCase() || '(none)'; byExt[ext] = byExt[ext] ?? { files: 0, bytes: 0 }; byExt[ext].files++; byExt[ext].bytes += e.size ?? 0; }
+  // Unity objects are views of the serialized files (counted in assets.classes): totals and types count the files.
+  const counted = arc.entries.some(e => !e.derived) ? arc.entries.filter(e => !e.derived) : arc.entries;
+  for (const e of counted) { const ext = path.extname(e.path).toLowerCase() || '(none)'; byExt[ext] = byExt[ext] ?? { files: 0, bytes: 0 }; byExt[ext].files++; byExt[ext].bytes += e.size ?? 0; }
   const topTypes = Object.entries(byExt).sort((a, b) => b[1].bytes - a[1].bytes).slice(0, 25).map(([ext, v]) => ({ ext, ...v }));
   const max = Math.max(1, Math.min(20000, limit));
   if (action === 'list') {
-    return { ...summary, totalEntries: arc.entries.length, matching: selected.length, totalBytes: arc.entries.reduce((s, e) => s + (e.size ?? 0), 0), types: topTypes, entries: selected.slice(0, max).map(({ localHeader, method, produce, prefix, ...e }) => e), truncated: selected.length > max };
+    return { ...summary, totalEntries: arc.entries.length, matching: selected.length, totalBytes: counted.reduce((s, e) => s + (e.size ?? 0), 0), types: topTypes, entries: selected.slice(0, max).map(({ localHeader, method, produce, prefix, derived, ...e }) => e), truncated: selected.length > max };
   }
   if (action !== 'extract') throw new RPError('INVALID_ARGUMENT', 'action must be "list" or "extract".');
   if (!arc.entries.length && ['unityfs', 'unity-bundle', 'unreal-pak'].includes(arc.format)) throw new RPError('UNSUPPORTED_ARCHIVE', summary.note ?? 'nothing to extract');
@@ -322,13 +324,24 @@ export async function archiveTool({ file, action = 'list', match, limit = 500, o
       const dest = safeJoin(root, e.path);
       await fs.mkdir(path.dirname(dest), { recursive: true });
       if (e.produce) {
-        let made;
-        try { made = await e.produce(); } catch (err) { if (!(err instanceof RPError)) throw err; skipped.push({ path: e.path, reason: err.message }); continue; }
-        if (made.chunks) { const ws = createWriteStream(dest); await pipeline(Readable.from(made.chunks), ws); }
-        else await fs.writeFile(dest, made.data);
-        const bytes = made.data?.length ?? e.size ?? 0;
+        // One unreadable object or truncated block skips that entry, never the whole extraction; the output size
+        // (a PNG can be far larger than its serialized object) counts against the budget before anything is written.
+        let bytes, note;
+        try {
+          const made = await e.produce();
+          if (made.chunks) { const ws = createWriteStream(dest); await pipeline(Readable.from(made.chunks), ws); bytes = e.size ?? 0; }
+          else {
+            if (written + made.data.length > budget) { skipped.push({ path: e.path, reason: `over the ${Math.round(budget / MiB)} MiB extraction budget (raise maxBytes)` }); continue; }
+            await fs.writeFile(dest, made.data); bytes = made.data.length;
+          }
+          note = made.note;
+        } catch (err) {
+          if (!(err instanceof RPError)) throw err;
+          await fs.rm(dest, { force: true });
+          skipped.push({ path: e.path, reason: err.message }); continue;
+        }
         written += bytes;
-        files.push({ path: e.path, file: dest, size: bytes, ...(made.note ? { note: made.note } : {}) });
+        files.push({ path: e.path, file: dest, size: bytes, ...(note ? { note } : {}) });
         continue;
       }
       if (arc.format === 'zip') {

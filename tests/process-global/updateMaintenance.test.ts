@@ -243,20 +243,25 @@ describe("maintenance activation and layered configuration", () => {
 
 describe("registration ownership in maintenance", () => {
   it("selects owned registrations while preserving unconfigured, foreign, and disabled choices", async () => {
-    await writeClient("codex", staleCodex);
+    await writeClient(
+      "codex",
+      staleCodex.replace("mcp_servers.rea", "mcp_servers.reverseport"),
+    );
     await writeClient("claude_code", '{"mcpServers":{}}');
     await writeClient(
       "cursor",
-      '{"mcpServers":{"rea":{"command":"foreign-server","args":[]}}}',
+      '{"mcpServers":{"reverseport":{"command":"foreign-server","args":[]}}}',
     );
     await writeClient(
       "opencode",
-      '{"mcp":{"rea":{"type":"local","command":["npx","-y","reverseport@0.1.0","mcp"],"enabled":false}}}',
+      '{"mcp":{"reverseport":{"type":"local","command":["npx","-y","reverseport@0.1.0","mcp"],"enabled":false}}}',
     );
     await writeClient(
       "vscode",
       JSON.stringify({
-        servers: { rea: { type: "stdio", command: entryPoint, args: ["mcp"] } },
+        servers: {
+          reverseport: { type: "stdio", command: entryPoint, args: ["mcp"] },
+        },
       }),
     );
     expect(
@@ -514,6 +519,106 @@ describe("shared registration maintenance", () => {
       skillDestinations: [],
     });
     expect(await readFile(configPath, "utf8")).toBe(original);
+  });
+});
+
+describe("maintenance of a registration under the previous server name", () => {
+  const previous = {
+    rea: { command: "npx", args: ["-y", "reverseport@0.1.0", "mcp"] },
+  };
+
+  it("selects an owned previous-name entry and plans its move under configure_client", async () => {
+    const config = await writeClient(
+      "cursor",
+      JSON.stringify({ mcpServers: previous }),
+    );
+    const original = await readFile(config, "utf8");
+    expect(
+      await readClientRegistrationInspections(home, entryPoint, {
+        environment: process.env,
+      }),
+    ).toContainEqual(
+      expect.objectContaining({
+        status: expect.objectContaining({
+          client: "cursor",
+          state: "stale",
+          server_key: "rea",
+        }),
+        activation: "enabled",
+        commandIdentity: "owned",
+      }),
+    );
+    // The updated setup executable plans the move itself; maintenance only
+    // accepts it because it rides on the client's existing action id.
+    const result = await planIntegrationMaintenance(
+      home,
+      entryPoint,
+      process.env,
+      (command) => runUpdateCommand(command, process.env),
+    );
+    expect(result).toMatchObject({
+      status: "planned",
+      scope: { clients: ["cursor"] },
+      plannedActions: [
+        {
+          id: "configure_client:cursor",
+          kind: "configure_client",
+          operation: "update",
+          detail: expect.stringContaining(
+            `Rename REA's registration "rea" to "${PRODUCT_IDENTITY.mcpServerKey}"`,
+          ),
+        },
+      ],
+    });
+    expect(await readFile(config, "utf8")).toBe(original);
+  });
+
+  it("keeps maintenance unavailable for an unresolved previous-name entry", async () => {
+    const config = await writeClient(
+      "cursor",
+      JSON.stringify({
+        mcpServers: {
+          rea: { command: join(home, "removed-release", "rea"), args: ["mcp"] },
+        },
+      }),
+    );
+    const result = await planIntegrationMaintenance(
+      home,
+      entryPoint,
+      process.env,
+      () => {
+        throw new Error("An unresolved maintenance scope must not be executed");
+      },
+    );
+    expect(result).toMatchObject({
+      status: "unavailable",
+      scope: {
+        unresolved: [
+          expect.objectContaining({
+            client: "cursor",
+            state: "unknown",
+            server_key: "rea",
+            config_path: config,
+          }),
+        ],
+      },
+    });
+  });
+
+  it("leaves a foreign previous-name entry outside maintenance", async () => {
+    const config = await writeClient(
+      "cursor",
+      JSON.stringify({
+        mcpServers: { rea: { command: "foreign-server", args: [] } },
+      }),
+    );
+    const original = await readFile(config, "utf8");
+    await expect(
+      planIntegrationMaintenance(home, entryPoint, process.env, () => {
+        throw new Error("A foreign entry must not be maintained");
+      }),
+    ).resolves.toEqual({ status: "current", plannedActions: [] });
+    expect(await readFile(config, "utf8")).toBe(original);
   });
 });
 

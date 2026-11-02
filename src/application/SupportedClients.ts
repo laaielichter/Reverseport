@@ -2,6 +2,7 @@ import { dirname, isAbsolute, join, resolve, win32 } from "node:path";
 import { fileURLToPath } from "node:url";
 import { lstatSync } from "node:fs";
 import { err, ok, type Result } from "../domain/result.js";
+import { PRODUCT_IDENTITY } from "../identity.js";
 import {
   HermesClientPathError,
   resolveHermesClientHome,
@@ -245,8 +246,7 @@ const grokBotDirectory = ({ home, env }: ClientPathContext): string => {
  * Grok Bot stores connectors in the signed-in account and runs them on its
  * hosted computer. The data directory is only a detection marker.
  */
-export const GROK_BOT_MANUAL_REGISTRATION_REMEDIATION =
-  "Grok Bot keeps connectors in the signed-in account and runs them on its hosted computer. Setup does not write that account store, and a data-directory mcp.json is not a registration. In the Grok Bot chat, add a custom MCP server named rea that runs on the Bot's computer with `npx -y reverseport@<version> mcp`. Do not put credentials in the command or arguments. A stdio server on this machine is not attached.";
+export const GROK_BOT_MANUAL_REGISTRATION_REMEDIATION = `Grok Bot keeps connectors in the signed-in account and runs them on its hosted computer. Setup does not write that account store, and a data-directory mcp.json is not a registration. In the Grok Bot chat, add a custom MCP server named ${PRODUCT_IDENTITY.mcpServerKey} that runs on the Bot's computer with \`npx -y reverseport@<version> mcp\`; rename a connector you added earlier as ${PRODUCT_IDENTITY.previousMcpServerKeys.join(" or ")}. Do not put credentials in the command or arguments. A stdio server on this machine is not attached.`;
 
 /** Remediation for a client whose connector is not a local configuration file. */
 export const manualRegistrationRemediation = (

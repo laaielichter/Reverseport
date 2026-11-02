@@ -17,7 +17,7 @@ import { createTestTempDirectory } from "../../fixtures/temporaryDirectory.js";
 
 const configurationSchema = z.object({
   mcpServers: z.object({
-    rea: z.object({ command: z.string(), args: z.array(z.string()) }),
+    reverseport: z.object({ command: z.string(), args: z.array(z.string()) }),
   }),
 });
 
@@ -40,7 +40,7 @@ it.each([
       theme: "dark",
       mcpServers: {
         other: { command: "another-server" },
-        rea: {
+        reverseport: {
           command: previousCommand[0],
           args: previousCommand.slice(1),
         },
@@ -94,7 +94,7 @@ it.each(["npx", "bunx"] as const)(
     await mkdir(join(home, ".codex"));
     const configPath = join(home, ".codex", "config.toml");
     const original =
-      '\uFEFF# Keep this explanation.\nnotify = ["a", "b"]\nliteral = \'C:\\demo\\path\'\ndisabled_mcp_servers = ["rea"]\n\n[mcp_servers.other]\ncommand = "another-server"\n';
+      '\uFEFF# Keep this explanation.\nnotify = ["a", "b"]\nliteral = \'C:\\demo\\path\'\ndisabled_mcp_servers = ["reverseport"]\n\n[mcp_servers.other]\ncommand = "another-server"\n';
     await writeFile(configPath, original);
     const client = { name: "codex", configPath, format: "toml" } as const;
     const command = setupRegistrationCommand("win32", runner, undefined);
@@ -140,7 +140,9 @@ it("retains rea-named custom shell registrations without writing a backup", asyn
     ["cmd.exe", "/c", "bunx", "reverseport@5.0.0", "mcp", "&", "other"],
   ]) {
     const original = JSON.stringify({
-      mcpServers: { rea: { command: command[0], args: command.slice(1) } },
+      mcpServers: {
+        reverseport: { command: command[0], args: command.slice(1) },
+      },
     });
     await writeFile(configPath, original);
     expect(await systemUninstallHost(home).removeClient(client)).toMatchObject({
@@ -176,7 +178,8 @@ it.skipIf(process.platform !== "win32").each([
         : configureClientConfiguration(setupClient, {}, command)),
     ).toMatchObject({ status: "configured" });
     const decoded: unknown = JSON.parse(await readFile(configPath, "utf8"));
-    const registration = configurationSchema.parse(decoded).mcpServers.rea;
+    const registration =
+      configurationSchema.parse(decoded).mcpServers.reverseport;
     expect([registration.command, ...registration.args]).toEqual(command);
     const entry = fileURLToPath(
       new URL("../../../scripts/rea.mjs", import.meta.url),

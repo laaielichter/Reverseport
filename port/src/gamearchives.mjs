@@ -208,9 +208,9 @@ export async function readFsb5(abs, base, maxLen) {
   for (let i = 0; i < numSamples && p + 8 <= hdr.length; i++) {
     const raw = hdr.readBigUInt64LE(p); p += 8;
     let next = Number(raw & 1n);
-    const freqIdx = Number((raw >> 1n) & 0xfn), channels = Number((raw >> 5n) & 1n) + 1, dataOffset = Number((raw >> 6n) & 0xfffffffn) * 32, sampleCount = Number(raw >> 34n);
-    let frequency = RATES[freqIdx] ?? 0;
-    while (next && p + 4 <= hdr.length) { const c = hdr.readUInt32LE(p); p += 4; next = c & 1; const chunkSize = (c >> 1) & 0xffffff, type = (c >> 25) & 0x7f; if (type === 1 && chunkSize >= 1) channels; if (type === 2 && chunkSize >= 4) frequency = hdr.readUInt32LE(p); p += chunkSize; }
+    const freqIdx = Number((raw >> 1n) & 0xfn), channelsBit = Number((raw >> 5n) & 1n) + 1, dataOffset = Number((raw >> 6n) & 0xfffffffn) * 32, sampleCount = Number(raw >> 34n);
+    let frequency = RATES[freqIdx] ?? 0, channels = channelsBit;
+    while (next && p + 4 <= hdr.length) { const c = hdr.readUInt32LE(p); p += 4; next = c & 1; const chunkSize = (c >> 1) & 0xffffff, type = (c >> 25) & 0x7f; if (type === 1 && chunkSize >= 1) channels = hdr[p]; if (type === 2 && chunkSize >= 4) frequency = hdr.readUInt32LE(p); p += chunkSize; }
     samples.push({ index: i, frequency, channels, dataOffset, samples: sampleCount });
   }
   for (let i = 0; i < samples.length; i++) samples[i].size = (i + 1 < samples.length ? samples[i + 1].dataOffset : dataSize) - samples[i].dataOffset;
@@ -477,7 +477,7 @@ export async function readUnityWebData(abs) {
   const meta = entries.find(e => /global-metadata\.dat$/.test(e.path));
   return { format: 'unity-webgl-data', compression: layers[0] ?? 'none', entries, data: layers.length ? buf : null,
     unity: { il2cpp: !!meta, note: meta ? 'IL2CPP build: Il2CppData/Metadata/global-metadata.dat holds type, method and field names (re_il2cpp); code is in the .wasm (re_binary).' : 'Mono/older build or no metadata entry.' },
-    note: 'data.unity3d / level files / sharedassets are Unity serialized files (open them with an asset tool); Resources and StreamingAssets entries are plain files.' };
+    note: 'data.unity3d / level files / sharedassets are Unity serialized files: extract them, then run re_archive on each (objects, scenes, scripts in use; extract → PNG, OBJ, audio, text). Resources and StreamingAssets entries are plain files.' };
 }
 
 /** Emscripten file_packager output: the .data blob plus the loader .js that lists files with start/end offsets. */

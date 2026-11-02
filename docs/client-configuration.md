@@ -20,8 +20,10 @@ another process's runtime overrides. See the
 ## Client tool names and discovery
 
 ReversePort advertises canonical names such as `binary_session`. The MCP host decides
-how to expose them to its model: a name such as `mcp__rea__binary_session` is a
-client convention, not a prefix ReversePort can enforce. Use the active client's tool
+how to expose them to its model: a name such as `mcp__reverseport__binary_session` is a
+client convention, not a prefix ReversePort can enforce. Releases before the
+[server name change](installation.md#server-name-change) registered the server as `rea`, so permission rules
+written for `mcp__rea__*` no longer match. Use the active client's tool
 listing and server association to find the operation. A valid registration or
 installed skill does not prove that those tools reached the model. Doctor reports
 live-server identity as unknown; query `binary_session` through the active client
@@ -61,7 +63,7 @@ It does not establish the effective client budget or fix the built-in-ID path.
 The existing compact profile passed native chat and analysis with the complete
 tool inventory on Linux using a loopback model fixture. After setup, add
 `"REA_MCP_INPUT_SCHEMA_PROFILE": "compact"` to the `env` object of the
-`mcpServers.rea` entry in Copilot's `mcp-config.json`, preserving its other
+`mcpServers.reverseport` entry in Copilot's `mcp-config.json`, preserving its other
 settings, then restart the client. Compact advertisements can reduce nested
 schema constraints; ReversePort still validates complete canonical inputs. Full-profile
 `gpt-5.4` metadata is also verified locally. Live model API acceptance and
@@ -69,7 +71,7 @@ Windows remain unverified; see [native client verification](testing.md).
 
 ## Claude Desktop
 
-Setup registers `mcpServers.rea` in `claude_desktop_config.json`: under
+Setup registers `mcpServers.reverseport` in `claude_desktop_config.json`: under
 `~/Library/Application Support/Claude` on macOS, under
 `$XDG_CONFIG_HOME/Claude` (default `~/.config/Claude`) on Linux, and on Windows
 in the file the installed app reads:
@@ -167,7 +169,7 @@ and Claude Code reports that autocompact is thrashing. To avoid this:
   its requests to fail.
 - To shrink the upfront catalog, add
   `"REA_MCP_INPUT_SCHEMA_PROFILE": "compact"` to the `env` object of the
-  `mcpServers.rea` entry in `~/.claude.json` (`$CLAUDE_CONFIG_DIR/.claude.json`
+  `mcpServers.reverseport` entry in `~/.claude.json` (`$CLAUDE_CONFIG_DIR/.claude.json`
   when that variable is set), then restart Claude Code. Setup keeps this
   override.
 
@@ -182,7 +184,7 @@ profiles](mcp-contracts.md#output-schemas).
 
 ## Kimi Code
 
-Setup registers `rea` in `~/.kimi-code/mcp.json`, or
+Setup registers `reverseport` in `~/.kimi-code/mcp.json`, or
 `$KIMI_CODE_HOME/mcp.json` when set, while preserving unrelated settings and
 creating a `.rea.backup` before updating an existing file. Kimi Code infers
 stdio from the `command` entry, so setup does not add a `type` field. New
@@ -209,7 +211,7 @@ explicit `REA_JADX_OPERATION_TIMEOUT_MS` is forwarded with the JADX
 registration but does not contribute to the derived tool timeout; raise
 `toolTimeoutMs` to cover a longer selected JADX deadline.
 This headroom is a practical default, not a guarantee for every analysis
-duration. Setup preserves positive timeout values already in the `rea` entry.
+duration. Setup preserves positive timeout values already in the `reverseport` entry.
 You can edit `startupTimeoutMs` and `toolTimeoutMs` there; doctor keeps positive
 caller-selected values aligned and reports a non-blocking advisory when a tool
 timeout is shorter than the known provider allowance.
@@ -233,7 +235,7 @@ Start a new Kimi Code session to pick up MCP and skill changes.
 ## Pi
 
 For [Pi](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/mcp.md),
-setup writes a `type: "stdio"` entry under `mcpServers.rea` in the user-level
+setup writes a `type: "stdio"` entry under `mcpServers.reverseport` in the user-level
 `~/.pi/agent/mcp.json` and installs the bundled skill under `~/.agents/skills`.
 Use `reverseport setup --client pi --dry-run --json` to inspect the plan, then
 `reverseport setup --client pi --yes --json` to approve it. Check the registration with
@@ -255,16 +257,19 @@ non-stdio type as invalid; `enabled: false` stays disabled.
 ReversePort configures only the user scope. Pi also reads `.pi/mcp.json` in trusted
 projects; a same-name project entry can replace the user entry or override its
 enabled state and exposure. Check that file if the user registration is aligned
-but unavailable in a project. An extension that registers `/mcp` can replace
+but unavailable in a project. A project entry still named `rea` no longer overrides the user entry after the
+[server name change](installation.md#server-name-change), so both load; remove or rename it. An extension that registers `/mcp` can replace
 Pi's built-in MCP support and use its own configuration instead. Run `/reload`
 in an existing Pi session after changing servers outside the session.
 
 ## Qwen Code
 
-For Qwen Code, setup registers `rea` in the `mcpServers` table of the
+For Qwen Code, setup registers `reverseport` in the `mcpServers` table of the
 user-level `~/.qwen/settings.json`, or `$QWEN_HOME/settings.json` when configured.
 Setup and doctor follow Qwen Code's tilde and working-directory-relative home
-overrides. Qwen Code also discovers personal skills in `~/.agents/skills`,
+overrides. As for Gemini CLI, setup never edits Qwen's `mcp.allowed` or `mcp.excluded`, and stops with the
+setting to update when they allow `rea` but not `reverseport` or exclude `rea`.
+Qwen Code also discovers personal skills in `~/.agents/skills`,
 where setup installs the bundled workflow.
 
 ## Antigravity
@@ -282,8 +287,11 @@ system overrides. Workspace trust follows `GEMINI_CLI_TRUST_WORKSPACE`,
 `GEMINI_RESTRICTED_MODE`, the effective `security.folderTrust.enabled` setting,
 and the selected `trustedFolders.json` (including
 `GEMINI_CLI_TRUSTED_FOLDERS_PATH`). Settings in an untrusted workspace do not
-participate. A workspace or system `mcpServers.rea` replaces the entire user
+participate. A workspace or system `mcpServers.reverseport` replaces the entire user
 entry; setup stops if the winning definition conflicts with its planned entry.
+Setup never edits `mcp.allowed` or `mcp.excluded`. A layer that allows `rea` but not `reverseport`, or excludes
+`rea` in any letter case, stops setup for Gemini CLI with the setting to update; a workspace or system
+`mcpServers.rea` is reported, never edited. See the [server name change](installation.md#server-name-change).
 Setup checks user policy against the file snapshot it is inspecting or about to
 update, including confirmed absence; an earlier discovery snapshot does not veto
 a repaired user policy. Independent system and workspace sources are still checked.
@@ -306,8 +314,9 @@ ReversePort manages its launcher and selected provider settings in the client
 registration. Codex's server and per-tool approval policies are user choices.
 Setup patches ReversePort's connection fields in the selected file and retains other
 server settings, including `default_tools_approval_mode`, nested
-`[mcp_servers.rea.tools.<name>]` tables, tool allow/deny lists, and unrecognized
-client settings. Doctor accepts Codex's per-tool policy tables. Known malformed
+`[mcp_servers.reverseport.tools.<name>]` tables, tool allow/deny lists, and unrecognized
+client settings. When setup moves a ReversePort-owned `[mcp_servers.rea]` entry to the new name, its
+`.env` and `.tools.<name>` tables move with it. Doctor accepts Codex's per-tool policy tables. Known malformed
 policy values block setup before it writes the configuration or a backup, and
 the diagnostic identifies the setting to repair. See the
 [Codex configuration reference](https://developers.openai.com/codex/config-reference/)
@@ -385,7 +394,7 @@ Then merge this setting into the ReversePort entry in `$CODEX_HOME/config.toml`
 (`~/.codex/config.toml` by default), preserving its launcher and other settings:
 
 ```toml
-[mcp_servers.rea.env]
+[mcp_servers.reverseport.env]
 REA_MCP_INPUT_SCHEMA_PROFILE = "compact"
 ```
 
@@ -406,14 +415,17 @@ overrides the agent directory; a relative value uses the setup working
 directory. A named profile selected by `OMP_PROFILE` or `PI_PROFILE` instead
 uses `<configuration-root>/profiles/<name>/agent/mcp.json` and ignores
 `PI_CODING_AGENT_DIR`. Setup also removes
-`rea` from that file's `disabledServers` list, which would otherwise hide the
+`reverseport` from that file's `disabledServers` list, which would otherwise hide the
 registration. Doctor treats an `enabled: false` entry as active when
-`enabledServers` lists `rea`, as OMP does, unless `disabledServers` also lists
-it. Run setup under each profile that should load ReversePort.
+`enabledServers` lists `reverseport`, as OMP does, unless `disabledServers` also lists
+it. When setup moves a ReversePort-owned `rea` entry to `reverseport`, it also drops `rea` from
+`disabledServers` and replaces `rea` with `reverseport` in `enabledServers`; lists that name an unowned `rea`
+stay unchanged. See the [server name change](installation.md#server-name-change).
+Run setup under each profile that should load ReversePort.
 
 ## Hermes
 
-For Hermes, setup writes a `mcp_servers.rea` entry to `config.yaml`, preserving
+For Hermes, setup writes a `mcp_servers.reverseport` entry to `config.yaml`, preserving
 comments and unrelated settings. It resolves that file from `HERMES_HOME`, else
 from the platform default Hermes itself uses — `%LOCALAPPDATA%\hermes` on
 Windows, `~/.hermes` elsewhere — including any `HERMES_DATA_DIR_SUFFIX`. Hermes
@@ -436,7 +448,7 @@ configuration and skill destinations; doctor and uninstall use those same paths.
 ## Qoder CLI
 
 For [Qoder](https://docs.qoder.com/cli/mcp-reference), setup writes
-`mcpServers.rea` into the user-level `~/.qoder/settings.json` (the
+`mcpServers.reverseport` into the user-level `~/.qoder/settings.json` (the
 `QODER_CONFIG_DIR` override is honored). Entries carry `command`, `args`, and
 `env`; stdio is the default transport. Qoder CLI discovers personal skills
 from `~/.qoder/skills` (following `QODER_CONFIG_DIR` when set), so setup
@@ -445,7 +457,7 @@ installs its skill copy there.
 ## Factory Droid
 
 For [Factory Droid](https://docs.factory.com/harness/mcp), setup writes
-`mcpServers.rea` into the user-level `~/.factory/mcp.json`. Entries carry
+`mcpServers.reverseport` into the user-level `~/.factory/mcp.json`. Entries carry
 `command`, `args`, and `env`. Droid discovers personal skills from
 `~/.factory/skills` ([skills](https://docs.factory.com/harness/skills)), so
 setup installs its skill copy there.
@@ -453,7 +465,7 @@ setup installs its skill copy there.
 ## Trae
 
 For [Trae](https://docs.trae.ai/ide/add-mcp-servers), setup writes
-`mcpServers.rea` into the user-scope `mcp.json` under Trae's VS Code-style
+`mcpServers.reverseport` into the user-scope `mcp.json` under Trae's VS Code-style
 user directory (`%APPDATA%\Trae\User` on Windows,
 `~/Library/Application Support/Trae/User` on macOS, and
 `~/.config/Trae/User` elsewhere). Entries carry `command`, `args`, and
@@ -467,7 +479,7 @@ loading this registration in Trae remains unverified.
 
 ## WorkBuddy
 
-For [WorkBuddy](https://www.workbuddy.cn/docs/workbuddy/From-Beginner-to-Expert-Guide/Function-Description/MCP-Guide), setup writes `mcpServers.rea` into the
+For [WorkBuddy](https://www.workbuddy.cn/docs/workbuddy/From-Beginner-to-Expert-Guide/Function-Description/MCP-Guide), setup writes `mcpServers.reverseport` into the
 global `~/.workbuddy/mcp.json` (a standard `mcpServers` JSON file at the user
 home root on every platform). Entries carry `command`, `args`, and `env`;
 stdio is the default transport. WorkBuddy discovers personal skills from
@@ -475,14 +487,14 @@ stdio is the default transport. WorkBuddy discovers personal skills from
 setup installs its skill copy there.
 
 The global MCP path is a plain JSON file; setup preserves every other server
-and top-level key when it upserts `rea`. WorkBuddy also reads a project-level
+and top-level key when it upserts `reverseport`. WorkBuddy also reads a project-level
 `<project>/.workbuddy/mcp.json`, which setup does not touch: it registers the
 user-level file only. Loading this registration and real ReversePort tool calls
 through WorkBuddy are verified.
 
 ## ZCode
 
-For [ZCode](https://zcode.z.ai/en/docs/mcp-services), setup registers `rea` in the nested `mcp.servers` table of the
+For [ZCode](https://zcode.z.ai/en/docs/mcp-services), setup registers `reverseport` in the nested `mcp.servers` table of the
 user-level `~/.zcode/cli/config.json`. Entries carry `command`, `args`, and
 `env` without a transport discriminator. ZCode discovers personal skills from
 `~/.zcode/skills` rather than the shared directory, so setup installs its
@@ -494,10 +506,10 @@ the first native server into an empty table, it copies the fallback's
 `mcpServers` entries into the native table so they keep loading, and leaves
 the fallback file untouched. Existing ReversePort environment overrides are preserved
 when refreshing its command. A malformed or unreadable fallback file fails setup instead of
-being silently suppressed; repair or remove it and rerun. Uninstall removes an
-ReversePort-owned `rea` entry from both the native table and the fallback, backing up
+being silently suppressed; repair or remove it and rerun. Uninstall removes a
+ReversePort-owned `reverseport` or `rea` entry from both the native table and the fallback, backing up
 each changed file, so an emptied native table cannot load a leftover fallback
-registration; other fallback servers, settings and a foreign `rea` entry are
+registration; other fallback servers, settings and a foreign entry under either name are
 kept. ZCode disables a
 server with `enable: false` on its entry; doctor reports such a registration
 as stale, and rerunning setup removes the flag to repair it. Native configuration
@@ -506,7 +518,7 @@ writing a registration ZCode cannot load.
 
 ## FreeBuff
 
-For FreeBuff, the proposed integration writes `mcpServers.rea` into the user-scope
+For FreeBuff, the proposed integration writes `mcpServers.reverseport` into the user-scope
 `~/.agents/mcp.json` shared-agent file. Entries carry `command`, `args`, and
 `env`; stdio is the default transport. The proposed personal skill location is
 `~/.agents/skills`, so setup installs its skill copy there. Because the same
@@ -550,7 +562,7 @@ The written entry is:
     - id: rea-mcp
       name: "@deepseek-ai/dsh-mcp-client"
       config:
-        serverName: rea
+        serverName: reverseport
         transport: stdio
         command: /absolute/path/to/node
         args: ["/absolute/path/to/rea/scripts/rea.mjs", mcp]
@@ -563,7 +575,7 @@ literal config and a root-level insertion as shown above.
 
 For a global npm installation, the launcher is under
 `$(npm root -g)/reverseport/scripts/rea.mjs`. Restart Harness after setup; it
-exposes tools as `mcp__rea__<tool_name>`. Run `reverseport setup --skill --dry-run`,
+exposes tools as `mcp__reverseport__<tool_name>`. Run `reverseport setup --skill --dry-run`,
 review the destination, then `reverseport setup --skill --yes` to install the workflow
 in `~/.agents/skills` (`$DSH_AGENTS_HOME/skills` when configured); Harness
 discovers that directory, and its native `skill` tool can load
@@ -578,21 +590,21 @@ for its native configuration contract.
 
 ## Other client settings
 
-For OpenCode, setup writes the V1 `mcp.rea` entry, which OpenCode V1 and V2
+For OpenCode, setup writes the V1 `mcp.reverseport` entry, which OpenCode V1 and V2
 both load. If the configuration already uses OpenCode V2's native
-`mcp.servers` table, setup registers ReversePort there instead and replaces any earlier
-`mcp.rea` entry from ReversePort. Setup honors `OPENCODE_CONFIG_DIR` and
+`mcp.servers` table, setup registers ReversePort there instead and replaces any earlier V1
+`mcp.reverseport` or `mcp.rea` entry from ReversePort. Setup honors `OPENCODE_CONFIG_DIR` and
 `OPENCODE_CONFIG`, preferring the later-loaded JSONC file when both JSON and
 JSONC exist. The ordinary XDG global configuration still participates when a
 custom directory is selected. Doctor checks the merged user registration; uninstall removes
 ReversePort-owned entries from every applicable user file so an older entry cannot
 become active again. Malformed applicable files block setup before changes.
 
-Grok Build loads `[mcp_servers.rea]` from `$GROK_HOME/config.toml`, or from
+Grok Build loads `[mcp_servers.reverseport]` from `$GROK_HOME/config.toml`, or from
 `~/.grok/config.toml` when `GROK_HOME` is unset or empty. Setup edits that server
-table, `[mcp_servers.rea.env]`, and a root `disabled_mcp_servers` entry that
-names `rea`. It sets `startup_timeout_sec = 30` and leaves every other name
-in that list. The shared skill installed under `~/.agents/skills` is already
+table, `[mcp_servers.reverseport.env]`, and a root `disabled_mcp_servers` entry that
+names `reverseport`. It sets `startup_timeout_sec = 30` and leaves every other name
+in that list, except that moving a ReversePort-owned `[mcp_servers.rea]` entry also drops `rea` from it. The shared skill installed under `~/.agents/skills` is already
 on Grok Build's skill path.
 
 Grok Bot (`grok_bot`) is detected from `~/.grokbot`, or from `SAND_DATA_ROOT`
@@ -603,13 +615,14 @@ computer. It does not import `mcp.json` from the data directory, and it does
 not attach a stdio server running on this machine. Setup does not call the
 account connector API, does not write a registration file, and does not report
 the data directory as aligned. Ask the Grok Bot chat to add a custom MCP
-server named `rea` that runs on the Bot's computer:
+server named `reverseport` that runs on the Bot's computer:
 
 ```bash
 npx -y reverseport@<version> mcp
 ```
 
-Do not put credentials in that command or its arguments. `reverseport doctor --client grok_bot`
+A connector added earlier under the name `rea` keeps that name until you rename it in the chat; setup cannot
+reach it. Do not put credentials in that command or its arguments. `reverseport doctor --client grok_bot`
 reports this manual step. `reverseport uninstall` does not remove the account connector.
 
 ## Skill selection and maintenance

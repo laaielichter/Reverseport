@@ -48,6 +48,7 @@ import { DEFAULT_CATALOG_IDENTITY } from "../catalogIdentity.js";
 import { PRODUCT_IDENTITY, SDK_IDENTITY } from "../identity.js";
 import {
   readClientRegistrationStatuses,
+  registrationDetail,
   type ClientRegistrationStatus,
   type UnhealthyClientRegistrationStatus,
 } from "./ClientRegistrationStatus.js";
@@ -313,8 +314,8 @@ const inspectDoctor = async (
 const registrationAdvisoryChecks = (
   registrations: readonly ClientRegistrationStatus[],
 ): readonly DoctorCheck[] =>
-  registrations.flatMap(({ client, advisory }) =>
-    advisory === undefined
+  registrations.flatMap(({ client, advisory, server_key_advisory }) => [
+    ...(advisory === undefined
       ? []
       : [
           {
@@ -323,8 +324,18 @@ const registrationAdvisoryChecks = (
             classification: "healthy" as const,
             detail: advisory,
           },
-        ],
-  );
+        ]),
+    ...(server_key_advisory === undefined
+      ? []
+      : [
+          {
+            name: `registration_server_key:${client}`,
+            ok: true,
+            classification: "healthy" as const,
+            detail: server_key_advisory,
+          },
+        ]),
+  ]);
 
 const closeDoctorHost = async (
   host: DoctorHost,
@@ -495,7 +506,7 @@ const registrationCheck = (
   name: `registration:${registration.client}`,
   ok: false,
   classification: registration.state === "unknown" ? "unknown" : "config_drift",
-  detail: registration.config_path,
+  detail: registrationDetail(registration),
   remediation: registration.remediation,
 });
 

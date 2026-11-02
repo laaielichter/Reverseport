@@ -23,7 +23,6 @@ import { defaultKunaCacheDirectory } from "../config/kunaCacheDirectory.js";
 import { linuxHopperReleaseCacheDirectory } from "./LinuxHopperCacheDirectory.js";
 
 import { ClientConfigurationPublication } from "./ClientConfigurationPublication.js";
-import { parseClientRegistrationLauncher } from "./ClientRegistration.js";
 
 import { PRODUCT_IDENTITY } from "../identity.js";
 import {
@@ -32,8 +31,7 @@ import {
   readSkillFile,
   skillDestinationSelection,
 } from "./SetupSkill.js";
-import { classifyClientRegistrationCommand } from "./ClientRegistrationIdentity.js";
-import { CURRENT_ENTRYPOINT_PATH } from "../process/CurrentEntrypointPath.js";
+import { isOwnedRegistration } from "./ClientRegistrationIdentity.js";
 import { dshDocument } from "./DshCordisPatch.js";
 import { resolveClientConfigTransactionPath } from "./ClientConfigPath.js";
 import {
@@ -315,7 +313,7 @@ const hasOwnershipEvidence = async (
     // REA-owned row shadowed by a foreign duplicate still proves ownership,
     // so later read failures stay blocking instead of softening to retained.
     const owned = removal.ok ? removal.value : removal.error.owned;
-    if (owned.removeNative || owned.legacyPath !== undefined) return true;
+    if (removesRegistration(owned)) return true;
   }
   return false;
 };
@@ -539,11 +537,7 @@ export const systemUninstallHost = (
         );
         if (!removal.ok)
           return item(client.name, "failed", removal.error.detail);
-        if (
-          !removal.value.removeNative &&
-          removal.value.legacyPath === undefined
-        )
-          return undefined;
+        if (!removesRegistration(removal.value)) return undefined;
         preflightOwnedClients.add(client);
         // A removal the running package would revert, or redirect into its
         // private storage, would leave the registration in place.
@@ -628,18 +622,32 @@ const uninstallConfigPaths = (client: SetupClient): readonly string[] => [
   ]),
 ];
 
-/** Whether removal would change this configuration. */
-const registrationPresent = (parsed: ClientConfigurationDocument): boolean => {
-  const name = PRODUCT_IDENTITY.mcpServerKey;
-  return (
-    Object.hasOwn(parsed.servers, name) ||
-    // Beside a native OpenCode V2 table, OpenCode also loads a V1 `mcp.rea`.
-    legacyClientServerPath(parsed, name) !== undefined ||
-    // Harness ownership is the stable entry id. A stale or malformed launcher
-    // still belongs to that id, and so does a direct patch that projects no row.
-    (parsed.dialect === "dsh" && dshDocument(parsed.document).carriesEntry)
+/**
+ * Every name REA registers or once registered. Uninstall removes REA-owned
+ * entries under each of them; the current name comes first.
+ */
+const REGISTRATION_NAMES: readonly string[] = [
+  PRODUCT_IDENTITY.mcpServerKey,
+  ...PRODUCT_IDENTITY.previousMcpServerKeys,
+];
+
+/** The names with an entry in this configuration. */
+const presentRegistrationNames = (
+  parsed: ClientConfigurationDocument,
+): readonly string[] =>
+  REGISTRATION_NAMES.filter(
+    (name) =>
+      Object.hasOwn(parsed.servers, name) ||
+      // Beside a native OpenCode V2 table, OpenCode also loads a V1 `mcp.<name>`.
+      legacyClientServerPath(parsed, name) !== undefined,
   );
-};
+
+/** Whether removal would change this configuration. */
+const registrationPresent = (parsed: ClientConfigurationDocument): boolean =>
+  presentRegistrationNames(parsed).length > 0 ||
+  // Harness ownership is the stable entry id. A stale or malformed launcher
+  // still belongs to that id, and so does a direct patch that projects no row.
+  (parsed.dialect === "dsh" && dshDocument(parsed.document).carriesEntry);
 
 type ClientConfigurationRead =
   | { readonly kind: "item"; readonly item: UninstallItem }
@@ -756,12 +764,22 @@ const itemRead = (result: UninstallItem): ClientConfigurationRead => ({
 
 /**
  * Share the exact ownership and applicability decision with preflight. A
- * removable legacy entry carries its document path, so removal edits exactly
- * the entry this decision admitted.
+ * removable legacy (OpenCode V1) entry carries its document path, so removal
+ * edits exactly the entry this decision admitted.
  */
-type RegistrationRemoval = {
+type NameRemoval = {
+  readonly name: string;
   readonly removeNative: boolean;
   readonly legacyPath: readonly string[] | undefined;
+};
+/**
+ * One decision per configuration file across the current and previous server
+ * names, so the file is edited once with one backup. `kept` names an entry
+ * under a REA name that REA cannot prove it created; it stays byte for byte.
+ */
+type RegistrationRemoval = {
+  readonly names: readonly NameRemoval[];
+  readonly kept: readonly string[];
 };
 type RegistrationRemovalRefusal = {
   readonly kind: "shadowed_unowned_member" | "foreign_legacy_fallback";
@@ -770,26 +788,43 @@ type RegistrationRemovalRefusal = {
   readonly owned: RegistrationRemoval;
 };
 
-const clientRegistrationRemoval = (
+/** Whether the decision removes any entry. */
+const removesRegistration = (removal: RegistrationRemoval): boolean =>
+  removal.names.some(
+    ({ removeNative, legacyPath }) => removeNative || legacyPath !== undefined,
+  );
+
+/**
+ * Apply uninstall's removal rule to one name: an entry is removed only when its
+ * launcher proves REA created it, every earlier duplicate member under the
+ * name is REA-owned, and removing a native entry does not activate an unowned
+ * OpenCode V1 entry under the same name.
+ */
+const nameRegistrationRemoval = (
   parsed: ClientConfigurationDocument,
   original: string,
   client: SetupClient,
-): Result<RegistrationRemoval, RegistrationRemovalRefusal> => {
-  const name = PRODUCT_IDENTITY.mcpServerKey;
-  if (
-    parsed.dialect === "dsh" &&
-    dshDocument(parsed.document).hasUnknownStructure
-  )
-    return ok({ removeNative: false, legacyPath: undefined });
+  name: string,
+):
+  | { readonly ok: true; readonly value: NameRemoval; readonly kept: boolean }
+  | {
+      readonly ok: false;
+      readonly kind: RegistrationRemovalRefusal["kind"];
+      readonly owned: NameRemoval;
+    } => {
+  const nativePresent = Object.hasOwn(parsed.servers, name);
   const removeNative =
-    (parsed.dialect === "dsh" && dshDocument(parsed.document).carriesEntry) ||
-    (Object.hasOwn(parsed.servers, name) &&
-      isOwnedRegistration(parsed.servers[name], client));
+    // The Harness row is owned by its entry id and projected under the current name.
+    (name === PRODUCT_IDENTITY.mcpServerKey &&
+      parsed.dialect === "dsh" &&
+      dshDocument(parsed.document).carriesEntry) ||
+    (nativePresent && isOwnedRegistration(parsed.servers[name], client));
   const legacyPath = legacyClientServerPath(parsed, name);
   const removeLegacy =
     legacyPath !== undefined &&
     isOwnedRegistration(parsed.legacyServers[name], client);
-  const ownership: RegistrationRemoval = {
+  const owned: NameRemoval = {
+    name,
     removeNative,
     legacyPath: removeLegacy ? legacyPath : undefined,
   };
@@ -805,24 +840,66 @@ const clientRegistrationRemoval = (
           (member) => !isOwnedRegistration(member, client),
         ))
     )
-      return err({
-        kind: "shadowed_unowned_member",
-        detail: SHADOWED_UNOWNED_MEMBER_DETAIL,
-        owned: ownership,
-      });
+      return { ok: false, kind: "shadowed_unowned_member", owned };
   }
   if (removeNative && legacyPath !== undefined && !removeLegacy)
-    return err({
-      kind: "foreign_legacy_fallback",
-      detail: UNOWNED_LEGACY_FALLBACK_DETAIL,
-      owned: ownership,
-    });
-  return ok(ownership);
+    return { ok: false, kind: "foreign_legacy_fallback", owned };
+  return {
+    ok: true,
+    value: owned,
+    kept:
+      (nativePresent && !removeNative) ||
+      (legacyPath !== undefined && !removeLegacy),
+  };
 };
 
-const SHADOWED_UNOWNED_MEMBER_DETAIL = `Configuration repeats the "${PRODUCT_IDENTITY.mcpServerKey}" member, and an earlier duplicate is not REA-owned; removing the registration the client reads would activate an earlier duplicate, so no change was made. Remove the duplicate members manually, then rerun uninstall.`;
+const clientRegistrationRemoval = (
+  parsed: ClientConfigurationDocument,
+  original: string,
+  client: SetupClient,
+): Result<RegistrationRemoval, RegistrationRemovalRefusal> => {
+  if (
+    parsed.dialect === "dsh" &&
+    dshDocument(parsed.document).hasUnknownStructure
+  )
+    return ok({ names: [], kept: [] });
+  const names: NameRemoval[] = [];
+  const kept: string[] = [];
+  let refusal:
+    | { readonly kind: RegistrationRemovalRefusal["kind"]; name: string }
+    | undefined;
+  for (const name of REGISTRATION_NAMES) {
+    const decision = nameRegistrationRemoval(parsed, original, client, name);
+    if (decision.ok) {
+      names.push(decision.value);
+      if (decision.kept) kept.push(name);
+      continue;
+    }
+    names.push(decision.owned);
+    // The first refused name explains the refusal; the file stays unchanged.
+    refusal ??= { kind: decision.kind, name };
+  }
+  const removal: RegistrationRemoval = { names, kept };
+  if (refusal === undefined) return ok(removal);
+  return err({
+    kind: refusal.kind,
+    detail:
+      refusal.kind === "shadowed_unowned_member"
+        ? shadowedUnownedMemberDetail(refusal.name)
+        : unownedLegacyFallbackDetail(refusal.name),
+    owned: removal,
+  });
+};
 
-const UNOWNED_LEGACY_FALLBACK_DETAIL = `OpenCode falls back to the V1 "mcp.${PRODUCT_IDENTITY.mcpServerKey}" entry, which is not REA-owned; removing REA's native registration would activate it, so no change was made. Remove or replace that V1 entry manually, then rerun uninstall.`;
+const shadowedUnownedMemberDetail = (name: string): string =>
+  `Configuration repeats the "${name}" member, and an earlier duplicate is not REA-owned; removing the registration the client reads would activate an earlier duplicate, so no change was made. Remove the duplicate members manually, then rerun uninstall.`;
+
+const unownedLegacyFallbackDetail = (name: string): string =>
+  `OpenCode falls back to the V1 "mcp.${name}" entry, which is not REA-owned; removing REA's native registration would activate it, so no change was made. Remove or replace that V1 entry manually, then rerun uninstall.`;
+
+/** The names listed for a message: "rea" or "reverseport" and "rea". */
+const quotedNames = (names: readonly string[]): string =>
+  names.map((name) => `"${name}"`).join(" and ");
 
 /** Preserve the bytes uninstall is about to edit and return the backup holding them. */
 const backupClientConfiguration = async (
@@ -871,7 +948,6 @@ const removeClient = async (
   );
   if (read.kind === "item") return read.item;
   const { transactionPath, original, parsed } = read;
-  const name = PRODUCT_IDENTITY.mcpServerKey;
   if (
     parsed.dialect === "dsh" &&
     dshDocument(parsed.document).hasUnknownStructure
@@ -885,26 +961,32 @@ const removeClient = async (
     return item(client.name, "skipped", "REA registration is absent.");
   const removal = clientRegistrationRemoval(parsed, original, client);
   if (!removal.ok) return item(client.name, "failed", removal.error.detail);
-  const { removeNative, legacyPath } = removal.value;
-  const removeLegacy = legacyPath !== undefined;
-  if (!removeNative && !removeLegacy)
+  const { kept } = removal.value;
+  const removedNative = removal.value.names.filter(
+    ({ removeNative }) => removeNative,
+  );
+  const removedLegacy = removal.value.names.flatMap(({ name, legacyPath }) =>
+    legacyPath === undefined ? [] : [{ name, legacyPath }],
+  );
+  if (!removesRegistration(removal.value))
     return item(
       client.name,
       "retained",
-      "The rea-named registration is not REA-owned.",
+      `The ${quotedNames(presentRegistrationNames(parsed))} registration is not REA-owned.`,
     );
   const blocker = writeBlocker?.();
   if (blocker !== undefined) return item(client.name, "failed", blocker);
   const remaining = { ...parsed.servers };
-  if (removeNative) delete remaining[name];
+  for (const { name } of removedNative) delete remaining[name];
   const document = withClientServers(
     parsed,
     remaining,
-    removeLegacy ? name : undefined,
+    removedLegacy.map(({ name }) => name),
   );
+  // Every removed entry under every name, so the file is edited once.
   const editedPaths = [
-    ...(removeNative ? [clientServerPath(parsed, name)] : []),
-    ...(legacyPath === undefined ? [] : [legacyPath]),
+    ...removedNative.map(({ name }) => clientServerPath(parsed, name)),
+    ...removedLegacy.map(({ legacyPath }) => legacyPath),
   ];
   let serialized: ReturnType<typeof serializeClientConfiguration>;
   try {
@@ -968,16 +1050,24 @@ const removeClient = async (
         );
         await publication.assertCurrent();
         if (
-          (removeNative && Object.hasOwn(readback.servers, name)) ||
+          removedNative.some(({ name }) =>
+            Object.hasOwn(readback.servers, name),
+          ) ||
           (readback.dialect === "dsh" &&
             dshDocument(readback.document).carriesEntry) ||
-          (removeLegacy && Object.hasOwn(readback.legacyServers, name))
+          removedLegacy.some(({ name }) =>
+            Object.hasOwn(readback.legacyServers, name),
+          )
         )
           throw new Error("registration readback mismatch");
         return item(
           client.name,
           "removed",
-          `Removed registration from ${client.configPath}.`,
+          `Removed registration from ${client.configPath}.${
+            kept.length === 0
+              ? ""
+              : ` The ${quotedNames(kept)} entry REA cannot prove it created was kept.`
+          }`,
         );
       } catch (cause: unknown) {
         if (isClientConfigurationCleanupFailure(cause))
@@ -1022,19 +1112,6 @@ const resolveUninstallConfigPath = async (
       "failed",
       "Configuration path could not be safely verified. Check its permissions and, if it is a symbolic link, verify that the link resolves to a regular file owned by the current user, then rerun uninstall.",
     )
-  );
-};
-
-/** Ownership rule for persistent MCP registrations created by REA setup. */
-const isOwnedRegistration = (value: unknown, client: SetupClient): boolean => {
-  const parsed = parseClientRegistrationLauncher(value, client);
-  if (!parsed.ok) return false;
-  const { command, args } = parsed.value;
-  return (
-    classifyClientRegistrationCommand(
-      [command, ...args],
-      CURRENT_ENTRYPOINT_PATH,
-    ) === "owned"
   );
 };
 

@@ -106,7 +106,7 @@ export async function detectEngines(root, files) {
     const il2cpp = rels.some(r => /GameAssembly\.(dll|so|dylib)$/i.test(r) || /il2cpp_data\//.test(r));
     const managed = find(/_Data\/Managed\/Assembly-CSharp\.dll$/);
     // Serialized assets (scenes, shared assets, the compressed data.unity3d) and asset bundles, for re_archive.
-    const assetFiles = find(/_Data\/(data\.unity3d|level\d+|sharedassets\d+\.assets|resources\.assets|globalgamemanagers(\.assets)?)$/).map(f => f.rel)
+    const assetFiles = find(/(^|\/)([^/]*_Data|Data)\/(data\.unity3d|level\d+|sharedassets\d+\.assets|resources\.assets|globalgamemanagers(\.assets)?)$/).map(f => f.rel)
       .sort((a, b) => Number(!/data\.unity3d$/.test(a)) - Number(!/data\.unity3d$/.test(b)) || a.localeCompare(b, 'en', { numeric: true }));
     const bundles = find(/StreamingAssets\/.+\.(bundle|unity3d|ab|assetbundle)$/i).map(f => f.rel);
     add({ id: 'unity-build', name: `Unity game build${version ? ` (${version})` : ''}`, kind: 'build', version, evidence: [...ggm.map(f => f.rel), ...rels.filter(r => /UnityPlayer\./.test(r))].slice(0, 5), details: { scriptingBackend: il2cpp ? 'IL2CPP' : managed.length ? 'Mono' : 'unknown', gameAssemblies: managed.map(f => f.rel), ...(assetFiles.length ? { assetFiles: assetFiles.slice(0, 12), ...(assetFiles.length > 12 ? { assetFileCount: assetFiles.length } : {}) } : {}), ...(bundles.length ? { assetBundles: bundles.slice(0, 8), assetBundleCount: bundles.length } : {}) } });
@@ -249,12 +249,16 @@ function nextSteps(engines, binaries, root) {
   const unityBuild = engines.find(e => e.id === 'unity-build');
   if (unityBuild) {
     const assets = unityBuild.details.assetFiles ?? [];
-    const pick = assets.find(a => /data\.unity3d$/.test(a)) ?? assets.find(a => /globalgamemanagers$/.test(a)) ?? assets[0];
-    if (pick) steps.push(`re_archive ${j({ file: `${root}/${pick}` })} lists the build's objects, scenes and the C# scripts they use; action:"extract" writes textures as PNG, audio, TextAssets and objects`);
+    const packed = assets.find(a => /data\.unity3d$/.test(a));
+    // Loose builds keep objects in level*/sharedassets* and only managers (with the scene list) in globalgamemanagers.
+    const pick = packed ?? assets.find(a => /\/level0$/.test(a)) ?? assets.find(a => /sharedassets0\.assets$/.test(a)) ?? assets[0];
+    if (pick) steps.push(`re_archive ${j({ file: `${root}/${pick}` })} lists ${packed ? 'the build\'s' : 'this file\'s'} objects and the C# scripts they use; action:"extract" writes textures as PNG, audio, TextAssets and objects${packed ? '' : '. Run it on each level*/sharedassets* file; globalgamemanagers holds the scene list'}`);
     if (unityBuild.details.assetBundles?.length) steps.push(`re_archive ${j({ file: `${root}/${unityBuild.details.assetBundles[0]}` })} unpacks an asset bundle the same way`);
     if (unityBuild.details.scriptingBackend !== 'IL2CPP') steps.push(`re_binary ${j({ file: `${root}/<Game>_Data/Managed/Assembly-CSharp.dll` })} lists the game classes (Mono builds)`);
   }
-  if (binaries.length) { const b = binaries[0]; steps.push(`re_binary ${j({ file: `${root}/${b.file ?? b.rel ?? b}` })} for executables and libraries`); }
+  // Unity serialized files are read by re_archive (above), not re_binary.
+  const exe = binaries.filter(b => !(unityBuild && /(\.(assets|resS|resource)|\/level\d+|globalgamemanagers|data\.unity3d)$/.test(b.file ?? b.rel ?? b)));
+  if (exe.length) { const b = exe[0]; steps.push(`re_binary ${j({ file: `${root}/${b.file ?? b.rel ?? b}` })} for executables and libraries`); }
   return steps;
 }
 

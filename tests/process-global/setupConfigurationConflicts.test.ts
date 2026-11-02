@@ -65,6 +65,7 @@ vi.mock("../../src/process/BoundedFileBytes.js", async (importOriginal) => {
 });
 
 import { configureClientConfiguration } from "../../src/application/SetupClientConfiguration.js";
+import { PRODUCT_IDENTITY } from "../../src/identity.js";
 import { createTestTempDirectory } from "../fixtures/temporaryDirectory.js";
 
 afterEach(() => {
@@ -312,7 +313,9 @@ it.each(["absolute", "relative"])(
       true,
     );
     expect(JSON.parse(await readFile(path, "utf8"))).toMatchObject({
-      mcpServers: { rea: { env: { FIRST: "1", SECOND: "2" } } },
+      mcpServers: {
+        [PRODUCT_IDENTITY.mcpServerKey]: { env: { FIRST: "1", SECOND: "2" } },
+      },
     });
   },
 );
@@ -382,7 +385,11 @@ it.skipIf(process.platform === "win32")(
           "configured",
         ]);
         expect(JSON.parse(await readFile(realPath, "utf8"))).toMatchObject({
-          mcpServers: { rea: { env: { FIRST: "1", SECOND: "2" } } },
+          mcpServers: {
+            [PRODUCT_IDENTITY.mcpServerKey]: {
+              env: { FIRST: "1", SECOND: "2" },
+            },
+          },
         });
         expect(await readFile(aliasPath, "utf8")).toBe(
           await readFile(realPath, "utf8"),
@@ -452,7 +459,11 @@ it("releases a failed setup transaction so a queued request can configure the fi
     },
   });
   expect(queued.status).toBe("configured");
-  expect(JSON.parse(await readFile(path, "utf8")).mcpServers.rea.env).toEqual({
+  expect(
+    JSON.parse(await readFile(path, "utf8")).mcpServers[
+      PRODUCT_IDENTITY.mcpServerKey
+    ].env,
+  ).toEqual({
     SECOND: "2",
   });
   expect(await readdir(root)).toEqual(["config.json"]);

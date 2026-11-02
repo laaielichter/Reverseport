@@ -370,9 +370,9 @@ await withVerifierCleanup(async () => {
     // Bind both choices explicitly: the server's default can change independently
     // of the profile this verifier promises to exercise and records in its receipt.
     const customized = JSON.parse(configured);
-    assert(customized.mcpServers.rea);
-    customized.mcpServers.rea.env = {
-      ...customized.mcpServers.rea.env,
+    assert(customized.mcpServers.reverseport);
+    customized.mcpServers.reverseport.env = {
+      ...customized.mcpServers.reverseport.env,
       REA_MCP_INPUT_SCHEMA_PROFILE: inputSchemaProfile,
     };
     await writeFile(configPath, JSON.stringify(customized, null, 2));
@@ -405,7 +405,7 @@ await withVerifierCleanup(async () => {
       });
       await writeFile(join(lab, `${name}.stdout`), result.stdout);
       await writeFile(join(lab, `${name}.stderr`), result.stderr);
-      if (name === "mcp-list") assert(result.stdout.includes("rea"));
+      if (name === "mcp-list") assert(result.stdout.includes("reverseport"));
       if (name === "skill-list")
         assert(result.stdout.includes("reverse-engineer-anything"));
     }
@@ -424,7 +424,7 @@ await withVerifierCleanup(async () => {
             model,
             "--allow-tool=skill",
             "--allow-tool=read",
-            "--allow-tool=rea(analyze_javascript_application)",
+            "--allow-tool=reverseport(analyze_javascript_application)",
             "--add-dir",
             target,
             "--prompt",

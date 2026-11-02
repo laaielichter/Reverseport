@@ -303,7 +303,7 @@ describe("TOML client configuration comparison", () => {
     const value = "-inf";
     const root = await createTestTempDirectory("rea-client-toml-");
     const configPath = join(root, "config.toml");
-    const original = `unrelated = ${value}\n[mcp_servers.rea]\ncommand = "old"\nstartup_timeout_sec = ${value}\n`;
+    const original = `unrelated = ${value}\n[mcp_servers.reverseport]\ncommand = "old"\nstartup_timeout_sec = ${value}\n`;
     await writeFile(configPath, original);
     const client = { name: "codex", format: "toml", configPath } as const;
     expect(
@@ -328,7 +328,7 @@ const unrelatedToml = [
   "# Keep this explanation.",
   'notify = ["a", "b"]',
   "literal = 'C:\\demo\\path'",
-  'disabled_mcp_servers = ["rea", "other"] # Not a Codex registration.',
+  'disabled_mcp_servers = ["reverseport", "other"] # Not a Codex registration.',
   "",
 ].join("\n");
 
@@ -343,7 +343,7 @@ const unrelatedValues = (text: string) => {
   const document = parseToml(text);
   const servers = document.mcp_servers;
   if (typeof servers === "object" && servers !== null) {
-    Reflect.deleteProperty(servers, "rea");
+    Reflect.deleteProperty(servers, "reverseport");
     if (Object.keys(servers).length === 0) delete document.mcp_servers;
   }
   return document;
@@ -358,17 +358,17 @@ describe("Codex configuration text preservation", () => {
     },
     {
       name: "quoted tables and nested environment",
-      original: `${unrelatedToml}[mcp_servers."rea"]\ncommand = "old"\n[mcp_servers.rea.env]\nOLD = "value"\n${unrelatedServer}`,
+      original: `${unrelatedToml}[mcp_servers."reverseport"]\ncommand = "old"\n[mcp_servers.reverseport.env]\nOLD = "value"\n${unrelatedServer}`,
       preserved: [unrelatedToml, unrelatedServer],
     },
     {
       name: "dotted registration keys",
-      original: `${unrelatedToml}mcp_servers.rea.command = "old"\n${unrelatedServer}`,
+      original: `${unrelatedToml}mcp_servers.reverseport.command = "old"\n${unrelatedServer}`,
       preserved: [unrelatedToml, unrelatedServer],
     },
     {
       name: "inline server table",
-      original: `${unrelatedToml}mcp_servers = { rea = { command = "old" }, other = { command = 'other' } } # Shared table.\n`,
+      original: `${unrelatedToml}mcp_servers = { reverseport = { command = "old" }, other = { command = 'other' } } # Shared table.\n`,
       preserved: [
         unrelatedToml,
         "other = { command = 'other' }",
@@ -378,13 +378,13 @@ describe("Codex configuration text preservation", () => {
     {
       name: "BOM, CRLF, and multiline text resembling a registration",
       original:
-        `\uFEFF${unrelatedToml}banner = '''\n[mcp_servers.rea]\n# This is string content.\n'''\n`.replaceAll(
+        `\uFEFF${unrelatedToml}banner = '''\n[mcp_servers.reverseport]\n# This is string content.\n'''\n`.replaceAll(
           "\n",
           "\r\n",
         ),
       preserved: [
         unrelatedToml.replaceAll("\n", "\r\n"),
-        "banner = '''\r\n[mcp_servers.rea]\r\n# This is string content.\r\n'''",
+        "banner = '''\r\n[mcp_servers.reverseport]\r\n# This is string content.\r\n'''",
       ],
     },
     {
@@ -420,7 +420,7 @@ describe("Codex configuration text preservation", () => {
       const removed = await readFile(configPath, "utf8");
       for (const text of preserved) expect(removed).toContain(text);
       expect(unrelatedValues(removed)).toEqual(unrelatedValues(original));
-      expect(parseToml(removed)).not.toHaveProperty("mcp_servers.rea");
+      expect(parseToml(removed)).not.toHaveProperty("mcp_servers.reverseport");
       expect(removed.startsWith("\uFEFF")).toBe(original.startsWith("\uFEFF"));
       expect(await readFile(`${configPath}.rea.backup`, "utf8")).toBe(original);
     },
@@ -446,7 +446,7 @@ describe("Codex configuration text preservation", () => {
     const configPath = join(root, "config.toml");
     const client = { name: "codex", format: "toml", configPath } as const;
     const original =
-      "# Keep this explanation.\n[mcp_servers.rea]\ncommand = [broken\n";
+      "# Keep this explanation.\n[mcp_servers.reverseport]\ncommand = [broken\n";
     await writeFile(configPath, original);
     expect(
       await configureClientConfiguration(client, {}, ["rea", "mcp"]),
@@ -470,7 +470,7 @@ it
     const configPath = join(root, "config.json");
     await writeFile(
       configPath,
-      '{"mcpServers":{"rea":{"command":"rea","args":["mcp"]}},"keep":true}\n',
+      '{"mcpServers":{"reverseport":{"command":"rea","args":["mcp"]}},"keep":true}\n',
     );
     await chmod(configPath, mode);
     const host = systemUninstallHost(root);

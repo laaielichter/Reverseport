@@ -89,7 +89,7 @@ describe("WorkBuddy JSON registration", () => {
     ).toBe("configured");
     const parsed = JSON.parse(await readFile(client.configPath, "utf8"));
     expect(parsed.mcpServers.other).toEqual({ command: "other-server" });
-    expect(parsed.mcpServers.rea).toEqual({
+    expect(parsed.mcpServers.reverseport).toEqual({
       command: command[0],
       args: command.slice(1),
     });
@@ -118,7 +118,7 @@ describe("WorkBuddy JSON registration", () => {
     ).toBe("configured");
     const parsed = JSON.parse(await readFile(client.configPath, "utf8"));
     expect(parsed.unrelated).toEqual({ setting: true });
-    expect(parsed.mcpServers.rea).toEqual({
+    expect(parsed.mcpServers.reverseport).toEqual({
       command: command[0],
       args: command.slice(1),
     });
@@ -131,7 +131,7 @@ describe("WorkBuddy JSON registration", () => {
       (await configureClientConfiguration(client, {}, command)).status,
     ).toBe("configured");
     const parsed = JSON.parse(await readFile(client.configPath, "utf8"));
-    expect(parsed.mcpServers.rea).toEqual({
+    expect(parsed.mcpServers.reverseport).toEqual({
       command: command[0],
       args: command.slice(1),
     });
@@ -154,6 +154,6 @@ describe("WorkBuddy JSON registration", () => {
     );
     const parsed = JSON.parse(await readFile(client.configPath, "utf8"));
     expect(parsed.mcpServers.other).toEqual({ command: "other-server" });
-    expect(parsed.mcpServers.rea).toBeUndefined();
+    expect(parsed.mcpServers.reverseport).toBeUndefined();
   });
 });

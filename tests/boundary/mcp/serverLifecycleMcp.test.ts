@@ -9,6 +9,7 @@ import { err } from "../../../src/domain/result.js";
 import { observed as ok } from "../../fixtures/analysisExecution.js";
 import { createServer } from "../../../src/server/createServer.js";
 import { SqliteDatabaseService } from "../../../src/application/sqlite/SqliteDatabaseService.js";
+import { PRODUCT_IDENTITY } from "../../../src/identity.js";
 import { PassThrough } from "node:stream";
 import { once } from "node:events";
 import { access } from "node:fs/promises";
@@ -284,7 +285,7 @@ it.each(["handle", "stdin"] as const)(
       const [reply] = await response;
       expect(JSON.parse(String(reply))).toMatchObject({
         id: 1,
-        result: { serverInfo: { name: "rea" } },
+        result: { serverInfo: { name: PRODUCT_IDENTITY.mcpServerKey } },
       });
       if (shutdown === "stdin") {
         stdin.end();

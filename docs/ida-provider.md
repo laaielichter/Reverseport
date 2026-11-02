@@ -128,7 +128,7 @@ Add the registration path to the **ReversePort** MCP entry's environment, keepin
 ```json
 {
   "mcpServers": {
-    "rea": {
+    "reverseport": {
       "command": "npx",
       "args": ["-y", "reverseport@<version-with-ida>", "mcp"],
       "env": {

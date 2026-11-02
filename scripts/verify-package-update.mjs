@@ -21,6 +21,8 @@ export async function verifyPackageUpdate({
   const entry = join(packageRoot, "scripts", "rea.mjs");
   const home = join(workspace, "update-home");
   const codexPath = join(home, ".codex", "config.toml");
+  // An older release registered the server as "rea"; the update must plan its
+  // migration to the current server name under the existing client action.
   const originalConfig =
     '[mcp_servers.rea]\ncommand = "npx"\nargs = ["-y", "reverseport@0.0.0", "mcp"]\n';
   await mkdir(dirname(codexPath), { recursive: true });
@@ -162,7 +164,10 @@ if (result.status === "failed") process.exitCode = 1;
         result.command.at(-1) !== `${metadata.name}@${metadata.version}` ||
         result.maintenance.status !== "planned" ||
         result.maintenance.scope.clients.join(",") !== "codex" ||
-        result.maintenance.scope.skill !== false
+        result.maintenance.scope.skill !== false ||
+        !result.maintenance.plannedActions.some(
+          ({ id }) => id === "configure_client:codex",
+        )
       )
         throw new Error(
           `Packaged updater failed its exact-release contract: ${JSON.stringify(result)}`,
