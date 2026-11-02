@@ -7,6 +7,7 @@ import fs from 'node:fs/promises';
 import zlib from 'node:zlib';
 import path from 'node:path';
 import { RPError, readAt } from './util.mjs';
+import { lzmaDecode } from './decompress.mjs';
 
 // ------------------------------------------------------------------------------------------------ Ren'Py RPA
 /** Minimal Python pickle reader for the shapes Ren'Py's index uses (dict of str → list of tuples of int/bytes). */
@@ -215,8 +216,23 @@ export async function readFsb5(abs, base, maxLen) {
   for (let i = 0; i < samples.length; i++) samples[i].size = (i + 1 < samples.length ? samples[i + 1].dataOffset : dataSize) - samples[i].dataOffset;
   if (names) { let q = 0; for (let i = 0; i < samples.length && q + 4 <= names.length; i++) { const off = names.readUInt32LE(4 * i); const e = names.indexOf(0, off); samples[i].name = names.toString('utf8', off, e < 0 ? names.length : e); q += 4; } }
   const codec = FSB_CODECS[mode] ?? `codec ${mode}`;
-  const entries = samples.map(s => ({ path: `samples/${s.name ?? `sample_${s.index}`}.${codec === 'VORBIS' ? 'fsbvorbis' : codec === 'MPEG' ? 'mp3' : codec.startsWith('PCM') ? 'pcm' : codec.toLowerCase()}`, offset: dataBase + s.dataOffset, size: s.size, frequency: s.frequency, channels: s.channels, samples: s.samples, codec }));
-  return { fsbVersion: version, codec, samples: samples.length, entries, totalDataSize: dataSize, note: codec === 'VORBIS' ? 'FSB5 Vorbis packets have no Ogg headers (FMOD keeps the setup tables keyed by CRC); extracted .fsbvorbis needs a tool with FMOD\'s header table (e.g. vgmstream) to become .ogg.' : codec.startsWith('PCM') ? 'raw PCM: wrap in a WAV header with the listed frequency/channels.' : `${codec} data as stored.` };
+  const bits = { PCM8: 8, PCM16: 16, PCM24: 24, PCM32: 32, PCMFLOAT: 32 }[codec];
+  const entries = samples.map(s => {
+    const e = { path: `samples/${s.name ?? `sample_${s.index}`}.${codec === 'VORBIS' ? 'fsbvorbis' : codec === 'MPEG' ? 'mp3' : bits ? 'wav' : codec.toLowerCase()}`, offset: dataBase + s.dataOffset, size: s.size, frequency: s.frequency, channels: s.channels, samples: s.samples, codec };
+    if (bits && s.size > 0) { e.prefix = wavHeader(s.size, s.channels, s.frequency, bits, codec === 'PCMFLOAT'); e.size += e.prefix.length; }
+    return e;
+  });
+  return { fsbVersion: version, codec, samples: samples.length, entries, totalDataSize: dataSize, note: codec === 'VORBIS' ? 'FSB5 Vorbis packets have no Ogg headers (FMOD keeps the setup tables keyed by CRC); extracted .fsbvorbis needs a tool with FMOD\'s header table (e.g. vgmstream) to become .ogg.' : bits ? 'PCM samples extract as playable .wav files.' : `${codec} data as stored.` };
+}
+
+/** A 44-byte RIFF/WAVE header for `dataBytes` of interleaved PCM. */
+export function wavHeader(dataBytes, channels, rate, bits, float = false) {
+  const h = Buffer.alloc(44);
+  h.write('RIFF', 0, 'latin1'); h.writeUInt32LE(36 + dataBytes, 4); h.write('WAVEfmt ', 8, 'latin1');
+  h.writeUInt32LE(16, 16); h.writeUInt16LE(float ? 3 : 1, 20); h.writeUInt16LE(channels, 22); h.writeUInt32LE(rate, 24);
+  h.writeUInt32LE(rate * channels * bits / 8, 28); h.writeUInt16LE(channels * bits / 8, 32); h.writeUInt16LE(bits, 34);
+  h.write('data', 36, 'latin1'); h.writeUInt32LE(dataBytes, 40);
+  return h;
 }
 
 export async function readFmodBank(abs, size) {
@@ -389,6 +405,12 @@ function abcStrings(abc) {
   return out;
 }
 
+/** The body of a ZWS (LZMA) SWF: "ZWS", version, uncompressed length, compressed length, 5 LZMA property bytes, data. */
+export function swfLzmaBody(whole, fileLength) {
+  if (whole.length < 17 || fileLength < 8 || fileLength > 512 * 1024 * 1024) throw new RPError('BAD_FORMAT', 'Bad ZWS (LZMA) SWF header.');
+  return lzmaDecode(whole.subarray(12, 17), whole.subarray(17), fileLength - 8, { endMarker: true });
+}
+
 export async function readSwf(abs, size) {
   const head = await readAt(abs, 0, 8);
   const sig = head.toString('latin1', 0, 3);
@@ -397,7 +419,7 @@ export async function readSwf(abs, size) {
   let body;
   if (sig === 'FWS') body = await readAt(abs, 8, Math.min(size - 8, 256 * 1024 * 1024));
   else if (sig === 'CWS') { try { body = zlib.inflateSync(await readAt(abs, 8, size - 8)); } catch { throw new RPError('BAD_FORMAT', 'SWF zlib body did not inflate.'); } }
-  else return { format: 'swf', swfVersion: version, compression: 'LZMA', fileLength, entries: [], note: 'ZWS (LZMA-compressed) SWF: Node has no LZMA decoder; decompress with 7-Zip/xz into FWS first (header: FWS + version + length, then the raw body), then run re_archive again.' };
+  else body = swfLzmaBody(await readAt(abs, 0, size), fileLength);
   // Header: RECT (nbits), frame rate (fixed 8.8), frame count.
   let p = 0;
   const nbits = body[0] >> 3;
@@ -428,9 +450,9 @@ export async function readSwf(abs, size) {
   const symbolClasses = symbols.map(s => s.name);
   const documentClass = symbols.find(s => s.id === 0)?.name ?? null;
   return {
-    format: 'swf', swfVersion: version, compression: sig === 'CWS' ? 'zlib' : 'none', fileLength, stage: { width: (twips[1] - twips[0]) / 20, height: (twips[3] - twips[2]) / 20, frameRate, frameCount }, tags, entries,
+    format: 'swf', swfVersion: version, compression: sig === 'CWS' ? 'zlib' : sig === 'ZWS' ? 'LZMA' : 'none', fileLength, stage: { width: (twips[1] - twips[0]) / 20, height: (twips[3] - twips[2]) / 20, frameRate, frameCount }, tags, entries,
     actionScript: as3 ? 'AS3 (DoABC)' : as2 ? 'AS2 (DoAction)' : 'none', documentClass, symbolClasses: symbolClasses.slice(0, 300), frameLabels: labels.slice(0, 300), classes: [...classes].slice(0, 500), identifierStrings: strings.size,
-    note: sig === 'CWS' ? 'Compressed SWF: entries are listed from the inflated body; to extract, save the inflated body as FWS (re_archive action:"extract" writes it) and extract from that.' : 'Images, sounds and ABC blocks extract as-is; shapes, sprites and timelines are vector/timeline data (rebuild from the symbol and class names with re_blueprint; Ruffle can run the original).',
+    note: sig !== 'FWS' ? 'Compressed SWF: entries are listed from the inflated body; to extract, save the inflated body as FWS (re_archive action:"extract" writes it) and extract from that.' : 'Images, sounds and ABC blocks extract as-is; shapes, sprites and timelines are vector/timeline data (rebuild from the symbol and class names with re_blueprint; Ruffle can run the original).',
   };
 }
 

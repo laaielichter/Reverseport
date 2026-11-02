@@ -29,13 +29,19 @@ re_archive {file:"Master.bank"} / {file:"Init.bnk"}  → FMOD events + FSB5 samp
 re_archive {file:"Game.pak"}                         → Unreal: entries, compression, stored/Zlib extract; encrypted = listed only
 re_archive {file:"Build/game.data.br"}              → Unity WebGL: data files, StreamingAssets, IL2CPP metadata; Emscripten .data via its loader .js
 re_archive {file:"game.swf"}                         → Flash: stage, AS2/AS3, classes, symbols, images/sounds/ABC extract
+re_archive {file:"<Game>_Data/data.unity3d"}             → Unity build: objects by class and name, scenes, C# scripts in use (+ counts)
+re_archive {file:"<Game>_Data/sharedassets0.assets"}     → the same for one serialized file (level0, globalgamemanagers, …)
+re_archive {file:"StreamingAssets/<x>.bundle", action:"extract"} → asset bundle: textures → PNG, meshes → OBJ, audio (FSB5), text, objects as JSON
 re_binary  {file:"<Game>_Data/Managed/Assembly-CSharp.dll"}   → Unity Mono build: game classes and methods
 re_binary  {file:"Game.exe"}                         → arch, imports (graphics API, Steam, FMOD/Wwise…), hints
 ```
 
 Godot exports store imported resources (`.ctex`, `.scn`, `.res` under `.godot/imported/`) rather than the original
 files; scripts may be compiled or encrypted. Encrypted packs are reported as such — use the project source instead.
-Unity bundles and Unreal paks are identified but not unpacked.
+Unity bundles (LZ4/LZMA) and serialized files unpack without Unity. Player builds strip type trees: names, scripts in
+use, TextAssets, audio and textures still come out, other objects extract as raw bytes (bundles give JSON). ASTC and BC7
+textures are written as `.astc`/`.dds`, crunched textures as raw bytes. Encrypted bundles and Unreal paks with an
+encrypted index are listed only.
 
 Only extract builds the user made or has the right to inspect. To recover a lost project, prefer backups and version
 control; a build is a last resort and gives imported (not original) assets.

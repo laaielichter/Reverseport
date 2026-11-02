@@ -105,7 +105,11 @@ export async function detectEngines(root, files) {
     if (ggm[0]) version = (await readAt(ggm[0].abs, 0, 256)).toString('latin1').match(UNITY_VERSION)?.[1] ?? null;
     const il2cpp = rels.some(r => /GameAssembly\.(dll|so|dylib)$/i.test(r) || /il2cpp_data\//.test(r));
     const managed = find(/_Data\/Managed\/Assembly-CSharp\.dll$/);
-    add({ id: 'unity-build', name: `Unity game build${version ? ` (${version})` : ''}`, kind: 'build', version, evidence: [...ggm.map(f => f.rel), ...rels.filter(r => /UnityPlayer\./.test(r))].slice(0, 5), details: { scriptingBackend: il2cpp ? 'IL2CPP' : managed.length ? 'Mono' : 'unknown', gameAssemblies: managed.map(f => f.rel) } });
+    // Serialized assets (scenes, shared assets, the compressed data.unity3d) and asset bundles, for re_archive.
+    const assetFiles = find(/_Data\/(data\.unity3d|level\d+|sharedassets\d+\.assets|resources\.assets|globalgamemanagers(\.assets)?)$/).map(f => f.rel)
+      .sort((a, b) => Number(!/data\.unity3d$/.test(a)) - Number(!/data\.unity3d$/.test(b)) || a.localeCompare(b, 'en', { numeric: true }));
+    const bundles = find(/StreamingAssets\/.+\.(bundle|unity3d|ab|assetbundle)$/i).map(f => f.rel);
+    add({ id: 'unity-build', name: `Unity game build${version ? ` (${version})` : ''}`, kind: 'build', version, evidence: [...ggm.map(f => f.rel), ...rels.filter(r => /UnityPlayer\./.test(r))].slice(0, 5), details: { scriptingBackend: il2cpp ? 'IL2CPP' : managed.length ? 'Mono' : 'unknown', gameAssemblies: managed.map(f => f.rel), ...(assetFiles.length ? { assetFiles: assetFiles.slice(0, 12), ...(assetFiles.length > 12 ? { assetFileCount: assetFiles.length } : {}) } : {}), ...(bundles.length ? { assetBundles: bundles.slice(0, 8), assetBundleCount: bundles.length } : {}) } });
   }
   // Unreal
   for (const f of find(/\.uproject$/i)) {
@@ -242,7 +246,14 @@ function nextSteps(engines, binaries, root) {
   const j = v => JSON.stringify(v);
   if (engines.some(e => e.kind === 'project')) steps.push(`re_graph ${j({ path: root })} for the dependency graph and porting order`, `re_symbols ${j({ path: root, match: '<name>' })} for classes and functions`, `port_plan ${j({ source: root, to: '<unity|godot|godot-csharp|unreal|threejs|language>' })} to start a port`);
   if (engines.some(e => e.id === 'godot-build')) { const pck = binaries.find(b => /\.pck$/i.test(b.file ?? b.rel ?? b)); steps.push(`re_archive ${j({ file: pck ? `${root}/${pck.file ?? pck.rel ?? pck}` : `${root}/<game>.pck` })} to list the packed project`); }
-  if (engines.some(e => e.id === 'unity-build')) steps.push(`re_binary ${j({ file: `${root}/<Game>_Data/Managed/Assembly-CSharp.dll` })} lists the game classes (Mono builds)`);
+  const unityBuild = engines.find(e => e.id === 'unity-build');
+  if (unityBuild) {
+    const assets = unityBuild.details.assetFiles ?? [];
+    const pick = assets.find(a => /data\.unity3d$/.test(a)) ?? assets.find(a => /globalgamemanagers$/.test(a)) ?? assets[0];
+    if (pick) steps.push(`re_archive ${j({ file: `${root}/${pick}` })} lists the build's objects, scenes and the C# scripts they use; action:"extract" writes textures as PNG, audio, TextAssets and objects`);
+    if (unityBuild.details.assetBundles?.length) steps.push(`re_archive ${j({ file: `${root}/${unityBuild.details.assetBundles[0]}` })} unpacks an asset bundle the same way`);
+    if (unityBuild.details.scriptingBackend !== 'IL2CPP') steps.push(`re_binary ${j({ file: `${root}/<Game>_Data/Managed/Assembly-CSharp.dll` })} lists the game classes (Mono builds)`);
+  }
   if (binaries.length) { const b = binaries[0]; steps.push(`re_binary ${j({ file: `${root}/${b.file ?? b.rel ?? b}` })} for executables and libraries`); }
   return steps;
 }
