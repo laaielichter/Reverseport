@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.14.0](https://github.com/laaielichter/Reverseport/compare/reverseport-1.13.0...reverseport-1.14.0) (2026-11-02)
+
+
+### Features
+
+* **plugin:** publish a slim claude-directory branch for the Claude plugin directory ([#87](https://github.com/laaielichter/Reverseport/issues/87)) ([af7cdd2](https://github.com/laaielichter/Reverseport/commit/af7cdd2b85ec65d053073bbbd403e98900ee3b0f))
+
+
+### Bug Fixes
+
+* drop .gitattributes so the Claude plugin directory accepts the repo ([#85](https://github.com/laaielichter/Reverseport/issues/85)) ([8151439](https://github.com/laaielichter/Reverseport/commit/815143990db2fa4c26b5b3513a588c7e80074c85))
+
 ## [1.13.0](https://github.com/laaielichter/Reverseport/compare/reverseport-1.12.0...reverseport-1.13.0) (2026-11-02)
 
 
