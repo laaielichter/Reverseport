@@ -1,6 +1,7 @@
 // Archive and pack listing/extraction: Godot PCK (standalone or embedded in the game executable), ZIP
-// (apk, jar, ipa, nupkg, docx…), tar / tar.gz (.unitypackage), Electron asar. Unity bundles and Unreal paks
-// are identified (header only). Encrypted content is reported, never decrypted. Extraction writes only into
+// (apk, jar, ipa, nupkg, docx…), tar / tar.gz (.unitypackage), Electron asar, Unity asset bundles and serialized
+// .assets files (unity.mjs), Unreal paks and more game formats (gamearchives.mjs). Encrypted content is reported,
+// never decrypted. Extraction writes only into
 // the ReversePort workspace (or the chosen output folder) and refuses paths that would escape it.
 import fs from 'node:fs/promises';
 import { createReadStream, createWriteStream } from 'node:fs';
@@ -13,7 +14,8 @@ import { RPError, readAt, requireFile, compileMatcher, sha256, MiB } from './uti
 import { identify } from './formats.mjs';
 import { parsePE, parseELF } from './binary.mjs';
 import { safeJoin, workspaceDir, extractionName } from './workspace.mjs';
-import { readRpa, readGameMaker, readFmodBank, readWwiseBank, readUnrealPak, readSwf, readUnityWebData, readEmscriptenData } from './gamearchives.mjs';
+import { readRpa, readGameMaker, readFmodBank, readFsb5, readWwiseBank, readUnrealPak, readSwf, readUnityWebData, readEmscriptenData, swfLzmaBody } from './gamearchives.mjs';
+import { readUnityBundle, readUnityAssets, looksLikeSerializedFile } from './unity.mjs';
 
 const MAX_ENTRIES = 2_000_000;
 
@@ -223,17 +225,7 @@ export async function readAsar(abs) {
 }
 
 // ---------------------------------------------------------------- header-only formats
-async function describeOnly(abs, size, id) {
-  const head = await readAt(abs, 0, 512);
-  if (id === 'unityfs') {
-    let p = 8;
-    const fmt = head.readUInt32BE(p); p += 4;
-    const cs = () => { const e = head.indexOf(0, p); const s = head.toString('latin1', p, e); p = e + 1; return s; };
-    const unityVersion = cs(), revision = cs();
-    p += 8 + 8; // total size, compressed+uncompressed block info sizes
-    const flags = head.readUInt32BE(p);
-    return { format: 'unityfs', bundleFormat: fmt, unityVersion: unityVersion === '5.x.x' ? `${revision} (player)` : unityVersion, unityRevision: revision, compression: ['none', 'LZMA', 'LZ4', 'LZ4HC'][flags & 0x3f] ?? flags & 0x3f, entries: [], note: 'Asset bundles are identified but not unpacked in this version. Port from the Unity project source when you can.' };
-  }
+async function describeOnly(abs, size) {
   const tail = await readAt(abs, Math.max(0, size - 512), Math.min(512, size));
   const m = tail.lastIndexOf(Buffer.from([0xe1, 0x12, 0x6f, 0x5a]));
   if (m >= 0) return { format: 'unreal-pak', pakVersion: tail.readUInt32LE(m + 4), entries: [], note: 'Unreal paks are identified but not unpacked. Port from the Unreal project source (Content/, Source/).' };
@@ -255,15 +247,18 @@ export async function openArchive(file) {
   }
   if (kind === 'renpy-rpa') return { abs, size, ...(await readRpa(abs, size)) };
   if (kind === 'gamemaker-data') return { abs, size, ...(await readGameMaker(abs, size)) };
+  if (head.toString('latin1', 0, 4) === 'FSB5') { const fsb = await readFsb5(abs, 0, size); if (fsb) return { abs, size, format: 'fsb5', fsb: { version: fsb.fsbVersion, codec: fsb.codec, samples: fsb.samples }, entries: fsb.entries, note: fsb.note }; }
   if (kind === 'fmod-bank') return { abs, size, ...(await readFmodBank(abs, size)) };
   if (kind === 'wwise-bank') return { abs, size, ...(await readWwiseBank(abs, size)) };
   if (kind === 'swf') return { abs, size, ...(await readSwf(abs, size)) };
   if (head.subarray(0, 16).toString('latin1').startsWith('UnityWebData') || /\.(data\.(gz|br)|unityweb)$/i.test(abs) || (/\.data$/i.test(abs) && /Build[\\/]/.test(abs))) { try { return { abs, size, ...(await readUnityWebData(abs)) }; } catch (e) { if (e.code !== 'BAD_FORMAT') throw e; } }
   if (/\.data$/i.test(abs)) { try { return { abs, size, ...(await readEmscriptenData(abs)) }; } catch (e) { if (e.code !== 'BAD_FORMAT') throw e; } }
   if (/\.pak$/i.test(abs) && kind !== 'zip') { try { return { abs, size, ...(await readUnrealPak(abs, size)) }; } catch (e) { if (e.code !== 'BAD_FORMAT') throw e; } }
-  if (kind === 'unityfs' || /\.pak$/i.test(abs)) { const d = await describeOnly(abs, size, kind); if (d) return { abs, size, ...d }; }
+  if (kind === 'unityfs' || /^Unity(Web|Raw)\0/.test(head.toString('latin1', 0, 9))) return { abs, size, ...(await readUnityBundle(abs, size)) };
+  if (/\.pak$/i.test(abs)) { const d = await describeOnly(abs, size); if (d) return { abs, size, ...d }; }
+  if (looksLikeSerializedFile(head, size)) return { abs, size, ...(await readUnityAssets(abs, size)) };
   try { return { abs, size, ...(await readPck(abs, size)) }; } catch (e) { if (e.code !== 'NOT_A_PCK') throw e; }
-  throw new RPError('BAD_FORMAT', `Not a supported archive (${identify(head).name}). Supported: Godot .pck (also embedded in a game .exe/binary), zip/apk/jar/ipa, tar, tar.gz/.unitypackage, Electron .asar, Ren'Py .rpa, GameMaker data.win, FMOD .bank, Wwise .bnk, Unreal .pak, Flash .swf.`);
+  throw new RPError('BAD_FORMAT', `Not a supported archive (${identify(head).name}). Supported: Godot .pck (also embedded in a game .exe/binary), zip/apk/jar/ipa, tar, tar.gz/.unitypackage, Electron .asar, Unity asset bundles and .assets/level files, Ren'Py .rpa, GameMaker data.win, FMOD .bank and .fsb, Wwise .bnk, Unreal .pak, Flash .swf.`);
 }
 
 class Md5Pass extends Transform {
@@ -276,16 +271,16 @@ export async function archiveTool({ file, action = 'list', match, limit = 500, o
   const want = compileMatcher(match);
   const selected = arc.entries.filter(e => want(e.path));
   const summary = { format: arc.format, file: arc.abs, size: arc.size };
-  for (const k of ['packVersion', 'godotVersion', 'embedded', 'embeddedVia', 'start', 'encryptedDirectory', 'unityVersion', 'unityRevision', 'compression', 'pakVersion', 'bundleFormat', 'note', 'rpaVersion', 'keyed', 'renpy', 'chunks', 'game', 'counts', 'names', 'fsb', 'events', 'buses', 'vcas', 'bankVersion', 'bankId', 'objects', 'objectCount', 'namedIds', 'mountPoint', 'encryptedIndex', 'encryptionKeyGuid', 'compressionMethods', 'unreal', 'swfVersion', 'stage', 'tags', 'actionScript', 'documentClass', 'symbolClasses', 'frameLabels', 'classes', 'identifierStrings', 'loader', 'packageSize', 'engine', 'unity']) if (arc[k] !== undefined) summary[k] = arc[k];
+  for (const k of ['packVersion', 'godotVersion', 'embedded', 'embeddedVia', 'start', 'encryptedDirectory', 'unityVersion', 'unityRevision', 'compression', 'pakVersion', 'bundleFormat', 'note', 'rpaVersion', 'keyed', 'renpy', 'chunks', 'game', 'counts', 'names', 'fsb', 'events', 'buses', 'vcas', 'bankVersion', 'bankId', 'objects', 'objectCount', 'namedIds', 'mountPoint', 'encryptedIndex', 'encryptionKeyGuid', 'compressionMethods', 'unreal', 'swfVersion', 'stage', 'tags', 'actionScript', 'documentClass', 'symbolClasses', 'frameLabels', 'classes', 'identifierStrings', 'loader', 'packageSize', 'engine', 'unity', 'blockCompression', 'blocks', 'encrypted', 'signature', 'assets']) if (arc[k] !== undefined) summary[k] = arc[k];
   const byExt = {};
   for (const e of arc.entries) { const ext = path.extname(e.path).toLowerCase() || '(none)'; byExt[ext] = byExt[ext] ?? { files: 0, bytes: 0 }; byExt[ext].files++; byExt[ext].bytes += e.size ?? 0; }
   const topTypes = Object.entries(byExt).sort((a, b) => b[1].bytes - a[1].bytes).slice(0, 25).map(([ext, v]) => ({ ext, ...v }));
   const max = Math.max(1, Math.min(20000, limit));
   if (action === 'list') {
-    return { ...summary, totalEntries: arc.entries.length, matching: selected.length, totalBytes: arc.entries.reduce((s, e) => s + (e.size ?? 0), 0), types: topTypes, entries: selected.slice(0, max).map(({ localHeader, method, ...e }) => e), truncated: selected.length > max };
+    return { ...summary, totalEntries: arc.entries.length, matching: selected.length, totalBytes: arc.entries.reduce((s, e) => s + (e.size ?? 0), 0), types: topTypes, entries: selected.slice(0, max).map(({ localHeader, method, produce, prefix, ...e }) => e), truncated: selected.length > max };
   }
   if (action !== 'extract') throw new RPError('INVALID_ARGUMENT', 'action must be "list" or "extract".');
-  if (arc.format === 'unityfs' || (arc.format === 'unreal-pak' && !arc.entries.length)) throw new RPError('UNSUPPORTED_ARCHIVE', summary.note ?? 'nothing to extract');
+  if (!arc.entries.length && ['unityfs', 'unity-bundle', 'unreal-pak'].includes(arc.format)) throw new RPError('UNSUPPORTED_ARCHIVE', summary.note ?? 'nothing to extract');
   const budget = Math.min(maxBytes ?? 4096 * MiB, 64 * 1024 * MiB);
   const root = out ? path.resolve(out) : await workspaceDir('extracted', extractionName(arc.abs, sha256(`${arc.abs}:${arc.size}`)));
   await fs.mkdir(root, { recursive: true });
@@ -303,9 +298,9 @@ export async function archiveTool({ file, action = 'list', match, limit = 500, o
     if (written + (e.size ?? 0) > budget) { skipped.push({ path: e.path, reason: `over the ${Math.round(budget / MiB)} MiB extraction budget (raise maxBytes)` }); return false; }
     return true;
   };
-  if (arc.format === 'swf' && arc.compression === 'zlib') {
+  if (arc.format === 'swf' && arc.compression !== 'none') {
     const whole = await fs.readFile(arc.abs);
-    const body = zlib.inflateSync(whole.subarray(8));
+    const body = arc.compression === 'LZMA' ? swfLzmaBody(whole, whole.readUInt32LE(4)) : zlib.inflateSync(whole.subarray(8));
     const header = Buffer.from(whole.subarray(0, 8)); header.write('FWS', 0, 'latin1');
     const dest = path.join(root, 'swf-inflated.swf');
     await fs.writeFile(dest, Buffer.concat([header, body]));
@@ -326,6 +321,16 @@ export async function archiveTool({ file, action = 'list', match, limit = 500, o
       if (!canWrite(e)) continue;
       const dest = safeJoin(root, e.path);
       await fs.mkdir(path.dirname(dest), { recursive: true });
+      if (e.produce) {
+        let made;
+        try { made = await e.produce(); } catch (err) { if (!(err instanceof RPError)) throw err; skipped.push({ path: e.path, reason: err.message }); continue; }
+        if (made.chunks) { const ws = createWriteStream(dest); await pipeline(Readable.from(made.chunks), ws); }
+        else await fs.writeFile(dest, made.data);
+        const bytes = made.data?.length ?? e.size ?? 0;
+        written += bytes;
+        files.push({ path: e.path, file: dest, size: bytes, ...(made.note ? { note: made.note } : {}) });
+        continue;
+      }
       if (arc.format === 'zip') {
         if (![0, 8].includes(e.method)) { skipped.push({ path: e.path, reason: `compression method ${e.method} not supported` }); continue; }
         const start = await zipDataStart(arc.abs, e);

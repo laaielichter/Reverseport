@@ -49,7 +49,7 @@ then follow edges. Cycles mean tightly coupled code: name them in the report.
 ```text
 re_binary {file}                       → format, arch, sections + entropy, imports/exports, PDB path, overlay, hints
 re_binary {file, strings:{match:"/http|\\.dll|res:\\/\\//i", limit:300}}
-re_archive {file}                      → Godot .pck (also inside the .exe), zip/apk/jar, tar.gz/.unitypackage, asar
+re_archive {file}                      → Godot .pck (also inside the .exe), Unity bundles/.assets, zip/apk/jar, tar.gz/.unitypackage, asar
 re_probe {file, offset?}               → hex view, entropy map, embedded files, record strides
 re_extract {file, offset, length?}     → carve an embedded PNG/WAV/glb/ZIP into the workspace
 ```
