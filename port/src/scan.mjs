@@ -5,7 +5,7 @@ import path from 'node:path';
 import { RPError, requireDir, walk, readAt, countLines, isText, MiB, nextFields } from './util.mjs';
 import { LANGUAGE_BY_EXT, CODE_LANGUAGES } from './symbols.mjs';
 import { parseGodotProject } from './scene.mjs';
-import { workspaceTooling } from './jsworkspace.mjs';
+import { workspaceTooling, pnpmWorkspaceGlobs } from './jsworkspace.mjs';
 
 const CATEGORY_BY_EXT = {};
 const cat = (name, exts) => exts.split(' ').forEach(e => { CATEGORY_BY_EXT[`.${e}`] = name; });
@@ -21,7 +21,8 @@ cat('build-binary', 'exe dll so dylib pck pak ucas utoc bundle assets ress resou
 cat('docs', 'md txt rst pdf html htm');
 
 // npm dependency → framework name, for "what is this built with" in JS/TS projects.
-const JS_FRAMEWORKS = [['three', 'three.js'], ['phaser', 'Phaser'], ['@babylonjs/core', 'Babylon.js'], ['babylonjs', 'Babylon.js'], ['pixi.js', 'PixiJS'], ['playcanvas', 'PlayCanvas'], ['excalibur', 'Excalibur'], ['kaboom', 'Kaboom'], ['kaplay', 'KAPLAY'],
+const JS_FRAMEWORKS = [['three', 'three.js'], ['phaser', 'Phaser'], ['@babylonjs/core', 'Babylon.js'], ['babylonjs', 'Babylon.js'], ['pixi.js', 'PixiJS'], ['playcanvas', 'PlayCanvas'], ['excalibur', 'Excalibur'], ['kaboom', 'Kaboom'], ['kaplay', 'KAPLAY'], ['melonjs', 'melonJS'], ['kontra', 'Kontra'], ['@react-three/fiber', 'React Three Fiber'],
+  ['matter-js', 'Matter.js'], ['@dimforge/rapier3d', 'Rapier'], ['@dimforge/rapier3d-compat', 'Rapier'], ['@dimforge/rapier2d', 'Rapier'], ['@dimforge/rapier2d-compat', 'Rapier'], ['cannon-es', 'cannon-es'], ['planck', 'Planck.js'], ['howler', 'Howler.js'], ['tone', 'Tone.js'],
   ['electron', 'Electron'], ['electron-vite', 'Electron'], ['electron-builder', 'Electron'], ['@tauri-apps/api', 'Tauri'], ['@capacitor/core', 'Capacitor'], ['react-native', 'React Native'], ['expo', 'Expo'],
   ['react', 'React'], ['vue', 'Vue'], ['svelte', 'Svelte'], ['solid-js', 'SolidJS'], ['preact', 'Preact'], ['@angular/core', 'Angular'], ['lit', 'Lit'],
   ['next', 'Next.js'], ['nuxt', 'Nuxt'], ['@sveltejs/kit', 'SvelteKit'], ['@solidjs/start', 'SolidStart'], ['astro', 'Astro'], ['@remix-run/react', 'Remix'], ['react-router', 'React Router'],
@@ -152,7 +153,9 @@ export async function detectEngines(root, files) {
     let rootPkg = {};
     if (has('package.json')) { try { rootPkg = JSON.parse(await readText(path.join(root, 'package.json'))); } catch { /* damaged */ } }
     const { manager, tools } = workspaceTooling(rels, rootPkg);
-    const declared = Array.isArray(rootPkg.workspaces) ? rootPkg.workspaces : rootPkg.workspaces?.packages ?? [];
+    let declared = Array.isArray(rootPkg.workspaces) ? rootPkg.workspaces : rootPkg.workspaces?.packages ?? [];
+    // pnpm ignores the workspaces field and reads its package globs from pnpm-workspace.yaml.
+    if (!declared.length && has('pnpm-workspace.yaml')) declared = pnpmWorkspaceGlobs(await readText(path.join(root, 'pnpm-workspace.yaml')));
     if (declared.length || tools.length || pkgFiles.length > 2) {
       add({ id: 'js-monorepo', name: `JavaScript/TypeScript monorepo (${[manager, ...tools].filter(Boolean).join(', ') || 'workspaces'})`, kind: 'project', evidence: ['package.json', ...rels.filter(r => /^(turbo|nx|lerna|rush)\.json$|^pnpm-workspace\.yaml$|^bun\.lockb?$/.test(r))].filter(r => rels.includes(r)), details: { packageManager: manager, tools, workspaces: declared, packages: pkgFiles.length, packagesListed: Math.min(pkgFiles.length, PKG_MAX) } });
     }

@@ -8,7 +8,6 @@ import { workspaceDir } from './workspace.mjs';
 
 export const DEFAULT_MAX_OUTPUT_BYTES = 256 * 1024;
 const KEEP_DAYS = 7;
-const LONG_STRING = 16 * 1024;
 
 /** Byte budget from REVERSEPORT_MAX_OUTPUT_BYTES: a number (at least 4096), or "off"/"0" for no budget. */
 export function outputLimit(env = process.env) {
@@ -19,69 +18,89 @@ export function outputLimit(env = process.env) {
 }
 
 const size = v => Buffer.byteLength(JSON.stringify(v) ?? '', 'utf8');
+const MIN_STRING = 128; // strings are never cut below this many characters
+const MAX_DEPTH = 64; // deeper parts are not shortened one by one; the last pass leaves out whole top-level fields
 
-/** Every array and long string in a value, with its path and serialized size. */
-function parts(value, at = '', out = []) {
+/** `files`, `items[0].data`, `byFile["src/a.ts"]`: a readable path for a list of keys. */
+const pathText = keys => keys.map((k, i) => (typeof k === 'number' ? `[${k}]` : /^[A-Za-z_$][\w$]*$/.test(k) ? (i ? `.${k}` : k) : `[${JSON.stringify(k)}]`)).join('');
+
+/** Every array and longer string in a value, with its keys and serialized size. */
+function parts(value, keys = [], out = []) {
   if (Array.isArray(value)) {
-    out.push({ at, kind: 'array', ref: value, bytes: size(value) });
-    value.forEach((v, i) => parts(v, `${at}[${i}]`, out));
+    if (value.length > 1) out.push({ keys, kind: 'array', len: value.length, bytes: size(value) });
+    if (keys.length < MAX_DEPTH) value.forEach((v, i) => parts(v, [...keys, i], out));
   } else if (value && typeof value === 'object') {
-    for (const [k, v] of Object.entries(value)) parts(v, at ? `${at}.${k}` : k, out);
-  } else if (typeof value === 'string' && value.length > LONG_STRING) out.push({ at, kind: 'string', bytes: value.length });
+    if (keys.length < MAX_DEPTH) for (const [k, v] of Object.entries(value)) parts(v, [...keys, k], out);
+  } else if (typeof value === 'string' && value.length > MIN_STRING * 2) out.push({ keys, kind: 'string', len: value.length, bytes: Buffer.byteLength(value, 'utf8') });
   return out;
 }
 
-const isUnder = (at, parent) => at.length > parent.length && at.startsWith(parent) && (parent === '' || at[parent.length] === '.' || at[parent.length] === '[');
-
-function setAt(root, at, fn) {
-  const keys = [...at.matchAll(/\[(\d+)\]|([^.[\]]+)/g)].map(m => (m[1] !== undefined ? Number(m[1]) : m[2]));
+const isUnder = (keys, parent) => keys.length > parent.length && parent.every((k, i) => keys[i] === k);
+const getAt = (root, keys) => keys.reduce((o, k) => o?.[k], root);
+function setAt(root, keys, fn) {
   if (!keys.length) return fn(root);
-  let o = root;
-  for (const k of keys.slice(0, -1)) o = o[k];
-  o[keys.at(-1)] = fn(o[keys.at(-1)]);
+  const parent = getAt(root, keys.slice(0, -1));
+  parent[keys.at(-1)] = fn(parent[keys.at(-1)]);
   return root;
+}
+
+/** Cut a string to about `n` characters without splitting an emoji or other surrogate pair. */
+function cutString(s, n) {
+  let end = Math.max(MIN_STRING, Math.min(n, s.length));
+  const c = s.charCodeAt(end - 1);
+  if (c >= 0xd800 && c <= 0xdbff) end--;
+  return `${s.slice(0, end)}… [cut]`;
 }
 
 /**
  * Shorten a JSON value until it fits `max` bytes: halve the biggest array (keeping its head) or cut the longest
- * string, again and again. Returns { value, shortened: [{ path, kept, of }] }.
+ * string, again and again. When that is not enough (very deep or very wide values), whole top-level fields are
+ * left out, biggest first. Returns { value, shortened: [{ path, kept, of } | { path, keptChars, ofChars } | { path, leftOut, bytes }] }.
  */
 export function shrink(value, max) {
   let v = structuredClone(value);
   const originals = new Map();
-  for (let round = 0; round < 200 && size(v) > max; round++) {
-    const cands = parts(v).filter(p => (p.kind === 'array' ? p.ref.length > 1 : true)).sort((a, b) => b.bytes - a.bytes);
+  for (let round = 0; round < 400; round++) {
+    const total = size(v);
+    if (total <= max) break;
+    const cands = parts(v).sort((a, b) => b.bytes - a.bytes);
     // Start at the biggest part; when most of it sits in one child (a list inside a list item, a long string),
     // shorten that child instead, so one huge entry does not empty the whole list.
     let pick = cands[0];
     if (!pick) break;
     for (;;) {
-      const child = cands.find(p => p !== pick && isUnder(p.at, pick.at) && p.bytes >= pick.bytes * 0.6);
+      const child = cands.find(p => p !== pick && isUnder(p.keys, pick.keys) && p.bytes >= pick.bytes * 0.6);
       if (!child) break;
       pick = child;
     }
-    if (pick.kind === 'array') {
-      if (!originals.has(pick.at)) originals.set(pick.at, pick.ref.length);
-      v = setAt(v, pick.at, a => a.slice(0, Math.max(1, Math.floor(a.length / 2))));
-    } else {
-      if (!originals.has(pick.at)) originals.set(pick.at, pick.bytes);
-      v = setAt(v, pick.at, s => `${s.slice(0, Math.max(1024, Math.floor(s.length / 2)))}… [cut]`);
+    const at = pathText(pick.keys);
+    if (!originals.has(at)) originals.set(at, { keys: pick.keys, of: pick.len });
+    if (pick.kind === 'array') v = setAt(v, pick.keys, a => a.slice(0, Math.max(1, Math.floor(a.length / 2))));
+    else {
+      // Cut at least half, or at once everything that is too much (measured in this string's bytes per character).
+      const tooMuch = total - max, perChar = pick.bytes / pick.len;
+      v = setAt(v, pick.keys, str => cutString(str, Math.min(Math.floor(str.length / 2), str.length - Math.ceil(tooMuch / perChar) - 16)));
     }
   }
   const shortened = [];
-  for (const [at, of] of originals) {
-    let now; try { now = at ? setAtRead(v, at) : v; } catch { continue; }
+  for (const [at, { keys, of }] of originals) {
+    const now = getAt(v, keys);
     if (Array.isArray(now)) shortened.push({ path: at, kept: now.length, of });
     else if (typeof now === 'string') shortened.push({ path: at, keptChars: now.length, ofChars: of });
   }
+  // Last resort: leave out whole top-level fields, biggest first.
+  if (size(v) > max && v && typeof v === 'object' && !Array.isArray(v)) {
+    for (const [k, bytes] of Object.entries(v).map(([k, x]) => [k, size(x)]).sort((a, b) => b[1] - a[1])) {
+      if (size(v) <= max) break;
+      v[k] = `[left out: ${bytes} bytes; see fullOutput]`;
+      shortened.push({ path: pathText([k]), leftOut: true, bytes });
+    }
+  } else if (size(v) > max && Array.isArray(v)) {
+    const of = v.length;
+    while (v.length > 0 && size(v) > max) v = v.slice(0, Math.floor(v.length / 2));
+    shortened.push({ path: '', kept: v.length, of });
+  }
   return { value: v, shortened };
-}
-
-function setAtRead(root, at) {
-  const keys = [...at.matchAll(/\[(\d+)\]|([^.[\]]+)/g)].map(m => (m[1] !== undefined ? Number(m[1]) : m[2]));
-  let o = root;
-  for (const k of keys) o = o[k];
-  return o;
 }
 
 /** Saved results are also MCP resources, so clients without file access can read them: reverseport://tool-output/<file>. */

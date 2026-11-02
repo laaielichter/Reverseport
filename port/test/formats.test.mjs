@@ -82,3 +82,22 @@ test('compares two .NET builds by type and method, and says how to go deeper', a
   assert.equal(same.identical, true);
   assert.equal(same.next, undefined, 'nothing to follow up when the builds are the same');
 });
+
+test('game archives: Doom WAD, Quake WAD2/3, XNB, VPK; Git packs are not Quake PAKs', () => {
+  const head = (magic, ...u32) => { const b = Buffer.alloc(magic.length + u32.length * 4); b.write(magic, 0, 'latin1'); u32.forEach((n, i) => b.writeUInt32LE(n, magic.length + i * 4)); return b; };
+  assert.equal(identify(head('IWAD', 2, 12)).id, 'wad');
+  assert.equal(identify(head('PWAD', 1, 64)).id, 'wad');
+  assert.equal(identify(head('WAD3', 3, 1024)).id, 'wad-quake');
+  assert.equal(identify(Buffer.from([0x58, 0x4e, 0x42, 0x77, 5, 0, 0x10, 0, 0, 0])).id, 'xnb', 'XNB, Windows, XNA 4');
+  assert.equal(identify(Buffer.from([0x58, 0x4e, 0x42, 0x64, 5, 0, 0x10, 0, 0, 0])).id, 'xnb', 'MonoGame DesktopGL');
+  assert.equal(identify(Buffer.from([0x34, 0x12, 0xaa, 0x55, 2, 0, 0, 0, 0, 0, 0, 0])).id, 'vpk');
+  assert.equal(identify(head('PACK', 12, 128)).id, 'pak');
+  const git = Buffer.from('PACK\0\0\0\x02\0\0\0\x07', 'latin1');
+  assert.equal(identify(git).id, 'git-pack');
+  // Look-alikes
+  assert.notEqual(identify(head('IWAD', 2, 4)).id, 'wad', 'directory inside the header');
+  assert.notEqual(identify(Buffer.from('XNBz\x05')).id, 'xnb', 'unknown platform');
+  assert.notEqual(identify(Buffer.from('XNBw\x09')).id, 'xnb', 'unknown version');
+  assert.notEqual(identify(Buffer.from([0x34, 0x12, 0xaa, 0x55, 9, 0, 0, 0])).id, 'vpk', 'unknown VPK version');
+  assert.notEqual(identify(head('PACK', 12, 100)).id, 'pak', 'directory length not a multiple of 64');
+});

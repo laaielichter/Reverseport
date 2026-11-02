@@ -19,6 +19,10 @@ export default defineConfig({
           { text: "Installation and setup", link: "/installation" },
           { text: "Client configuration", link: "/client-configuration" },
           { text: "CLI and Evidence", link: "/cli" },
+          {
+            text: "Walkthrough: Godot to three.js",
+            link: "/walkthrough-godot-to-threejs",
+          },
           { text: "Agent prompts", link: "/mcp-prompts" },
           { text: "Roadmap", link: "/roadmap" },
         ],
