@@ -7,7 +7,7 @@ import { requireDir, walk, isText } from './util.mjs';
 import { languageOf, fileSymbols, stripComments, identifiers, CODE_LANGUAGES } from './symbols.mjs';
 import { unityGuidMap } from './scene.mjs';
 import { detectEngines } from './scan.mjs';
-import { workspacePackages, packageCandidates, splitSpecifier, tsconfigAliases } from './jsworkspace.mjs';
+import { workspacePackages, packageCandidates, splitSpecifier, tsconfigAliases, importMaps, externalPackage } from './jsworkspace.mjs';
 
 const JS_EXT = ['.ts', '.tsx', '.mts', '.js', '.mjs', '.cjs', '.jsx', '.vue', '.svelte', '.json'];
 const TYPE_INDEX_LANGS = new Set(['csharp', 'java', 'kotlin', 'gdscript', 'swift', 'haxe', 'dart', 'scala']);
@@ -66,16 +66,24 @@ export async function buildGraph(dir, { maxFiles = 30000 } = {}) {
   const hasJs = files.some(f => /\.(m?[jt]sx?|cjs|cts)$/.test(f.rel));
   const wsPackages = hasJs ? await workspacePackages(files) : new Map();
   const aliasOf = hasJs ? await tsconfigAliases(files, byRel) : () => [];
+  const mappedOf = hasJs ? await importMaps(files, byRel) : () => null;
   const jsFile = (base, from) => {
     const stem = base.replace(/\.(m?js|cjs|jsx)$/, '');
     for (const c of [base, ...JS_EXT.map(e => stem + e), ...JS_EXT.map(e => `${base}/index${e}`)]) { const hit = exists(c); if (hit && hit !== from && nodes.has(hit)) return hit; }
     for (const c of [base, ...JS_EXT.map(e => stem + e), ...JS_EXT.map(e => `${base}/index${e}`)]) { const hit = exists(c); if (hit && hit !== from) return hit; }
     return null;
   };
-  let workspaceEdges = 0, aliasEdges = 0;
-  const resolveJs = (from, spec) => {
+  let workspaceEdges = 0, aliasEdges = 0, importMapEdges = 0;
+  // Where an unresolved bare import really comes from, after import maps (`#x` → a package, `std/` → jsr:@std/).
+  const externalOf = (from, spec) => externalPackage(mappedOf(from, spec)?.remote ?? spec);
+  const resolveJs = (from, spec, depth = 0) => {
     if (/^\.{1,2}\//.test(spec) || spec.startsWith('/')) {
       return jsFile(spec.startsWith('/') ? spec.slice(1) : path.posix.normalize(path.posix.join(path.posix.dirname(from), spec)), from);
+    }
+    const mapped = depth < 4 ? mappedOf(from, spec) : null;
+    if (mapped) {
+      for (const c of mapped.local) { const hit = jsFile(c, from); if (hit) { importMapEdges++; return hit; } }
+      if (mapped.remote && !mapped.remote.startsWith('#')) { const again = resolveJs(from, mapped.remote, depth + 1); if (again) return again; }
     }
     for (const c of aliasOf(from, spec)) { const hit = jsFile(c, from); if (hit) { aliasEdges++; return hit; } }
     const { name, sub } = splitSpecifier(spec);
@@ -147,7 +155,7 @@ export async function buildGraph(dir, { maxFiles = 30000 } = {}) {
       let hit = null;
       switch (n.language) {
         case 'gdscript': case 'shader': hit = resolveRes(n.file, d.spec); break;
-        case 'javascript': case 'typescript': hit = resolveJs(n.file, d.spec); if (!hit && !/^[./]/.test(d.spec) && !wsPackages.has(splitSpecifier(d.spec).name)) external(d.spec.startsWith('@') ? d.spec.split('/').slice(0, 2).join('/') : d.spec.split('/')[0]); break;
+        case 'javascript': case 'typescript': hit = resolveJs(n.file, d.spec); if (!hit && !/^[./]/.test(d.spec) && !wsPackages.has(splitSpecifier(d.spec).name)) external(externalOf(n.file, d.spec)); break;
         case 'python': hit = resolvePy(n.file, d.spec); if (!hit && !d.spec.startsWith('.')) external(d.spec.split('.')[0]); break;
         case 'c': case 'c-header': case 'cpp': case 'objc': if (d.kind === 'system') external(`<${d.spec}>`); else { hit = resolveInclude(n.file, d.spec); if (!hit) external(`"${d.spec}"`); } break;
         case 'lua': hit = resolveLua(n.file, d.spec); if (!hit) external(d.spec); break;
@@ -199,7 +207,7 @@ export async function buildGraph(dir, { maxFiles = 30000 } = {}) {
   const cycles = sccs.filter(c => c.length > 1).sort((a, b) => b.length - a.length);
   const orphans = [...nodes.keys()].filter(k => !inc.get(k) && !entry.has(k) && nodes.get(k).kind !== 'scene' && !(out.get(k).length));
   let workspace = null;
-  if (wsPackages.size > 1 || aliasEdges) {
+  if (wsPackages.size > 1 || aliasEdges || importMapEdges) {
     // Package-level view: which workspace package uses which (counts of file imports across packages).
     const dirs = [...wsPackages.entries()].map(([name, w]) => ({ name, dir: w.dir })).sort((a, b) => b.dir.length - a.dir.length);
     const pkgOf = rel => dirs.find(d => !d.dir || rel === d.dir || rel.startsWith(`${d.dir}/`))?.name ?? null;
@@ -211,7 +219,7 @@ export async function buildGraph(dir, { maxFiles = 30000 } = {}) {
       const key = `${a}\0${b}`; links.set(key, (links.get(key) ?? 0) + 1);
     }
     workspace = {
-      packages: wsPackages.size, workspaceEdges, aliasEdges,
+      packages: wsPackages.size, workspaceEdges, aliasEdges, importMapEdges,
       packageList: dirs.map(d => ({ name: d.name, dir: d.dir || '.', files: files.get(d.name) ?? 0 })).sort((a, b) => b.files - a.files),
       packageEdges: [...links.entries()].map(([k, uses]) => { const [from, to] = k.split('\0'); return { from, to, uses }; }).sort((a, b) => b.uses - a.uses),
     };
@@ -292,7 +300,7 @@ export async function graphTool({ path: dir, limit, format = 'json' } = {}) {
     entryPoints: g.entryPoints.slice(0, listMax), ...(g.entryPoints.length > listMax ? { entryPointCount: g.entryPoints.length } : {}),
     cycles: g.cycles.slice(0, cycleMax).map(c => c.slice(0, small ? 10 : 30)), ...(g.cycles.length > cycleMax ? { cycleCount: g.cycles.length } : {}),
     orphans: g.orphans.slice(0, listMax), ...(g.orphans.length > listMax ? { orphanCount: g.orphans.length } : {}),
-    ...(g.workspace ? { workspace: { packages: g.workspace.packages, resolvedByPackageName: g.workspace.workspaceEdges, resolvedByTsconfigPaths: g.workspace.aliasEdges, packageList: g.workspace.packageList.slice(0, max), packageEdges: g.workspace.packageEdges.slice(0, edgeMax) } } : {}),
+    ...(g.workspace ? { workspace: { packages: g.workspace.packages, resolvedByPackageName: g.workspace.workspaceEdges, resolvedByTsconfigPaths: g.workspace.aliasEdges, resolvedByImportMaps: g.workspace.importMapEdges, packageList: g.workspace.packageList.slice(0, max), packageEdges: g.workspace.packageEdges.slice(0, edgeMax) } } : {}),
     mostUsed: files.slice(0, small ? 12 : 25), externals: ext, ...(g.externals.size > ext.length ? { externalCount: g.externals.size } : {}),
     portOrder: g.order.slice(0, max), portOrderTruncated: g.order.length > max,
     edges: g.edges.slice(0, edgeMax), edgesTruncated: g.edges.length > edgeMax,

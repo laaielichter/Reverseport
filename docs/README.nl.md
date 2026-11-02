@@ -6,7 +6,7 @@ Eén CLI en één MCP-server waarmee je coding-agent (Claude Code, Codex, Cursor
 en meer) apps, games, binaries en websites uit elkaar haalt — en ze opnieuw opbouwt of naar een andere engine of taal
 port. Alles draait lokaal; het doelwit wordt alleen gelezen.
 
-<img src="assets/demo.gif" alt="Terminal: ReversePort scant de 2D-platformerdemo van Godot, plant een port naar Unity met 68 onderdelen, kopieert 38 assets, zet een scène om en controleert de voortgang" width="640">
+<img src="./assets/demo.gif" alt="Terminal: ReversePort scant de 2D-platformerdemo van Godot, plant een port naar Unity met 68 onderdelen, kopieert 38 assets, zet een scène om en controleert de voortgang" width="640">
 
 Een echte run op de [2D-platformerdemo van Godot](https://github.com/godotengine/godot-demo-projects/tree/master/2d/platformer),
 de JSON ingekort tot de belangrijkste velden. Website: <https://laaielichter.github.io/Reverseport/>
@@ -43,7 +43,7 @@ Vanuit de broncode: `git clone https://github.com/laaielichter/reverseport`, dan
 zonder installatie: `node bin/reverseport.mjs scan ./MijnGame`.
 
 Haal het alleen van npm (`reverseport`), uit de MCP Registry (`io.github.laaielichter/reverseport`) of uit deze repo;
-kopieën onder andere namen zijn niet van ons. Er is geen telemetrie: [PRIVACY.md](../PRIVACY.md) noemt de paar keer
+kopieën onder andere namen zijn niet van ons. Er is geen telemetrie: [PRIVACY.md](https://github.com/laaielichter/reverseport/blob/main/PRIVACY.md) noemt de paar keer
 dat het het netwerk gebruikt.
 
 ## Wat het kan
@@ -71,7 +71,7 @@ dat het het netwerk gebruikt.
   gelijk, `port_trace` vindt de eerste tick waarop twee versies verschillen, en `re_il2cpp` en `port_rpgmaker` helpen
   bij Unity IL2CPP en RPG Maker.
 - **Monorepo's en websites** — `re_scan` en `re_graph` begrijpen JS/TS-monorepo's (pnpm, Turborepo, Nx, tsconfig
-  paths) en Rust-workspaces. `capture_web_screenshot` met een `selector` geeft van één element op een site een
+  paths, `#imports`, Deno-import-maps) en Rust-workspaces. `capture_web_screenshot` met een `selector` geeft van één element op een site een
   bijgesneden afbeelding, de HTML en de CSS.
 
 ## Skills

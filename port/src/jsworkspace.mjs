@@ -33,6 +33,37 @@ export function workspaceTooling(rels, rootPkg = {}) {
 }
 
 /**
+ * Package globs from pnpm-workspace.yaml without a YAML library: the `packages:` key as a block list
+ * (`- 'glob'` per line) or a flow list (`['a', 'b']`). Comments and other keys are skipped.
+ */
+export function pnpmWorkspaceGlobs(text) {
+  if (typeof text !== 'string') return [];
+  const unquote = v => v.trim().replace(/^(['"])(.*)\1$/, '$2').trim();
+  const noComment = line => line.replace(/(^|\s)#.*$/, '');
+  const lines = text.replace(/^\uFEFF/, '').split(/\r?\n/);
+  const out = [];
+  for (let i = 0; i < lines.length; i++) {
+    const m = noComment(lines[i]).match(/^packages\s*:\s*(.*)$/);
+    if (!m) continue;
+    const rest = m[1].trim();
+    if (rest.startsWith('[')) {
+      const body = rest.slice(1, rest.lastIndexOf(']') < 0 ? undefined : rest.lastIndexOf(']'));
+      for (const v of body.split(',')) { const g = unquote(v); if (g) out.push(g); }
+      return out;
+    }
+    for (let j = i + 1; j < lines.length; j++) {
+      const line = noComment(lines[j]);
+      if (!line.trim()) continue;
+      const item = line.match(/^\s*-\s*(.+)$/);
+      if (item) { const g = unquote(item[1]); if (g) out.push(g); continue; }
+      if (/^\S/.test(line)) break; // the next top-level key
+    }
+    return out;
+  }
+  return out;
+}
+
+/**
  * Workspace packages by name. `files` are walk() entries ({rel, abs}). Every package.json outside
  * node_modules counts; that also covers repos that do not declare workspaces but import siblings by name.
  */
@@ -152,4 +183,100 @@ export async function tsconfigAliases(files, byRel) {
       dir = path.posix.dirname(dir);
     }
   };
+}
+
+// Every file-looking string in an import-map target (string, conditions object or array), source first.
+function importTargets(v, out = []) {
+  if (typeof v === 'string') out.push(v);
+  else if (Array.isArray(v)) for (const x of v) importTargets(x, out);
+  else if (v && typeof v === 'object') {
+    const order = ['source', 'bun', 'deno', 'development', 'import', 'module', 'node', 'default', 'require', 'browser', 'types'];
+    for (const k of [...order.filter(k => k in v), ...Object.keys(v).filter(k => !order.includes(k))]) importTargets(v[k], out);
+  }
+  return out;
+}
+
+const isLocal = t => /^\.{1,2}\//.test(t) || t.startsWith('/');
+
+/**
+ * Import maps: Node subpath imports (`#name` in the nearest package.json "imports") and Deno import maps
+ * ("imports" in the nearest deno.json/deno.jsonc, or the file its "importMap" names). Returns a lookup
+ * `(from, spec) => null | { local: string[], remote: string | null }`: `local` are candidate paths relative to
+ * the root, `remote` is the mapped specifier when the map points outside the folder (npm:, jsr:, https:, a package).
+ */
+export async function importMaps(files, byRel) {
+  const nodeImports = new Map(), denoImports = new Map();
+  const dirOf = rel => (path.posix.dirname(rel) === '.' ? '' : path.posix.dirname(rel));
+  for (const f of files) {
+    if (f.rel.includes('node_modules/')) continue;
+    const base = path.posix.basename(f.rel);
+    if (base === 'package.json') {
+      const pkg = parseJsonc(await readMaybe(f.abs));
+      nodeImports.set(dirOf(f.rel), pkg?.imports && typeof pkg.imports === 'object' ? pkg.imports : null);
+    } else if (base === 'deno.json' || base === 'deno.jsonc') {
+      const json = parseJsonc(await readMaybe(f.abs));
+      if (!json) continue;
+      let map = json.imports && typeof json.imports === 'object' ? json.imports : null, mapDir = dirOf(f.rel);
+      if (!map && typeof json.importMap === 'string' && isLocal(json.importMap)) {
+        const rel = path.posix.normalize(path.posix.join(mapDir || '.', json.importMap));
+        const ext = byRel.get(rel) ? parseJsonc(await readMaybe(byRel.get(rel).abs)) : null;
+        if (ext?.imports && typeof ext.imports === 'object') { map = ext.imports; mapDir = dirOf(rel); }
+      }
+      if (map) denoImports.set(dirOf(f.rel), { dir: mapDir, map });
+    }
+  }
+  if (!nodeImports.size && !denoImports.size) return () => null;
+  const ups = from => { const out = []; let d = dirOf(from); for (;;) { out.push(d); if (!d) return out; d = dirOf(d); } };
+  const result = (dir, targets, wild) => {
+    const local = [], remote = [];
+    for (const t of importTargets(targets)) {
+      const filled = wild == null ? t : t.replaceAll('*', () => wild);
+      if (!isLocal(filled)) { remote.push(filled); continue; }
+      const rel = path.posix.normalize(path.posix.join(dir || '.', filled));
+      local.push(rel);
+      const built = rel.match(/^(.*?)(?:^|\/)(dist|build|lib|out)\/(.*)$/);
+      if (built) local.push(path.posix.normalize(`${built[1] ? `${built[1]}/` : ''}src/${built[3]}`));
+    }
+    return local.length || remote.length ? { local, remote: remote[0] ?? null } : null;
+  };
+  return (from, spec) => {
+    if (spec.startsWith('#')) {
+      // Node uses the nearest package.json only.
+      for (const d of ups(from)) {
+        if (!nodeImports.has(d)) continue;
+        const imports = nodeImports.get(d);
+        if (!imports) return null;
+        if (spec in imports) return result(d, imports[spec], null);
+        let best = null;
+        for (const [k, v] of Object.entries(imports)) {
+          const star = k.indexOf('*');
+          if (star < 0) continue;
+          const pre = k.slice(0, star), post = k.slice(star + 1);
+          if (spec.startsWith(pre) && spec.endsWith(post) && spec.length >= pre.length + post.length && (!best || pre.length > best.pre.length)) best = { pre, v, wild: spec.slice(pre.length, spec.length - post.length) };
+        }
+        return best ? result(d, best.v, best.wild) : null;
+      }
+      return null;
+    }
+    for (const d of ups(from)) {
+      const cfg = denoImports.get(d);
+      if (!cfg) continue;
+      if (typeof cfg.map[spec] === 'string') return result(cfg.dir, cfg.map[spec], null);
+      let best = null;
+      for (const [k, v] of Object.entries(cfg.map)) if (k.endsWith('/') && typeof v === 'string' && spec.startsWith(k) && (!best || k.length > best.k.length)) best = { k, v };
+      if (best) return result(cfg.dir, best.v + spec.slice(best.k.length), null);
+    }
+    return null;
+  };
+}
+
+/** Package name for an import that stays outside the folder: `@scope/pkg`, `pkg`, `npm:pkg`, `jsr:@scope/pkg`, a URL's host. */
+export function externalPackage(spec) {
+  const url = spec.match(/^https?:\/\/([^/]+)/);
+  if (url) return url[1];
+  const reg = spec.match(/^(npm|jsr):\/?(.*)$/);
+  const body = reg ? reg[2] : spec;
+  const parts = body.split('/');
+  const name = (body.startsWith('@') ? parts.slice(0, 2) : parts.slice(0, 1)).join('/').replace(/(.)@[^/]*$/, '$1');
+  return reg ? `${reg[1]}:${name}` : name;
 }
