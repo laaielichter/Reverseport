@@ -22,6 +22,15 @@ if (packageJson.mcpName !== "io.github.laaielichter/reverseport")
   );
 if (serverJson.name !== packageJson.mcpName)
   fail("server.json name does not match package.json mcpName");
+// The registry schema (2025-12-11) caps the description at 100 characters and rejects the whole publish above it.
+if (
+  typeof serverJson.description !== "string" ||
+  serverJson.description.length === 0 ||
+  serverJson.description.length > 100
+)
+  fail(
+    `server.json description must be 1 to 100 characters (is ${serverJson.description?.length ?? 0})`,
+  );
 if (serverJson.version !== packageJson.version)
   fail("server.json version does not match package.json version");
 if (!Array.isArray(serverJson.packages) || serverJson.packages.length !== 1)

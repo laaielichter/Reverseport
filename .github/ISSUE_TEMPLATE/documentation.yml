@@ -1,5 +1,5 @@
 name: Documentation
-description: Report unclear, missing, or incorrect REA documentation
+description: Report unclear, missing, or incorrect ReversePort documentation
 title: "[Docs] "
 labels:
   - documentation

@@ -77,3 +77,6 @@ limits, security/privacy/containment implications, and meaningful proof gaps. --
 - [ ] Owning docs, contracts, and generated metadata are updated where needed.
 - [ ] User-visible CLI/MCP changes include representative output.
 - [ ] I checked the final diff for secrets, unrelated cleanup, and unsupported claims.
+- [ ] Commits, this description and the changed files contain no chat or session links.
+- [ ] Gift or donation details stay in the READMEs only (not in skills, `llms.txt`, `AGENTS.md`, tool output or the website).
+- [ ] The change only helps analyse or port software the user owns or may analyse; nothing decrypts, cracks or bypasses DRM, anti-cheat or licensing.

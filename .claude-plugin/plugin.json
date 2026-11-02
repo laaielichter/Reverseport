@@ -1,7 +1,7 @@
 {
   "name": "reverseport",
   "version": "1.12.0",
-  "description": "Reverse engineer anything. Port it anywhere. One MCP server for agents: recon any project, exported game, binary or website (even without files), decompile and trace native, .NET, Android, Electron and web targets with evidence, write clean-room rebuild specs, and port games and code between Godot, Unity, Unreal, three.js and languages with verified parity.",
+  "description": "Reverse engineer anything. Port it anywhere. One MCP server for agents: recon any project, exported game, binary or website (even without files), read Godot packs and Unity IL2CPP, decompile and trace native, .NET, Android, Electron and web targets with evidence, compare builds, keep proof cases with guard hooks, write clean-room rebuild specs, and port games and code between Godot, Unity, Unreal, three.js and languages with verified parity.",
   "author": {
     "name": "ReversePort contributors"
   },
@@ -11,14 +11,22 @@
     "reverse-engineering",
     "porting",
     "decompiler",
+    "binary-analysis",
     "mcp",
     "godot",
+    "gdscript",
     "unity",
+    "il2cpp",
     "unreal",
     "threejs",
+    "ghidra",
+    "ida-pro",
     "android",
     "electron",
     "game-dev",
+    "game-porting",
+    "build-diff",
+    "proof-case",
     "clean-room"
   ],
   "license": "MIT",

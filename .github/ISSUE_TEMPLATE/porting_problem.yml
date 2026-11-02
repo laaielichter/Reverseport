@@ -1,0 +1,75 @@
+name: Porting problem
+description: A port between engines or languages that behaves differently, misses something or will not finish
+title: "[Port] "
+labels:
+  - porting
+  - triage
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Ports go wrong in small, specific ways: a jump that is lower, a signal that never fires, a scene that loads empty.
+        The more exact the difference, the faster it can be fixed. Remove private paths and data you may not share.
+
+  - type: checkboxes
+    id: allowed
+    attributes:
+      label: Before submitting
+      options:
+        - label: I am porting a project I own or am allowed to port.
+          required: true
+        - label: I ran `reverseport doctor` and checked the version with `reverseport --version`.
+          required: true
+
+  - type: dropdown
+    id: route
+    attributes:
+      label: Route
+      options:
+        - Godot → Unity
+        - Godot → Unreal
+        - Godot → three.js
+        - GDScript → Godot C#
+        - Godot 3 → Godot 4
+        - Unity → Godot
+        - Unity → Unreal
+        - RPG Maker → Godot
+        - Language to language
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: difference
+    attributes:
+      label: What is different
+      description: What the original does, and what the port does instead.
+      placeholder: |
+        Original: the player jumps 3 tiles high. Port: about 2 tiles.
+    validations:
+      required: true
+
+  - type: textarea
+    id: commands
+    attributes:
+      label: Commands and output
+      description: The ReversePort commands or tool calls you ran, with the JSON they returned. Include the `next` line or the error's next step.
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: verify
+    attributes:
+      label: port_verify or port_trace result
+      description: The result of `reverseport verify <planId>`, or of port_trace when the port runs but behaves differently.
+      render: json
+
+  - type: input
+    id: versions
+    attributes:
+      label: Versions
+      description: ReversePort, Node.js, both engines, and the agent and model that wrote the code.
+      placeholder: "ReversePort 1.12.0, Node 24.22.1, Godot 4.4 → Unity 6000.0, Claude Code"
+    validations:
+      required: true

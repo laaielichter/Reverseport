@@ -32,3 +32,10 @@ convert it with ffmpeg.
 - `og.png` (1280×640) is the sharing image. The same file is `docs/assets/social-preview.png`, for
   Settings > General > Social preview on GitHub.
 - `favicon.svg` is the logo mark.
+
+## Search engines
+
+`sitemap.xml` lists the page for Google Search Console and Bing Webmaster Tools. The title, description, Open Graph and
+Twitter tags and the JSON-LD block in `index.html` are what search results and link previews show; keep them in step
+with the README when a release changes what ReversePort does. Gift details stay out of the site (see the README).
+

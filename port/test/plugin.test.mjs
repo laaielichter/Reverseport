@@ -42,6 +42,27 @@ test('Claude Code plugin and marketplace manifests', async () => {
   }
 });
 
+test('listing metadata: registry limits, tags, and gift details only in the READMEs', async () => {
+  // The MCP Registry rejects a whole publish when the description is over 100 characters; catch it before a release.
+  const server = JSON.parse(await read('server.json'));
+  assert.ok(server.description.length > 0 && server.description.length <= 100, `server.json description is ${server.description.length} characters`);
+  const pkg = JSON.parse(await read('package.json'));
+  const plugin = JSON.parse(await read('.claude-plugin/plugin.json'));
+  for (const [where, list] of [['package.json', pkg.keywords], ['plugin.json', plugin.keywords]]) {
+    assert.equal(new Set(list).size, list.length, `${where}: duplicate keywords`);
+    for (const k of list) assert.match(k, /^[a-z0-9][a-z0-9-]{0,49}$/, `${where}: keyword ${k}`);
+  }
+  // Gifts are mentioned in the READMEs only: never in agent-facing files, tool output, skills or the website.
+  const address = 'BDRA7dHGBYtPsZPNzVQccDYZ8BqstJGCsWx3kopPSCDK';
+  const agentFacing = ['llms.txt', 'llms-install.md', 'AGENTS.md', 'site/index.html', '.claude-plugin/plugin.json', '.claude-plugin/marketplace.json', 'server.json', 'CITATION.cff'];
+  for (const dir of await fs.readdir(path.join(REPO, 'skills'))) agentFacing.push(`skills/${dir}/SKILL.md`);
+  for (const f of agentFacing) {
+    const text = await read(f).catch(() => '');
+    assert.ok(!text.includes(address) && !/\b(?:donat(?:e|ion)|solana)\b/i.test(text), `${f}: gift details belong in the READMEs only`);
+  }
+  for (const f of ['README.md', 'docs/README.nl.md']) assert.ok((await read(f)).includes(address), `${f}: support section`);
+});
+
 test('plugin settings: empty or unsubstituted values are unset; the engine setting fetches the engine', async () => {
   const { applyPluginSettings } = await import('../plugin/mcp-launch.mjs');
   const env = applyPluginSettings({ REVERSEPORT_PLUGIN_ENGINE: 'true', REVERSEPORT_PROFILE: 'compact', REVERSEPORT_HOME: '', GHIDRA_INSTALL_DIR: '${user_config.ghidra_install_dir}' });

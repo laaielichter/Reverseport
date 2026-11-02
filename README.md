@@ -4,14 +4,17 @@
 
 ### Reverse engineer anything. Port it anywhere.
 
-**One CLI and one MCP server that let your coding agent take apart apps, games, binaries and websites — and rebuild them.**
+**The reverse-engineering and porting toolkit for AI coding agents.**<br>
+Read Godot packs, Unity IL2CPP, .NET and native binaries, compare builds, keep proof for every claim — and port games
+between Godot, Unity, Unreal and three.js with parity checks.
 
 [![npm](https://img.shields.io/npm/v/reverseport?style=flat-square&color=1e4f91)](https://www.npmjs.com/package/reverseport)
 [![npm downloads](https://img.shields.io/npm/dm/reverseport?style=flat-square&color=1e4f91)](https://www.npmjs.com/package/reverseport)
 [![MCP Registry](https://img.shields.io/badge/MCP_Registry-io.github.laaielichter%2Freverseport-5c4ee5?style=flat-square)](https://registry.modelcontextprotocol.io/v0/servers?search=io.github.laaielichter/reverseport)
+[![Claude Code plugin](https://img.shields.io/badge/Claude_Code-plugin-d97757?style=flat-square)](#claude-code-plugin)
 [![MCP tool catalog](https://img.shields.io/badge/MCP-tool_catalog-5c4ee5?style=flat-square)](docs/mcp-contracts.md#generated-catalog)
-[![License: MIT](https://img.shields.io/badge/license-MIT-22c55e?style=flat-square)](LICENSE)
 [![Node.js](https://img.shields.io/badge/Node.js-22.23.4%2B-339933?style=flat-square&logo=nodedotjs&logoColor=white)](docs/installation.md)
+[![License: MIT](https://img.shields.io/badge/license-MIT-22c55e?style=flat-square)](LICENSE)
 
 ```bash
 npx reverseport setup
@@ -19,9 +22,11 @@ npx reverseport setup
 
 <img src="docs/assets/demo.gif" alt="Terminal: ReversePort scans Godot's 2D platformer demo, plans a port to Unity with 68 units, copies 38 assets, converts a scene and verifies progress" width="640">
 
-<sub>A real run on <a href="https://github.com/godotengine/godot-demo-projects/tree/master/2d/platformer">Godot's 2D platformer demo</a>, JSON trimmed to the key fields.</sub>
+<sub>A real run on <a href="https://github.com/godotengine/godot-demo-projects/tree/master/2d/platformer">Godot's 2D platformer demo</a>, JSON trimmed to the key fields. <a href="docs/assets/demo.mp4">Watch the MP4</a>.</sub>
 
-[Website](https://laaielichter.github.io/Reverseport/) · [Quick start](#quick-start) · [Every agent](#works-with-every-agent) · [Skills](#skills) · [What it does](#what-it-does) · [How it compares](#how-it-compares) · [FAQ](#faq) · [Changelog](CHANGELOG.md) · [Docs](#documentation)
+[Website](https://laaielichter.github.io/Reverseport/) · [Quick start](#quick-start) · [What's new](#whats-new) · [Every agent](#works-with-every-agent) · [Prompts](#prompts-to-try) · [How it compares](#how-it-compares) · [FAQ](#faq) · [Contributing](#contributing) · [Docs](#documentation)
+
+**English** · [Nederlands](docs/README.nl.md)
 
 </div>
 
@@ -33,21 +38,26 @@ unit, verified. No files at all? Give it a name or a store page.
 
 ReversePort gives agents one consistent way to do all of that:
 
-- 🔍 **Understand anything** — engine and version of any project or exported game, dependency graphs, scenes,
-  symbols in 30+ languages, executables, packs and unknown data. JS/TS monorepos (pnpm, Turborepo, Nx, Lerna, Rush,
-  tsconfig paths, `#imports`, Deno import maps) and Rust workspaces resolve too. No build step, no dependencies.
+- 🎮 **Game formats built in** — Godot `.pck` (also inside the `.exe`) and `.gdc`/`.scn`/`.res` back to an editable
+  project, Unity IL2CPP `global-metadata.dat`, `.unitypackage`, GameMaker, Ren'Py, RPG Maker, Unreal `.pak`, FMOD and
+  Wwise banks; it also recognises Quake PAK, Doom WAD, XNB and VPK. No engine install needed.
+- 🔍 **Understand anything** — engine and version of any project or exported game, dependency graphs, scenes, symbols
+  in 30+ languages, executables, packs and unknown data. JS/TS monorepos (pnpm, Turborepo, Nx, Lerna, Rush, tsconfig
+  paths, `#imports`, Deno import maps) and Rust workspaces resolve too. No build step, no dependencies.
 - 🧠 **Go deep** — decompile, cross-reference and trace native, managed (.NET), Android, Electron/JavaScript,
   WebAssembly, firmware and browser targets through Ghidra, Hopper, IDA, JADX and more. ReversePort connects to the
   tools you have installed, drives them and shows the evidence behind every conclusion.
-- 🌐 **No files? Still recon** — a name, a store page, a website or a public repo is enough to learn the engine,
-  stack, file layout and open-source remakes from public sources.
-- 🧩 **Rebuild precisely** — turn what you learned into a clean-room rebuild spec: every system, the parameters to
-  measure on the original, a parity table and a project skeleton with every value as a tunable.
-- 🚚 **Port for real** — Godot ⇄ Unity, Godot → Unreal, Godot → three.js, GDScript → C#, or language to language.
-  Scenes and transforms convert automatically; code is ported by your agent with API maps; `port_verify` proves
-  nothing was left behind.
+- 🔀 **Compare builds** — what changed between build 43 and 44: files, packs and .NET types and methods, biggest
+  changes first.
+- 🧾 **Proof, not guesses** — a proof case ties every claim to saved evidence and keeps unknowns visible. In Claude
+  Code, guard hooks stop a "done" while a proof case fails its check.
+- 🧩 **Rebuild precisely** — no files? A name, a store page or a website is enough for a clean-room rebuild spec:
+  every system, the parameters to measure, a parity table and a project skeleton.
+- 🚚 **Port for real** — Godot ⇄ Unity, Godot → Unreal, Godot → three.js, GDScript → C#, Godot 3 → 4, RPG Maker →
+  Godot, or language to language. Scenes and transforms convert automatically; code is ported by your agent with API
+  maps; `port_verify` and `port_trace` prove nothing was left behind and behaviour matches.
 - 🔒 **Local** — runs on your machine. Targets are only read; output goes to new folders. Nothing is uploaded to an
-  analysis service and there is no extra API bill.
+  analysis service, there is no telemetry and no extra API bill.
 
 ## Quick start
 
@@ -64,18 +74,21 @@ with backups of existing configuration. Restart your agent afterwards. Setup sup
 Gemini CLI, GitHub Copilot, OpenCode and [more agents](docs/installation.md#supported-agents); other clients can use
 [manual MCP registration](docs/installation.md#mcp-registry).
 
-**Claude Code plugin** (instead of setup for Claude Code — includes the server, the porting skills and the
-`port-architect` agent; do not use both):
+### Claude Code plugin
+
+Instead of setup for Claude Code — includes the server, the porting skills, the `port-architect` agent and the guard
+hooks; do not use both:
 
 ```text
 /plugin marketplace add laaielichter/reverseport
 /plugin install reverseport@reverseport
 ```
 
-The same marketplace also offers the [sister plugins](#sister-tools) `stashpad@reverseport` and
+The plugin asks for its settings once (deep-analysis engine on or off, tool list size, workspace folder, your Ghidra
+folder). The same marketplace also offers the [sister plugins](#sister-tools) `stashpad@reverseport` and
 `agentdisk@reverseport`.
 
-**From source:**
+### From source
 
 ```bash
 git clone https://github.com/laaielichter/reverseport && cd reverseport
@@ -89,21 +102,46 @@ install at all: `node bin/reverseport.mjs scan ./MyGame`.
 ### 2. Ask your agent
 
 ```text
-Understand how search works in the Notes app, show me the evidence, and build a similar feature for my project.
+What is ./MyGame made with? Show me the evidence, then plan a port to Unity.
 ```
 
 That's it. The agent picks the tools; you get answers with the evidence behind them.
+
+## What's new
+
+**1.12** — more formats and game libraries, sturdier big results:
+
+- More formats recognised: Doom WAD, Quake and Half-Life WAD2/WAD3, XNB (XNA/MonoGame) and Valve VPK, next to Quake
+  PAK from 1.10.
+- `re_scan` recognises melonJS, Kontra, Matter.js, Rapier, cannon-es, Planck.js, Howler.js, Tone.js and React Three
+  Fiber.
+- Monorepos: `pnpm-workspace.yaml` globs, `package.json` `#imports` and Deno import maps.
+- Big results always fit the output budget now, also with emoji, file-name keys and very deep results.
+- A [Godot → three.js walkthrough](docs/walkthrough-godot-to-threejs.md) where every command was run and the result
+  builds.
+
+**1.11** — a new engine and a new protocol:
+
+- The deep-analysis engine is now [REA](https://github.com/morluto/rea) 6.8.
+- MCP 2026-07-28 next to the classic handshake: long calls (a cold Ghidra import, a big port plan) come back as a task
+  with progress instead of timing out.
+- `run_batch` runs up to 20 calls in one, and big results are saved to disk with a resource link.
+- `re_compare` shows which .NET types and methods changed between two builds, and the next step.
+- The Claude Code plugin has settings instead of environment variables, and an icon.
+
+Every release is in the [changelog](CHANGELOG.md).
 
 ## Works with every agent
 
 Any vendor, any framework, any model size — the same tools through the door that fits:
 
-- **MCP**: `npx -y reverseport@latest setup` configures installed agents; `reverseport connect <client>` prints the
-  snippet for any other MCP client (Windsurf, Cline, Continue, Zed, Goose, LM Studio, VS Code…).
-- **MCP over HTTP**: `reverseport serve` → `http://127.0.0.1:32147/mcp`.
-- **Function calling**: `/api/agent/tools?format=openai-strict|responses|anthropic|gemini`, plus OpenAPI 3.1 at
-  `/api/openapi.json` for GPT Actions, LangChain, LlamaIndex, Semantic Kernel, CrewAI, AutoGen and n8n.
-- **Shell-only agents**: JSON on stdout, errors as JSON on stderr, `reverseport describe <tool>`.
+| Door                  | How                                                                                                                                                                                          |
+| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| MCP, set up for you   | `npx -y reverseport@latest setup` for Claude Code, Codex, Cursor, Gemini CLI, GitHub Copilot, OpenCode and more                                                                              |
+| MCP, any other client | `reverseport connect <client>` prints the snippet (Windsurf, Cline, Continue, Zed, Goose, LM Studio, VS Code…)                                                                               |
+| MCP over HTTP         | `reverseport serve` → `http://127.0.0.1:32147/mcp`                                                                                                                                           |
+| Function calling      | `/api/agent/tools?format=openai-strict\|responses\|anthropic\|gemini`, plus OpenAPI 3.1 at `/api/openapi.json` for GPT Actions, LangChain, LlamaIndex, Semantic Kernel, CrewAI, AutoGen, n8n |
+| Shell only            | JSON on stdout, errors as JSON on stderr, `reverseport describe <tool>`                                                                                                                      |
 
 Built for the agent's circumstances too:
 
@@ -112,14 +150,16 @@ Built for the agent's circumstances too:
 - **The list fits the agent.** Small or older models use `compact`, large-context agents use `full`, and an agent
   can switch itself with `set_tool_profile`.
 - **One error shape everywhere**, with a code, whether retrying helps, and the exact next step.
-- **A `next` field wherever there is an obvious next step** (graphs, truncated results, every porting step), with the exact call.
+- **A `next` field wherever there is an obvious next step** (graphs, truncated results, every porting step), with the
+  exact call.
 - **Big results do not flood the context.** Lists are short by default. Answers over 256 KB are saved to
-  `~/.reverseport/tool-output/`; the agent gets a short version with the path and an MCP resource link. Slightly wrong input from smaller models is repaired where it is safe.
+  `~/.reverseport/tool-output/`; the agent gets a short version with the path and an MCP resource link. Slightly
+  wrong input from smaller models is repaired where it is safe.
 - **Several steps, one call.** `run_batch` runs up to 20 calls and `select` keeps only the fields the agent needs.
   The same failing call twice gets a plain "do not repeat it" instead of the same error again.
-- **Long work does not time out.** On MCP 2026-07-28 a call still running after a few seconds (a cold Ghidra
-  import, a big port plan) comes back as a task the client polls, with progress in its status; quick calls answer
-  directly. Older clients keep the classic handshake on the same server.
+- **Long work does not time out.** On MCP 2026-07-28 a call still running after a few seconds comes back as a task
+  the client polls, with progress in its status; quick calls answer directly. Older clients keep the classic
+  handshake on the same server.
 - **Agents are heard.** `share_feedback` leaves a note for the maintainers; it stays on the user's machine until
   they share it.
 
@@ -154,19 +194,20 @@ the version you have and `reverseport skills get <name>` prints the matching gui
 | You ask                                                                            | ReversePort does                                                                                                                  |
 | ---------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
 | _What is this game made with, and how is it built?_                                | `re_scan` → engine + version, languages, entry points, how it starts                                                              |
+| _I only have the exported Godot game, not the project._                            | `re_archive` extracts the .pck, `re_decode` turns .gdc/.scn/.res/project.binary back into an editable project                     |
+| _A Unity IL2CPP game without its C# source._                                       | `re_il2cpp`: classes, methods and literals from global-metadata.dat, plus a C# skeleton                                           |
+| _What changed between build 43 and 44?_                                            | `re_compare` folder-to-folder, pack-to-pack and .NET types and methods, biggest changes first                                     |
+| _Keep this investigation honest — I need to show why._                             | `re_case`: evidence → claims that cite it → unknowns → decision → tests → report                                                  |
 | _Map this codebase and write ARCHITECTURE.md._                                     | `re_graph`, `re_symbols`, `re_report`                                                                                             |
 | _How do the packages in this Turborepo/pnpm monorepo depend on each other?_        | `re_scan` finds the workspace and its packages; `re_graph` resolves workspace names and tsconfig paths and shows who uses whom    |
 | _Show me how this button on the website is built._                                 | `capture_web_screenshot` with a `selector`: a cropped image of the element, its HTML and its computed CSS                         |
 | _All I have is data.win / an .rpa / a .pak / a .swf / a sound bank / a web build._ | `re_archive`: names, assets and facts out of GameMaker, Ren'Py, Unreal, Flash, FMOD, Wwise, Unity WebGL and Emscripten containers |
-| _I only have the exported Godot game, not the project._                            | `re_archive` extracts the .pck, `re_decode` turns .gdc/.scn/.res/project.binary back into an editable project                     |
-| _A Unity IL2CPP game without its C# source._                                       | `re_il2cpp`: classes, methods and literals from global-metadata.dat, plus a C# skeleton                                           |
-| _What changed between build 43 and 44?_                                            | `re_compare` folder-to-folder and pack-to-pack, biggest changes first                                                             |
 | _Why are my Unity materials pink and scripts "missing" after a move?_              | `re_refs`: dangling, duplicate and missing GUIDs, with remap suggestions                                                          |
 | _Get every player-facing string out of this game so we can translate it._          | `re_strings`: .pot/.csv with ids and placeholders; `apply` writes a translated copy                                               |
 | _Is this GDScript valid for Godot 4.3, or did the model mix in Godot 3?_           | `re_apicheck`: renamed names with replacements, invented members, too-new classes                                                 |
 | _What is in this save file, is it checksummed, and which field is the gold?_       | `re_save`: layers, fields with roles, verified checksums, diff of two saves, schema + SaveData classes                            |
 | _Upgrade my Godot 3 game to Godot 4._                                              | `port_upgrade`: converted copy (renames, @annotations, await, signals, scenes, project.godot) + what needs a human                |
-| _Decompile the function that saves settings in this app and explain it._           | opens the binary, finds it, decompiles it, shows the evidence                                                                     |
+| _Decompile the function that saves settings in this app and explain it._           | opens the binary in your Ghidra, Hopper or IDA, finds it, decompiles it, shows the evidence                                       |
 | _How does this Electron app talk to its native side?_                              | maps modules, IPC and Electron boundaries                                                                                         |
 | _What is `<some game>` made with? I don't have the files._                         | `re_lookup` from public sources: engine with confidence, stack, layout, remakes                                                   |
 | _Rebuild the movement of `<game>` as precisely as possible in Godot._              | `re_blueprint`: systems, parameters to measure, parity table, skeleton                                                            |
@@ -193,9 +234,10 @@ Agent:  re_scan → Godot 4.3, 6 scripts, 5 scenes, main scene main.tscn, autolo
 | Target                             | What you get                                                                                                                                                                        | Needs                                                                          |
 | ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
 | Source projects and exported games | Engine + version (Godot, Unity, Unreal, GameMaker, RPG Maker, Ren'Py, LÖVE, Defold, Bevy, MonoGame, web, Electron, Flutter, .NET, Go, Rust…), dependencies, cycles, scenes, symbols | Nothing                                                                        |
-| Packs and archives                 | Godot `.pck` (also embedded in the `.exe`), zip/apk/jar, `.unitypackage`, tar.gz, asar — list and extract                                                                           | Nothing                                                                        |
+| Packs and archives                 | Godot `.pck` (also embedded in the `.exe`), zip/apk/jar, `.unitypackage`, tar.gz, asar — list and extract; Quake PAK, Doom WAD, XNB, VPK and more recognised                        | Nothing                                                                        |
+| Unity IL2CPP                       | Classes, methods and literals from `global-metadata.dat`, plus a C# skeleton                                                                                                        | Nothing                                                                        |
 | Native binaries                    | Mach-O, ELF, PE, wasm: functions, pseudocode, strings, xrefs, call paths, layout                                                                                                    | Ghidra, Hopper or IDA for decompilation ([setup](docs/installation.md#hopper)) |
-| .NET assemblies                    | Metadata, CIL, native boundaries, build comparisons                                                                                                                                 | Nothing                                                                        |
+| .NET assemblies                    | Metadata, CIL, native boundaries, type- and method-level build comparisons                                                                                                          | Nothing                                                                        |
 | Android                            | Manifest, classes, decompiled methods, references, resources, devices                                                                                                               | JADX / Apktool / adb ([guide](docs/android-analysis.md))                       |
 | JavaScript and Electron            | Modules, imports, source maps, Electron boundaries, runtime observation                                                                                                             | Nothing; a browser for runtime                                                 |
 | Websites                           | Page, network and runtime evidence; one element by CSS selector (cropped image, HTML, computed CSS); stack fingerprint without files                                                | A browser for runtime                                                          |
@@ -203,15 +245,17 @@ Agent:  re_scan → Godot 4.3, 6 scripts, 5 scenes, main scene main.tscn, autolo
 
 ### Rebuild and port
 
-| From → to            | Code                             | Scenes / prefabs                             | Transforms  | Project skeleton            |
-| -------------------- | -------------------------------- | -------------------------------------------- | ----------- | --------------------------- |
-| Godot → **Unity**    | agent, with API map              | automatic → specs + one-click editor builder | Z-mirror    | scene builder script        |
-| Godot → **Unreal**   | agent (.h/.cpp), with API map    | automatic → specs (cm, Z-up)                 | axes + ×100 | .uproject, module, targets  |
-| Godot → **three.js** | agent (TypeScript), with API map | automatic → TypeScript builder modules       | unchanged   | Vite + TS + fixed-step loop |
-| Godot → **Godot C#** | agent, with API map              | automatic (script paths swapped)             | unchanged   | .csproj, project.godot      |
-| Unity → **Godot**    | agent (GDScript), with API map   | automatic → `.tscn`                          | Z-mirror    | project.godot               |
-| Unity → **Unreal**   | agent, with API map              | —                                            | axes + ×100 | .uproject, module           |
-| any → **language**   | agent                            | —                                            | —           | —                           |
+| From → to             | Code                             | Scenes / prefabs                             | Transforms  | Project skeleton                   |
+| --------------------- | -------------------------------- | -------------------------------------------- | ----------- | ---------------------------------- |
+| Godot → **Unity**     | agent, with API map              | automatic → specs + one-click editor builder | Z-mirror    | scene builder script               |
+| Godot → **Unreal**    | agent (.h/.cpp), with API map    | automatic → specs (cm, Z-up)                 | axes + ×100 | .uproject, module, targets         |
+| Godot → **three.js**  | agent (TypeScript), with API map | automatic → TypeScript builder modules       | unchanged   | Vite + TS + fixed-step loop        |
+| Godot → **Godot C#**  | agent, with API map              | automatic (script paths swapped)             | unchanged   | .csproj, project.godot             |
+| Godot 3 → **4**       | converted copy                   | converted                                    | unchanged   | project.godot                      |
+| Unity → **Godot**     | agent (GDScript), with API map   | automatic → `.tscn`                          | Z-mirror    | project.godot                      |
+| Unity → **Unreal**    | agent, with API map              | —                                            | axes + ×100 | .uproject, module                  |
+| RPG Maker → **Godot** | events run by an interpreter     | maps drawn from the tilesets                 | —           | Godot 4 project, database autoload |
+| any → **language**    | agent                            | —                                            | —           | —                                  |
 
 ## CLI
 
@@ -249,22 +293,29 @@ One MCP server (`reverseport mcp`) serves every tool:
 | `port_upgrade` `port_shader` `port_trace` `port_rpgmaker`                                                                                        | Godot 3 → 4 as a converted copy plus the manual list; shader first drafts; per-tick behaviour traces compared                                                            |
 | `re_case`                                                                                                                                        | proof case: evidence, claims, unknowns, decisions, tests                                                                                                                 |
 
-Next to these come the deep-analysis tools — `open_binary`, `procedure_pseudo_code`, `xrefs`, `search_strings`, `analyze_javascript_application`,
-`inspect_android_package`, `inspect_managed_artifact`, `observe_web_session` and many more. `engine_tools` lists them from the running server, and
-`npm run docs:generate` writes the [generated tool catalog](docs/mcp-contracts.md#generated-catalog) with every
-contract. The HTTP API
+Next to these come the deep-analysis tools — `open_binary`, `procedure_pseudo_code`, `xrefs`, `search_strings`,
+`analyze_javascript_application`, `inspect_android_package`, `inspect_managed_artifact`, `observe_web_session` and
+many more. `engine_tools` lists them from the running server, and `npm run docs:generate` writes the
+[generated tool catalog](docs/mcp-contracts.md#generated-catalog) with every contract. The HTTP API
 (`reverseport serve`) exposes the same tools in every vendor's format; see [Connect any agent](docs/connect-any-agent.md).
 
 ## How it compares
 
-|                            | ReversePort                                                      | A single decompiler MCP server | By hand                     |
-| -------------------------- | ---------------------------------------------------------------- | ------------------------------ | --------------------------- |
-| Setup                      | `npx reverseport setup` for all your agents                      | One server per tool, per agent | Install and learn each tool |
-| Source projects and builds | Engine, version, scenes, packs, diffs, no build needed           | Binaries only                  | Read files yourself         |
-| Native binaries            | Through Ghidra, Hopper or IDA that you have installed            | One backend                    | The tool's own UI           |
-| Porting                    | Plan, API maps, scene and asset conversion, `port_verify`        | Not part of the job            | Rewrite and check by hand   |
-| Runs                       | Locally, target read-only                                        | Usually locally                | Locally                     |
-| Does not                   | Crack DRM or anti-cheat, or write ported code without your agent | Port or compare builds         | Scale                       |
+|                            | ReversePort                                                       | Disassembler MCP servers (IDA, Ghidra, …) | By hand                     |
+| -------------------------- | ----------------------------------------------------------------- | ----------------------------------------- | --------------------------- |
+| Focus                      | Games, builds and porting, with evidence                          | One disassembler for one model            | Whatever you know           |
+| Setup                      | `npx reverseport setup` for all your agents                       | One server per tool, per agent            | Install and learn each tool |
+| Source projects and builds | Engine, version, scenes, packs, diffs, no build needed            | Binaries only                             | Read files yourself         |
+| Game formats               | Godot packs, Unity IL2CPP, GameMaker, Ren'Py, Unreal, sound banks | Not part of the job                       | One tool per format         |
+| Native binaries            | Through the Ghidra, Hopper or IDA that you have installed         | Deepest inside their own tool             | The tool's own UI           |
+| Porting                    | Plan, API maps, scene and asset conversion, `port_verify`         | Not part of the job                       | Rewrite and check by hand   |
+| Proof                      | Proof cases and guard hooks                                       | Up to the agent                           | Your notes                  |
+| Runs                       | Locally, target read-only                                         | Usually locally                           | Locally                     |
+| Does not                   | Crack DRM or anti-cheat, or write ported code without your agent  | Port or compare builds                    | Scale                       |
+
+If you live inside IDA or Ghidra all day, a dedicated server for that tool goes deepest there. ReversePort's
+deep-analysis engine is [REA](https://github.com/morluto/rea); if you want broad reverse engineering without the game
+formats, porting and proof cases, REA itself is a good choice too.
 
 ## FAQ
 
@@ -282,14 +333,31 @@ agent, one unit at a time, with an API map for the engine pair; `port_verify` th
 functions and dormant logic (stub bodies, functions nothing calls, silenced warnings), so a port that "compiles" but
 does nothing is not reported as done.
 
-**Do I need Ghidra?** Only for decompiling native binaries. Scanning, packs, lookup, blueprints and porting need
-nothing extra.
+**Do I need Ghidra?** Only for decompiling native binaries. ReversePort finds Ghidra, Hopper or IDA but never installs
+them. Scanning, packs, IL2CPP metadata, build diffs, lookup, blueprints and porting need nothing extra.
+
+**How is this different from REA?** REA is the deep-analysis engine inside ReversePort. ReversePort adds its own
+tools on top: game engines and formats, build diffs, proof cases, clean-room blueprints and verified ports between
+engines, plus setup for every agent and a Claude Code plugin.
 
 **How do I update or remove it?** `reverseport update` updates a global install, and `reverseport uninstall` removes
 the agent registrations and skill files it added. See [Diagnose, update, and remove](docs/installation.md#diagnose-update-and-remove).
 
 **Something broke or is missing.** Open an [issue](https://github.com/laaielichter/reverseport/issues) with the
-command and its JSON error. Every error names the next step, so include that line too.
+command and its JSON error. Every error names the next step, so include that line too. Questions are welcome in
+[Discussions](https://github.com/laaielichter/reverseport/discussions).
+
+## Contributing
+
+New formats, engines and game libraries are the easiest first pull requests: a detector, a fixture and a test. Pick a
+[good first issue](https://github.com/laaielichter/reverseport/labels/good%20first%20issue) — each one names the
+files to touch and says when it is done. Ideas and questions go to
+[Discussions](https://github.com/laaielichter/reverseport/discussions).
+
+Read [CONTRIBUTING.md](CONTRIBUTING.md) and [AGENTS.md](AGENTS.md) for the layout and the checks
+(`npm run test:port` for ReversePort's own tools), and the [Code of Conduct](CODE_OF_CONDUCT.md).
+
+<a href="https://github.com/laaielichter/reverseport/graphs/contributors"><img src="https://contrib.rocks/image?repo=laaielichter/Reverseport" alt="Contributors to ReversePort"></a>
 
 ## Sister tools
 
@@ -306,8 +374,10 @@ README.
 
 ## Responsible use
 
-Only analyse or port software you own or are allowed to analyse. ReversePort does not decrypt, crack or bypass DRM,
-anti-cheat or licensing. Read [RESPONSIBLE-USE.md](RESPONSIBLE-USE.md) and the [disclaimer](DISCLAIMER.md).
+Only analyse or port software you own or are allowed to analyse. ReversePort is for interoperability, preservation,
+learning and moving your own work between engines. It does not decrypt, crack or bypass DRM, anti-cheat or licensing,
+and it never sends your targets anywhere. Commercial tools such as IDA and Hopper need your own valid licence. Read
+[RESPONSIBLE-USE.md](RESPONSIBLE-USE.md) and the [disclaimer](DISCLAIMER.md).
 
 ## Documentation
 
@@ -316,10 +386,15 @@ anti-cheat or licensing. Read [RESPONSIBLE-USE.md](RESPONSIBLE-USE.md) and the [
 - [CLI and Evidence](docs/cli.md): commands, provider selection, snapshots, import/export.
 - [MCP contracts](docs/mcp-contracts.md) and [agent prompts](docs/mcp-prompts.md): tool results, sessions, guided investigations.
 - [Porting and rebuilds](.agents/skills/reverse-engineer-anything/references/porting-and-rebuilds.md): the recon, rebuild and port workflows.
+- [Walkthrough: Godot → three.js](docs/walkthrough-godot-to-threejs.md): a small port, every command run and its output pasted.
 - [Proof cases, guard hooks and memory](docs/proof-and-memory.md): `re_case`, the Claude Code hooks, the optional Stashpad link and context cost.
 - [Challenge self-check](bench/README.md): programs with known answers (from rea-lab) and what `re_binary` reveals.
 - [Rated by agents](AGENT-RATINGS.md): independent agent reviews, round by round, and what is still open.
 - [Nederlands](docs/README.nl.md) · [AGENTS.md](AGENTS.md) for contributors · [CONTRIBUTING.md](CONTRIBUTING.md)
+
+## Star history
+
+<a href="https://www.star-history.com/#laaielichter/Reverseport&Date"><img src="https://api.star-history.com/svg?repos=laaielichter/Reverseport&type=Date" alt="Star history of ReversePort" width="560"></a>
 
 ## Credits
 
@@ -327,7 +402,8 @@ The deep-analysis engine is based on [REA: Reverse Engineer Anything](https://gi
 Proof cases are ported from [Digfox](https://github.com/Devaretanmay/digfox) (MIT) and the guard hooks follow
 [rea-jev](https://github.com/juan-viox/rea-jev) (MIT); the challenge self-check uses
 [rea-lab](https://github.com/pablodiazjorge/rea-lab)'s generator and oracle (MIT). Third-party components are listed in
-[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). Thanks to everyone who sent a pull request, such as
+[@chinmayee5599](https://github.com/chinmayee5599) for Quake PAK support.
 
 ## Support
 

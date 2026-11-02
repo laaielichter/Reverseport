@@ -1,5 +1,5 @@
 name: Bug report
-description: Report a reproducible problem in REA
+description: Report a reproducible problem in ReversePort
 title: "[Bug] "
 labels:
   - bug
@@ -77,9 +77,9 @@ body:
   - type: input
     id: rea-version
     attributes:
-      label: REA version
-      description: Use `rea --version` or provide the source revision.
-      placeholder: 3.1.0 or git revision
+      label: ReversePort version
+      description: Use `reverseport --version` or provide the source revision.
+      placeholder: 1.12.0 or git revision
     validations:
       required: true
 
