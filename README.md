@@ -35,7 +35,7 @@ ReversePort gives agents one consistent way to do all of that:
 
 - 🔍 **Understand anything** — engine and version of any project or exported game, dependency graphs, scenes,
   symbols in 30+ languages, executables, packs and unknown data. JS/TS monorepos (pnpm, Turborepo, Nx, Lerna, Rush,
-  tsconfig paths) and Rust workspaces resolve too. No build step, no dependencies.
+  tsconfig paths, `#imports`, Deno import maps) and Rust workspaces resolve too. No build step, no dependencies.
 - 🧠 **Go deep** — decompile, cross-reference and trace native, managed (.NET), Android, Electron/JavaScript,
   WebAssembly, firmware and browser targets through Ghidra, Hopper, IDA, JADX and more. ReversePort connects to the
   tools you have installed, drives them and shows the evidence behind every conclusion.

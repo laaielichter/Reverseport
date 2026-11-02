@@ -32,7 +32,15 @@ export const FORMATS = [
   { id: 'unreal-asset', name: 'Unreal package (.uasset/.umap)', category: 'engine', test: (b, o) => u32le(b, o) === 0x9e2a83c1 },
   { id: 'gamemaker-data', name: 'GameMaker data (FORM/GEN8)', category: 'engine', test: (b, o) => str(b, o, 'FORM') && str(b, o + 8, 'GEN8') },
   { id: 'swf', name: 'Flash SWF', category: 'engine', offsetZeroOnly: true, test: (b, o) => o === 0 && ['FWS', 'CWS', 'ZWS'].includes(b.toString('latin1', o, o + 3)) && b[o + 3] >= 1 && b[o + 3] <= 60 },
-  { id: 'pak', name: 'Quake PAK archive', category: 'archive', test: (b, o) => str(b, o, 'PACK') },
+  // Git packfiles also start with PACK, followed by a big-endian version 2 or 3; a Quake PAK has a directory
+  // offset and a directory length (64 bytes per entry) there instead.
+  { id: 'git-pack', name: 'Git packfile', category: 'archive', test: (b, o) => str(b, o, 'PACK') && [2, 3].includes(u32be(b, o + 4)) },
+  { id: 'pak', name: 'Quake PAK archive', category: 'archive', test: (b, o) => str(b, o, 'PACK') && (b.length < o + 12 || u32le(b, o + 8) % 64 === 0) },
+  { id: 'wad', name: 'Doom WAD archive', category: 'archive', test: (b, o) => (str(b, o, 'IWAD') || str(b, o, 'PWAD')) && (b.length < o + 12 || u32le(b, o + 8) >= 12) },
+  { id: 'wad-quake', name: 'Quake/Half-Life texture WAD (WAD2/WAD3)', category: 'archive', test: (b, o) => str(b, o, 'WAD2') || str(b, o, 'WAD3') },
+  // XNB: platform letter (w Windows, x Xbox 360, m Windows Phone, plus MonoGame's), then format version 3-5.
+  { id: 'xnb', name: 'XNA/MonoGame content (XNB)', category: 'archive', test: (b, o) => str(b, o, 'XNB') && b.length > o + 4 && 'wmxiadXWnMrP5OSGb'.includes(String.fromCharCode(b[o + 3])) && [3, 4, 5].includes(b[o + 4]) },
+  { id: 'vpk', name: 'Valve VPK archive', category: 'archive', test: (b, o) => at(b, o, [0x34, 0x12, 0xaa, 0x55]) && [1, 2].includes(u32le(b, o + 4)) },
   { id: 'renpy-rpa', name: "Ren'Py archive (RPA)", category: 'archive', test: (b, o) => str(b, o, 'RPA-3.0 ') || str(b, o, 'RPA-2.0 ') },
   { id: 'asar', name: 'Electron archive (asar)', category: 'archive', offsetZeroOnly: true, test: (b, o) => o === 0 && u32le(b, 0) === 4 && str(b, 16, '{"files"') },
   { id: 'zip', name: 'ZIP archive (also apk/jar/ipa/docx/nupkg)', category: 'archive', test: (b, o) => at(b, o, [0x50, 0x4b, 3, 4]) || at(b, o, [0x50, 0x4b, 5, 6]) },

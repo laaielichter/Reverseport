@@ -7,7 +7,7 @@ import { tempDir } from './helpers.mjs';
 
 const { scanProject } = await import('../src/scan.mjs');
 const { graphTool } = await import('../src/graph.mjs');
-const { parseJsonc, packageCandidates } = await import('../src/jsworkspace.mjs');
+const { parseJsonc, packageCandidates, pnpmWorkspaceGlobs, externalPackage } = await import('../src/jsworkspace.mjs');
 
 async function writeTree(root, tree) {
   for (const [rel, content] of Object.entries(tree)) {
@@ -92,4 +92,66 @@ test('graph: workspace package names and tsconfig paths resolve to files; packag
   assert.ok(g.entryPoints.includes(from));
   assert.equal(g.workspace.resolvedByTsconfigPaths, 1);
   assert.deepEqual(g.workspace.packageEdges[0], { from: '@demo/cli', to: '@demo/core', uses: 2 });
+});
+
+test('pnpm-workspace.yaml: package globs without a YAML library', async () => {
+  assert.deepEqual(pnpmWorkspaceGlobs("packages:\n  - 'packages/*'\n  - \"apps/*\"\n  # comment lines are skipped\n  - tools/** # so are trailing comments\n  - '!**/test/**'\ncatalog:\n  react: ^19\n"), ['packages/*', 'apps/*', 'tools/**', '!**/test/**']);
+  assert.deepEqual(pnpmWorkspaceGlobs("packages: ['a/*', \"b\"]\n"), ['a/*', 'b']);
+  assert.deepEqual(pnpmWorkspaceGlobs('packages:\n- a/*\nonlyBuiltDependencies:\n- esbuild\n'), ['a/*'], 'items of the next key are not packages');
+  assert.deepEqual(pnpmWorkspaceGlobs('catalog: {}\n'), []);
+  const root = await tempDir('rp-pnpm-');
+  await writeTree(root, {
+    'package.json': { name: 'pn', private: true },
+    'pnpm-lock.yaml': "lockfileVersion: '9.0'\n",
+    'pnpm-workspace.yaml': "packages:\n  - 'packages/*'\n  - \"apps/*\"\n  # comment lines are skipped\n",
+    'packages/a/package.json': { name: 'a' },
+    'apps/web/package.json': { name: 'web' },
+  });
+  const mono = (await scanProject({ path: root })).engines.find(e => e.id === 'js-monorepo');
+  assert.deepEqual(mono.details.workspaces, ['packages/*', 'apps/*']);
+  assert.equal(mono.details.packageManager, 'pnpm');
+});
+
+test('scan: game and physics libraries in package.json', async () => {
+  const root = await tempDir('rp-gamelibs-');
+  await writeTree(root, { 'package.json': { name: 'g', dependencies: { melonjs: '17', 'matter-js': '0.20', howler: '2', '@dimforge/rapier3d-compat': '0.14' } } });
+  const node = (await scanProject({ path: root })).engines.find(e => e.id === 'node');
+  for (const n of ['melonJS', 'Matter.js', 'Howler.js', 'Rapier']) assert.ok(node.details.frameworks.includes(n), n);
+});
+
+test('graph: package.json #imports resolve (exact, * pattern, conditions); a package target stays external', async () => {
+  const root = await tempDir('rp-hash-');
+  await writeTree(root, {
+    'package.json': { name: 'h', type: 'module', imports: { '#worker': './src/worker.ts', '#utils/*': './src/utils/*.ts', '#db': { node: './src/db-node.ts', default: './src/db-web.ts' }, '#fetch': 'undici' } },
+    'src/index.ts': "import w from '#worker'\nimport { pad } from '#utils/text'\nimport db from '#db'\nimport { fetch } from '#fetch'\nconsole.log(w, pad, db, fetch)\n",
+    'src/worker.ts': 'export default 1\n',
+    'src/utils/text.ts': 'export const pad = 1\n',
+    'src/db-node.ts': 'export default 1\n',
+    'src/db-web.ts': 'export default 2\n',
+  });
+  const g = await graphTool({ path: root });
+  const to = new Set(g.edges.filter(e => e.from === 'src/index.ts').map(e => e.to));
+  for (const f of ['src/worker.ts', 'src/utils/text.ts', 'src/db-node.ts']) assert.ok(to.has(f), f);
+  const ext = g.externals.map(e => e.name);
+  assert.ok(!ext.some(n => n.startsWith('#')), 'no #imports in externals');
+  assert.ok(ext.includes('undici'), 'a #import that maps to a package counts as that package');
+  assert.equal(g.workspace.resolvedByImportMaps, 3);
+});
+
+test('graph: deno.json import maps resolve local entries; jsr:, npm: and https: stay external', async () => {
+  const root = await tempDir('rp-deno-');
+  await writeTree(root, {
+    'deno.jsonc': '{\n  // import map\n  "imports": { "@/": "./src/", "utils": "./lib/utils.ts", "std/": "jsr:@std/", "zod": "npm:zod@3.23.8", "preact": "https://esm.sh/preact@10" },\n}\n',
+    'main.ts': 'import { db } from "@/db.ts"\nimport { u } from "utils"\nimport { join } from "std/path/mod.ts"\nimport { z } from "zod"\nimport { h } from "preact"\nimport { assert } from "jsr:@std/assert@1"\nconsole.log(db, u, join, z, h, assert)\n',
+    'src/db.ts': 'export const db = 1\n',
+    'lib/utils.ts': 'export const u = 1\n',
+  });
+  const g = await graphTool({ path: root });
+  const to = new Set(g.edges.filter(e => e.from === 'main.ts').map(e => e.to));
+  assert.ok(to.has('src/db.ts'), 'prefix ending in /');
+  assert.ok(to.has('lib/utils.ts'), 'exact name');
+  const ext = g.externals.map(e => e.name).sort();
+  assert.deepEqual(ext, ['esm.sh', 'jsr:@std/assert', 'jsr:@std/path', 'npm:zod']);
+  assert.equal(externalPackage('npm:@scope/pkg@1.2.3/sub'), 'npm:@scope/pkg');
+  assert.equal(externalPackage('lodash/fp'), 'lodash');
 });
