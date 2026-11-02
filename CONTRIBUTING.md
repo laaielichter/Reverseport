@@ -251,6 +251,14 @@ protocols in adapters and shared CLI/MCP workflows in the application layer.
 
 ### Windows source checkouts
 
+The repository has no `.gitattributes`: the Claude plugin directory rejects a
+repository when a clone can differ from its download. Files are stored with LF
+line endings (the `.cmd` test fixtures with CRLF), so on Windows clone with
+`git clone -c core.autocrlf=false`. In an existing checkout, run
+`git config core.autocrlf false`, commit or stash your work, then rewrite the
+files with `git rm -r -q --cached . && git reset --hard`. CI sets the same
+option for its Windows runners.
+
 The published npm package includes the Windows x64 native addon and its
 manifest. A source checkout does not: `native/windows/build/` is ignored by
 Git, and neither `npm ci` nor `npm run build:cached` (or `npm run build`)

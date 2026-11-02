@@ -96,6 +96,8 @@ Use [.nvmrc](.nvmrc) and `package.json#packageManager` for the pinned toolchain.
 - `npm run check:fast`: cached typecheck/lint and the pre-push check.
 - `npm run docs:check`: validate generated documentation.
 
+Do not add `.gitattributes` rules: the Claude plugin directory rejects the repository when a clone can differ from its download. Line endings are LF, except CRLF for `.cmd` fixtures; see [Windows source checkouts](CONTRIBUTING.md#windows-source-checkouts).
+
 Use relevant checks for the change. The complete local gate, `npm run check:pr`, is optional for broad changes or CI diagnosis. See [CONTRIBUTING.md](CONTRIBUTING.md) for development, generated-file ownership, and release conventions.
 
 Coordinate expensive checks across agents. If a test unexpectedly consumes heavy CPU, stop its owned process family and profile a bounded representative case before retrying. Inspect production work, fixture generation, subprocesses, and repeated setup; preserve regression coverage when optimizing. Follow the [test resource guidance](docs/testing.md#developer-commands).
