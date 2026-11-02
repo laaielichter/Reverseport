@@ -357,7 +357,7 @@ await withVerifierCleanup(async () => {
       "--approval-mode",
       mode === "chat" ? "default" : "yolo",
       "--allowed-mcp-server-names",
-      "reverseport",
+      "rea",
       "--output-format",
       "stream-json",
       "--max-session-turns",
@@ -386,12 +386,12 @@ await withVerifierCleanup(async () => {
       .find((v) => v.type === "system" && v.subtype === "init");
     assert(initialized);
     const observed = initialized.tools
-      .filter((n) => n.startsWith("mcp__reverseport__"))
+      .filter((n) => n.startsWith("mcp__rea__"))
       .sort();
     catalogSize = observed.length;
     assert.deepEqual(
       observed,
-      TOOL_CONTRACTS.map((c) => `mcp__reverseport__${c.name}`).sort(),
+      TOOL_CONTRACTS.map((c) => `mcp__rea__${c.name}`).sort(),
       "Qwen must discover the complete REA catalog",
     );
     assert.equal(fixture.failure, undefined);

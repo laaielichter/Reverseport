@@ -12,7 +12,7 @@ const call = (id: string, tool: string, errorCode?: string) => ({
   item: {
     id,
     type: "mcp_tool_call",
-    server: "reverseport",
+    server: "rea",
     tool,
     arguments: tool === "open_binary" ? { path: "/bin/true" } : {},
     status: "completed",

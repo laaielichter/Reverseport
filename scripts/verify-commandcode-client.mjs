@@ -50,7 +50,7 @@ const skillDirectory = join(
   "reverse-engineer-anything",
 );
 const expectedNames = TOOL_CONTRACTS.map(
-  (tool) => "mcp__reverseport__" + tool.name,
+  (tool) => "mcp__rea__" + tool.name,
 ).sort();
 let clientVersion = null;
 let expectedSkill;
@@ -122,7 +122,7 @@ await withVerifierCleanup(async () => {
     const validateCatalog = async (text) => {
       const entries = [
         ...text.matchAll(
-          /^### (mcp__reverseport__[A-Za-z0-9_]+)\n[\s\S]*?\nParameters:\n```json\n([\s\S]*?)\n```/gm,
+          /^### (mcp__rea__[A-Za-z0-9_]+)\n[\s\S]*?\nParameters:\n```json\n([\s\S]*?)\n```/gm,
         ),
       ];
       assert.deepEqual(
@@ -151,7 +151,7 @@ await withVerifierCleanup(async () => {
           const names = [
             ...new Set(
               strings.flatMap(
-                (text) => text.match(/mcp__reverseport__[A-Za-z0-9_]+/g) ?? [],
+                (text) => text.match(/mcp__rea__[A-Za-z0-9_]+/g) ?? [],
               ),
             ),
           ].sort();
@@ -162,8 +162,7 @@ await withVerifierCleanup(async () => {
             "Default native deferred-tool prompt must advertise the complete REA inventory",
           );
           assert.equal(
-            tools.filter((tool) => tool.name.startsWith("mcp__reverseport__"))
-              .length,
+            tools.filter((tool) => tool.name.startsWith("mcp__rea__")).length,
             0,
             "Keep native lazy schema delivery enabled",
           );
@@ -220,14 +219,14 @@ await withVerifierCleanup(async () => {
               sha256: catalogDigest,
             };
             const query =
-              "const fs=require('node:fs'),crypto=require('node:crypto');const text=fs.readFileSync(process.argv[1],'utf8');const schemas=[...text.matchAll(/^### (mcp__reverseport__[A-Za-z0-9_]+)\\n/gm)].length;console.log(JSON.stringify({rea_catalog:{schemas,sha256:crypto.createHash('sha256').update(text).digest('hex')}}));";
+              "const fs=require('node:fs'),crypto=require('node:crypto');const text=fs.readFileSync(process.argv[1],'utf8');const schemas=[...text.matchAll(/^### (mcp__rea__[A-Za-z0-9_]+)\\n/gm)].length;console.log(JSON.stringify({rea_catalog:{schemas,sha256:crypto.createHash('sha256').update(text).digest('hex')}}));";
             return call("shell_command", {
               command: process.execPath,
               args: ["-e", query, catalogArtifact],
             });
           }
           await validateCatalog(last);
-          return call("mcp__reverseport__analyze_javascript_application", {
+          return call("mcp__rea__analyze_javascript_application", {
             input_path: target,
             format: "directory",
           });
@@ -242,7 +241,7 @@ await withVerifierCleanup(async () => {
           );
           assert.deepEqual(JSON.parse(line).rea_catalog, catalogProjection);
           artifactProjectionSeen = true;
-          return call("mcp__reverseport__analyze_javascript_application", {
+          return call("mcp__rea__analyze_javascript_application", {
             input_path: target,
             format: "directory",
           });

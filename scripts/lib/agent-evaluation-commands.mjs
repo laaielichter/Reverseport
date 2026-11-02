@@ -10,7 +10,6 @@ import {
 import { ArtifactResourceScope } from "../../dist/artifacts/ArtifactResourceScope.js";
 import { AnalysisCleanupLease } from "../../dist/artifacts/AnalysisCleanupLease.js";
 import { retainOwnedCommandCleanup } from "../../dist/providers/OwnedCommandCleanup.js";
-import { PRODUCT_IDENTITY } from "../../dist/identity.js";
 
 /** Keep command ownership through failure and join cleanup before removing a run. */
 export function createAgentEvaluationCommands({
@@ -92,7 +91,7 @@ export function createAgentEvaluationCommands({
         'approval_policy="never"',
         ...approvedTools.flatMap((name) => [
           "-c",
-          `mcp_servers.${PRODUCT_IDENTITY.mcpServerKey}.tools.${name}.approval_mode="approve"`,
+          `mcp_servers.rea.tools.${name}.approval_mode="approve"`,
         ]),
         ...(optionalModel === undefined ? [] : ["--model", optionalModel]),
         prompt,

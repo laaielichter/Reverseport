@@ -270,7 +270,7 @@ it("keeps shared-ownership proof when removal refuses a shadowed duplicate", asy
   await mkdir(dirname(client.configPath), { recursive: true });
   await writeFile(
     client.configPath,
-    '{"mcpServers":{"reverseport":{"command":"foreign-server","args":[]},"reverseport":{"command":"rea","args":["mcp"]}}}',
+    '{"mcpServers":{"rea":{"command":"foreign-server","args":[]},"rea":{"command":"rea","args":["mcp"]}}}',
   );
   const state = join(home, ".rea", "state.json");
   await mkdir(dirname(state), { recursive: true });
@@ -319,7 +319,7 @@ it("stops removal when a completed reread leaves its handle unreleased", async (
   await mkdir(dirname(client.configPath), { recursive: true });
   await writeFile(
     client.configPath,
-    '{"mcpServers":{"reverseport":{"command":"foreign-server","args":[]}}}',
+    '{"mcpServers":{"rea":{"command":"foreign-server","args":[]}}}',
   );
   const state = join(home, ".rea", "state.json");
   await mkdir(dirname(state), { recursive: true });
@@ -463,7 +463,7 @@ it("removes a shared registration once and reports that outcome to both clients"
 
 it("keeps one row per client when OpenCode is pointed at FreeBuff's file", async () => {
   // OPENCODE_CONFIG can make OpenCode and FreeBuff edit one file with different
-  // tables (`mcp.reverseport` and `mcpServers.reverseport`). Sharing one decision by filename
+  // tables (`mcp.rea` and `mcpServers.rea`). Sharing one decision by filename
   // would remove only OpenCode's row and report it for FreeBuff too, leaving
   // FreeBuff registered while uninstall reports complete.
   const home = await createTestTempDirectory("rea-shared-dialects-");
@@ -515,13 +515,13 @@ it.each([true, false])(
       shared,
       JSON.stringify({
         mcp: {
-          reverseport: {
+          rea: {
             type: "local",
             command: [sharedOwned ? "foreign-server" : "rea", "mcp"],
           },
         },
         mcpServers: {
-          reverseport: {
+          rea: {
             command: sharedOwned ? "rea" : "foreign-server",
             args: ["mcp"],
           },
@@ -551,13 +551,13 @@ it.each([true, false])(
       const remaining = JSON.parse(await readFile(shared, "utf8"));
       expect(remaining.mcp).toEqual(
         sharedOwned
-          ? { reverseport: { type: "local", command: ["foreign-server", "mcp"] } }
+          ? { rea: { type: "local", command: ["foreign-server", "mcp"] } }
           : {},
       );
       expect(remaining.mcpServers).toEqual(
         sharedOwned
           ? {}
-          : { reverseport: { command: "foreign-server", args: ["mcp"] } },
+          : { rea: { command: "foreign-server", args: ["mcp"] } },
       );
     } finally {
       await host.close?.();
@@ -613,7 +613,7 @@ it("does not treat a dangling FreeBuff profile link as installed", async () => {
       expect.objectContaining({ name: "cursor", status: "removed" }),
     );
     expect(JSON.parse(await readFile(cursor, "utf8"))).not.toHaveProperty(
-      "mcpServers.reverseport",
+      "mcpServers.rea",
     );
     expect(result.items).toContainEqual(
       expect.objectContaining({ name: "freebuff", status: "retained" }),
@@ -641,7 +641,7 @@ it("serves a completed removal reread when its close retry releases the handle",
   await mkdir(dirname(client.configPath), { recursive: true });
   await writeFile(
     client.configPath,
-    '{"mcpServers":{"reverseport":{"command":"foreign-server","args":[]}}}',
+    '{"mcpServers":{"rea":{"command":"foreign-server","args":[]}}}',
   );
   const cacheOwned = join(home, ".rea", "cache", "owned");
   await mkdir(dirname(cacheOwned), { recursive: true });
@@ -659,7 +659,7 @@ it("serves a completed removal reread when its close retry releases the handle",
       // Another writer registers REA between preflight and removal.
       await writeFile(
         client.configPath,
-        '{"mcpServers":{"reverseport":{"command":"rea","args":["mcp"]}}}',
+        '{"mcpServers":{"rea":{"command":"rea","args":["mcp"]}}}',
       );
       hold();
       return base.inspectSkill?.();
@@ -920,7 +920,7 @@ it.each(
     );
     await mkdir(dirname(config), { recursive: true });
     const registration =
-      '{"mcpServers":{"reverseport":{"command":"rea","args":["mcp"]}}}\n';
+      '{"mcpServers":{"rea":{"command":"rea","args":["mcp"]}}}\n';
     await writeFile(config, registration);
     const heldPath = source === "policy" ? join(home, "system.json") : config;
     const heldText = source === "policy" ? "{}\n" : registration;
@@ -986,7 +986,7 @@ it("keeps a supplied registration scope responsible for diagnostics and cleanup 
   await mkdir(dirname(config), { recursive: true });
   await writeFile(
     config,
-    '{"mcpServers":{"reverseport":{"command":"rea","args":["mcp"]}}}',
+    '{"mcpServers":{"rea":{"command":"rea","args":["mcp"]}}}',
   );
   const held = holdReadHandle(config, "held scoped registration descriptor");
   const resources = new ArtifactResourceScope();

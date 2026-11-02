@@ -23,6 +23,7 @@ import { defaultKunaCacheDirectory } from "../config/kunaCacheDirectory.js";
 import { linuxHopperReleaseCacheDirectory } from "./LinuxHopperCacheDirectory.js";
 
 import { ClientConfigurationPublication } from "./ClientConfigurationPublication.js";
+import { parseClientRegistrationLauncher } from "./ClientRegistration.js";
 
 import { PRODUCT_IDENTITY } from "../identity.js";
 import {
@@ -31,7 +32,8 @@ import {
   readSkillFile,
   skillDestinationSelection,
 } from "./SetupSkill.js";
-import { isOwnedRegistration } from "./ClientRegistrationIdentity.js";
+import { classifyClientRegistrationCommand } from "./ClientRegistrationIdentity.js";
+import { CURRENT_ENTRYPOINT_PATH } from "../process/CurrentEntrypointPath.js";
 import { dshDocument } from "./DshCordisPatch.js";
 import { resolveClientConfigTransactionPath } from "./ClientConfigPath.js";
 import {
@@ -1020,6 +1022,19 @@ const resolveUninstallConfigPath = async (
       "failed",
       "Configuration path could not be safely verified. Check its permissions and, if it is a symbolic link, verify that the link resolves to a regular file owned by the current user, then rerun uninstall.",
     )
+  );
+};
+
+/** Ownership rule for persistent MCP registrations created by REA setup. */
+const isOwnedRegistration = (value: unknown, client: SetupClient): boolean => {
+  const parsed = parseClientRegistrationLauncher(value, client);
+  if (!parsed.ok) return false;
+  const { command, args } = parsed.value;
+  return (
+    classifyClientRegistrationCommand(
+      [command, ...args],
+      CURRENT_ENTRYPOINT_PATH,
+    ) === "owned"
   );
 };
 

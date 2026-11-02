@@ -107,7 +107,7 @@ For MCP, register the resolved Node entry point and the same provider settings:
 ```json
 {
   "mcpServers": {
-    "reverseport": {
+    "rea": {
       "command": "C:\\tools\\node\\node.exe",
       "args": ["C:\\tools\\rea\\scripts\\rea.mjs", "mcp"],
       "env": {

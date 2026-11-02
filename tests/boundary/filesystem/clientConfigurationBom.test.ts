@@ -67,7 +67,7 @@ describe.each(["vscode", "copilot_cli", "opencode", "commandcode"])(
           label: "left\uFEFFright",
           [serversKey]: {
             other: { command: "other" },
-            reverseport: clientRegistrationEntry(client.format, command, {}),
+            rea: clientRegistrationEntry(client.format, command, {}),
           },
           theme: "dark",
         });
@@ -113,7 +113,7 @@ describe.each(["vscode", "copilot_cli", "opencode", "commandcode"])(
   },
 );
 
-it.each(['\uFEFF{"servers": {"reverseport": @}}', '\uFEFF{"setting":\uFEFFtrue}'])(
+it.each(['\uFEFF{"servers": {"rea": @}}', '\uFEFF{"setting":\uFEFFtrue}'])(
   "rejects malformed BOM placement without mutation: %j",
   async (original) => {
     const home = await createTestTempDirectory(
@@ -166,7 +166,7 @@ it("preserves BOM-prefixed JSONC values and comments through update and removal"
   const updated = await readFile(client.configPath, "utf8");
   expect(parseClientConfiguration(updated, client.format).servers).toEqual({
     other: { command: "other\uFEFFtool" },
-    reverseport: clientRegistrationEntry(client.format, updatedCommand, {}),
+    rea: clientRegistrationEntry(client.format, updatedCommand, {}),
   });
 
   expect(await systemUninstallHost(home).removeClient(client)).toMatchObject({
@@ -211,7 +211,7 @@ it.each(["", "\n  \n", "\uFEFF"])(
       backupPath: `${client.configPath}.rea.backup`,
     });
     expect(JSON.parse(await readFile(client.configPath, "utf8"))).toEqual({
-      mcpServers: { reverseport: clientRegistrationEntry(client.format, command, {}) },
+      mcpServers: { rea: clientRegistrationEntry(client.format, command, {}) },
     });
     expect(await inspectClientConfiguration(client, {}, command)).toEqual({
       status: "already_current",

@@ -103,7 +103,7 @@ describe("Trae JSON registration", () => {
     ).toBe("configured");
     const parsed = JSON.parse(await readFile(client.configPath, "utf8"));
     expect(parsed.mcpServers.other).toEqual({ command: "other-server" });
-    expect(parsed.mcpServers.reverseport).toEqual({
+    expect(parsed.mcpServers.rea).toEqual({
       command: command[0],
       args: command.slice(1),
     });
@@ -132,7 +132,7 @@ describe("Trae JSON registration", () => {
     ).toBe("configured");
     const parsed = JSON.parse(await readFile(client.configPath, "utf8"));
     expect(parsed.unrelated).toEqual({ setting: true });
-    expect(parsed.mcpServers.reverseport).toEqual({
+    expect(parsed.mcpServers.rea).toEqual({
       command: command[0],
       args: command.slice(1),
     });
@@ -145,7 +145,7 @@ describe("Trae JSON registration", () => {
       (await configureClientConfiguration(client, {}, command)).status,
     ).toBe("configured");
     const parsed = JSON.parse(await readFile(client.configPath, "utf8"));
-    expect(parsed.mcpServers.reverseport).toEqual({
+    expect(parsed.mcpServers.rea).toEqual({
       command: command[0],
       args: command.slice(1),
     });
@@ -168,6 +168,6 @@ describe("Trae JSON registration", () => {
     );
     const parsed = JSON.parse(await readFile(client.configPath, "utf8"));
     expect(parsed.mcpServers.other).toEqual({ command: "other-server" });
-    expect(parsed.mcpServers.reverseport).toBeUndefined();
+    expect(parsed.mcpServers.rea).toBeUndefined();
   });
 });

@@ -1,14 +1,9 @@
 import { accessSync, constants, realpathSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
-import {
-  CURRENT_ENTRYPOINT_PATH,
-  normalizeEntrypointPath,
-} from "../process/CurrentEntrypointPath.js";
+import { normalizeEntrypointPath } from "../process/CurrentEntrypointPath.js";
 import { valid } from "semver";
 
 import { PRODUCT_IDENTITY } from "../identity.js";
-import { parseClientRegistrationLauncher } from "./ClientRegistration.js";
-import type { SetupClient } from "./SupportedClients.js";
 
 /** Package runners whose pinned launcher setup can register. */
 export type PackageRunner = "npx" | "bunx";
@@ -230,33 +225,6 @@ export const classifyClientRegistrationCommand = (
 ): ClientRegistrationCommandIdentity =>
   inspectClientRegistrationCommand(command, currentCommandPath).identity;
 
-/**
- * The one ownership proof for a persistent registration entry, shared by setup
- * (which may migrate an entry under a previous server name) and uninstall
- * (which may remove one). Ownership comes from the launcher alone, never from
- * the entry's name or validity. An entry without a parseable launcher is not
- * REA's; a launcher whose identity cannot be resolved stays "unknown".
- */
-export const classifyClientRegistration = (
-  value: unknown,
-  client: SetupClient,
-  currentCommandPath: string | undefined = CURRENT_ENTRYPOINT_PATH,
-): ClientRegistrationCommandIdentity => {
-  const parsed = parseClientRegistrationLauncher(value, client);
-  if (!parsed.ok) return "foreign";
-  const { command, args } = parsed.value;
-  return classifyClientRegistrationCommand(
-    [command, ...args],
-    currentCommandPath,
-  );
-};
-
-/** Whether the shared proof establishes that REA setup created `value`. */
-export const isOwnedRegistration = (
-  value: unknown,
-  client: SetupClient,
-): boolean => classifyClientRegistration(value, client) === "owned";
-
 const inspectDirectRegistrationCommand = (
   command: readonly string[],
   currentCommandPath: string | undefined,
@@ -292,11 +260,7 @@ const inspectDirectRegistrationCommand = (
   }
   if (command.length === 2 && command[1] === "mcp") {
     const executable = command[0] ?? "";
-    // Both package binaries on PATH: the `rea` alias and `reverseport`.
-    if (
-      executable === PRODUCT_IDENTITY.cliBinary ||
-      executable === PRODUCT_IDENTITY.packageName
-    )
+    if (executable === PRODUCT_IDENTITY.cliBinary)
       return { identity: "owned", entrypoint: undefined, package: undefined };
     if (isAbsolute(executable))
       return {

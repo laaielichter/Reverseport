@@ -110,7 +110,7 @@ for (const prefix of ["", "﻿"])
       expect(JSON.parse(configured.slice(prefix.length))).toMatchObject({
         mcpServers: {
           peer: { command: "/usr/bin/true", args: [] },
-          reverseport: { command: expect.any(String) },
+          rea: { command: expect.any(String) },
         },
       });
       const doctor = await run(doctorArguments);

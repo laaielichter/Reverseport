@@ -8,7 +8,7 @@ import {
 
 const original = [
   'root = "retained # root string"',
-  "[mcp_servers.reverseport] # server header note",
+  "[mcp_servers.rea] # server header note",
   'command = "old # command token" # command note',
   "args = [",
   '  "argument # value token", # array note',
@@ -17,7 +17,7 @@ const original = [
   "# multiline value token",
   '""" # multiline note',
   "literal = 'literal # value token' # literal note",
-  "[mcp_servers.reverseport.tools.binary_session] # tool header note",
+  "[mcp_servers.rea.tools.binary_session] # tool header note",
   'approval_mode = "approve" # caller approval',
   "[mcp_servers.other]",
   'command = "other" # peer note',
@@ -31,11 +31,11 @@ for (const format of ["toml", "grok"] as const)
       (operation) => {
         const source = original.replaceAll("\n", lineBreak);
         const parsed = parseClientConfiguration(source, format);
-        const { reverseport: removed, ...peers } = parsed.servers;
+        const { rea: removed, ...peers } = parsed.servers;
         expect(removed).toBeDefined();
         const servers =
           operation === "replace"
-            ? { ...peers, reverseport: { command: "new", args: [] } }
+            ? { ...peers, rea: { command: "new", args: [] } }
             : peers;
         const result = serializeClientConfiguration(
           withClientServers(parsed, servers),
@@ -74,11 +74,11 @@ for (const format of ["toml", "grok"] as const)
 
 it("retains comments from dotted REA assignments and nested inline values", () => {
   for (const source of [
-    'mcp_servers.reverseport.command = "old # string token" # dotted note\n',
-    'mcp_servers = { reverseport = { args = ["old # string token", # inline value note\n] }, other = { command = "other" } }\n',
+    'mcp_servers.rea.command = "old # string token" # dotted note\n',
+    'mcp_servers = { rea = { args = ["old # string token", # inline value note\n] }, other = { command = "other" } }\n',
   ]) {
     const parsed = parseClientConfiguration(source, "toml");
-    const { reverseport: removed, ...servers } = parsed.servers;
+    const { rea: removed, ...servers } = parsed.servers;
     expect(removed).toBeDefined();
     const result = serializeClientConfiguration(
       withClientServers(parsed, servers),

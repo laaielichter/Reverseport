@@ -320,13 +320,13 @@ export const effectiveClientServer = (
 };
 
 /**
- * Return `parsed.document` with `servers` at its server table. Legacy OpenCode
- * V1 members named in `removeLegacy` are removed beside a native V2 table.
+ * Return `parsed.document` with `servers` at its server table. A legacy OpenCode
+ * V1 member named in `removeLegacy` is removed beside a native V2 table.
  */
 export const withClientServers = (
   parsed: ClientConfigurationDocument,
   servers: Record<string, unknown>,
-  removeLegacy?: string | readonly string[],
+  removeLegacy?: string,
 ): Record<string, unknown> => {
   // The Harness patch list upserts or removes by entry id, not by table.
   if (parsed.dialect === "dsh")
@@ -347,11 +347,12 @@ export const withClientServers = (
     outerValue === undefined
       ? {}
       : clientConfigurationRecordSchema.parse(outerValue);
-  if (parsed.dialect === "opencode_v2")
-    for (const name of typeof removeLegacy === "string"
-      ? [removeLegacy]
-      : (removeLegacy ?? []))
-      if (!OPENCODE_V2_MCP_SETTINGS.has(name)) delete outer[name];
+  if (
+    parsed.dialect === "opencode_v2" &&
+    removeLegacy !== undefined &&
+    !OPENCODE_V2_MCP_SETTINGS.has(removeLegacy)
+  )
+    delete outer[removeLegacy];
   return { ...parsed.document, [key]: { ...outer, [nested]: servers } };
 };
 
@@ -958,15 +959,15 @@ interface DisabledServerListInput {
   readonly tablePath: readonly string[];
   readonly segments: readonly string[];
   readonly serverKey: string;
-  readonly dropDisabled: boolean;
+  readonly entry: unknown;
 }
 
-/** Drop `serverKey` from a root `disabled_mcp_servers` array when asked. */
+/** Drop `serverKey` from a root `disabled_mcp_servers` array while installing. */
 const disabledServerListEdit = (
   input: DisabledServerListInput,
 ): DisabledServerListEdit => {
   if (
-    !input.dropDisabled ||
+    input.entry === undefined ||
     input.tablePath.length !== 0 ||
     input.segments.length !== 1 ||
     input.segments[0] !== "disabled_mcp_servers"
@@ -1048,16 +1049,13 @@ const tomlCommentLines = (text: string): readonly string[] => {
  * inline comments on replaced code become standalone comment lines.
  * Only blank lines that separated a removed table go with it. Text inside
  * strings is not treated as a header. Only Grok Build reads the root
- * `disabled_mcp_servers` list that registration also edits: installing an
- * entry drops its name from that list, and `dropDisabled` decides it for a
- * removal.
+ * `disabled_mcp_servers` list that registration also edits.
  */
 const upsertTomlServerSection = (
   originalText: string,
   serverKey: string,
   entry: unknown,
   format: "toml" | "grok",
-  dropDisabled: boolean = entry !== undefined,
 ): string => {
   // smol-toml accepts a leading BOM. Leave it in place or the first header is missed.
   const bom = originalText.startsWith("\uFEFF");
@@ -1155,7 +1153,7 @@ const upsertTomlServerSection = (
                 tablePath,
                 segments: assignment.segments,
                 serverKey,
-                dropDisabled,
+                entry,
               }),
               lines,
               lineIndex,
@@ -1290,7 +1288,7 @@ const ompServerListedDisabled = (
 };
 
 /** OMP's user `enabledServers` allowlist overrides an entry's `enabled: false`. */
-export const OMP_ENABLED_SERVERS_KEY = "enabledServers";
+const OMP_ENABLED_SERVERS_KEY = "enabledServers";
 
 /**
  * Whether OMP's allowlist forces `serverKey` on despite its entry's
@@ -1315,58 +1313,15 @@ export const clientServerListedDisabled = (
   (parsed.dialect === "omp" &&
     ompServerListedDisabled(parsed.document, serverKey));
 
-/**
- * Previous REA server names whose entry the caller removed: the entry's path is
- * an edited path and the document no longer holds it. Any other previous-name
- * entry is not REA's to edit and keeps its bytes.
- */
-const removedPreviousServerKeys = (
-  document: Record<string, unknown>,
-  editedPaths: readonly (readonly string[])[] | undefined,
-): readonly string[] => {
-  const serversKey = "mcp_servers";
-  return PRODUCT_IDENTITY.previousMcpServerKeys.filter(
-    (name) =>
-      editedPaths?.some(
-        (path) =>
-          path.length === 2 && path[0] === serversKey && path[1] === name,
-      ) === true && valueAt(document, [serversKey, name]) === undefined,
-  );
-};
-
-/** Remove previous-name tables; Grok's disable list follows the document. */
-const withoutPreviousTomlServers = (
-  text: string,
-  document: Record<string, unknown>,
-  editedPaths: readonly (readonly string[])[] | undefined,
-  format: "toml" | "grok",
-): string =>
-  removedPreviousServerKeys(document, editedPaths).reduce(
-    (edited, name) =>
-      upsertTomlServerSection(
-        edited,
-        name,
-        undefined,
-        format,
-        format === "grok" &&
-          editedPaths?.some(
-            (path) => path.length === 1 && path[0] === "disabled_mcp_servers",
-          ) === true &&
-          !grokServerListedDisabled(document, name),
-      ),
-    text,
-  );
-
 /** Keep an existing Grok document intact aside from the REA server tables. */
 const serializeGrokConfiguration = (
   document: Record<string, unknown>,
   originalText: string | undefined,
-  editedPaths?: readonly (readonly string[])[],
 ): string => {
   const entry = tomlServerEntry(document, PRODUCT_IDENTITY.mcpServerKey);
   if (originalText === undefined) return stringifyToml(document);
   return upsertTomlServerSection(
-    withoutPreviousTomlServers(originalText, document, editedPaths, "grok"),
+    originalText,
     PRODUCT_IDENTITY.mcpServerKey,
     entry,
     "grok",
@@ -1394,7 +1349,6 @@ const withoutEmptyServerTable = (
 const serializeCodexConfiguration = (
   document: Record<string, unknown>,
   originalText: string | undefined,
-  editedPaths?: readonly (readonly string[])[],
 ): string => {
   if (
     originalText === undefined ||
@@ -1402,7 +1356,7 @@ const serializeCodexConfiguration = (
   )
     return stringifyToml(document);
   const edited = upsertTomlServerSection(
-    withoutPreviousTomlServers(originalText, document, editedPaths, "toml"),
+    originalText,
     PRODUCT_IDENTITY.mcpServerKey,
     tomlServerEntry(document, PRODUCT_IDENTITY.mcpServerKey),
     "toml",
@@ -1701,13 +1655,11 @@ export const serializeClientConfiguration = (
   if (format === undefined || format === "unsupported")
     throw new TypeError("client does not have a supported MCP config format");
   if (format === "toml")
-    return ok(serializeCodexConfiguration(document, originalText, editedPaths));
+    return ok(serializeCodexConfiguration(document, originalText));
   if (format === "grok")
-    return ok(serializeGrokConfiguration(document, originalText, editedPaths));
+    return ok(serializeGrokConfiguration(document, originalText));
   if (format === "hermes")
-    return ok(
-      serializeHermesConfiguration(document, originalText, editedPaths),
-    );
+    return ok(serializeHermesConfiguration(document, originalText));
   if (format === "dsh") return ok(serializeDshDocument(document));
   // An empty original holds no comments or settings to preserve. Writing a
   // fresh document also keeps a lone BOM from shifting past the closing brace.
@@ -1752,14 +1704,13 @@ export const legacyClientServerPath = (
 
 /**
  * Keep an existing Hermes `config.yaml` intact aside from the REA server entry.
- * Hermes config files carry user comments and unrelated settings, so REA's
+ * Hermes config files carry user comments and unrelated settings, so the rea
  * entry is upserted into the parsed YAML document (which retains formatting and
  * comments) rather than re-serializing the whole object.
  */
 const serializeHermesConfiguration = (
   document: Record<string, unknown>,
   originalText: string | undefined,
-  editedPaths?: readonly (readonly string[])[],
 ): string => {
   if (
     originalText === undefined ||
@@ -1773,11 +1724,7 @@ const serializeHermesConfiguration = (
       ? (servers as Record<string, unknown>)[PRODUCT_IDENTITY.mcpServerKey]
       : undefined;
   return editHermesConfigurationYaml(
-    removedPreviousServerKeys(document, editedPaths).reduce(
-      (text, name) =>
-        editHermesConfigurationYaml(text, [serversKey, name], undefined),
-      originalText,
-    ),
+    originalText,
     [serversKey, PRODUCT_IDENTITY.mcpServerKey],
     entry,
   );

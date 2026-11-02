@@ -23,19 +23,19 @@ describe("TOML configuration source capacity", () => {
       const prefix = Array.from(
         { length: 128 },
         (_, index) =>
-          `[foreign.entry_${index}]\nvalue = ${index}\nnote = """first\n# [mcp_servers.reverseport]\nlast"""\nitems = [\n${index},\n]\n`,
+          `[foreign.entry_${index}]\nvalue = ${index}\nnote = """first\n# [mcp_servers.rea]\nlast"""\nitems = [\n${index},\n]\n`,
       ).join("");
       // Include a BOM, an empty value, and a final statement without a newline.
       const original =
         "\uFEFF" +
-        `${prefix}[mcp_servers.reverseport]\ncommand = "previous"\n[tail]\nempty = ""\nlast = 7`.replaceAll(
+        `${prefix}[mcp_servers.rea]\ncommand = "previous"\n[tail]\nempty = ""\nlast = 7`.replaceAll(
           "\n",
           newline,
         );
       const parsed = parseClientConfiguration(original, "toml");
       const desired = withClientServers(parsed, {
         ...parsed.servers,
-        reverseport: registration,
+        rea: registration,
       });
       const configured = serializedText(desired, "toml", original);
       expect(
@@ -63,7 +63,7 @@ describe("TOML configuration source capacity", () => {
     const parsed = parseClientConfiguration(original, "toml");
     const desired = withClientServers(parsed, {
       ...parsed.servers,
-      reverseport: registration,
+      rea: registration,
     });
     const configured = serializedText(desired, "toml", original);
     expect(configured).toContain(`NOTE="""${note}"""`);
@@ -80,12 +80,12 @@ describe("TOML configuration source capacity", () => {
   it("removes only REA from a large multiline Grok disabled-server list", () => {
     const otherNames = '"other",\n'.repeat(500_000);
     const original =
-      `disabled_mcp_servers = [\n"reverseport",\n${otherNames}]\n` +
+      `disabled_mcp_servers = [\n"rea",\n${otherNames}]\n` +
       '[mcp_servers.other]\ncommand = "other"\n';
     const parsed = parseClientConfiguration(original, "grok");
     const desired = withClientServers(parsed, {
       ...parsed.servers,
-      reverseport: registration,
+      rea: registration,
     });
     const configured = serializedText(desired, "grok", original);
     const result = parseClientConfiguration(configured, "grok");
@@ -94,7 +94,7 @@ describe("TOML configuration source capacity", () => {
     );
     expect(result.servers).toEqual({
       other: { command: "other" },
-      reverseport: registration,
+      rea: registration,
     });
   });
 });

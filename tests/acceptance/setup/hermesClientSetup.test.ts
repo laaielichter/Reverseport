@@ -40,7 +40,7 @@ for (const [version, keyStyle] of [
         "timestamp: 2026-10-14T00:00:00.123456+08:00\n";
       const original =
         settings +
-        "mcp_servers:\n  reverseport:\n    command: rea-old\n    args: [mcp]\n    env:\n" +
+        "mcp_servers:\n  rea:\n    command: rea-old\n    args: [mcp]\n    env:\n" +
         Object.entries(environment)
           .map(
             ([key, value]) =>
@@ -67,7 +67,7 @@ for (const [version, keyStyle] of [
       expect((await run(setup)).json).toMatchObject({ status: "ready" });
       const configured = await readFile(config, "utf8");
       expect(parse(configured, { version })).toMatchObject({
-        mcp_servers: { reverseport: { env: environment, enabled: true } },
+        mcp_servers: { rea: { env: environment, enabled: true } },
       });
       // Hermes's C loader applies YAML 1.1 even with the explicit directive.
       // Independently model that schema; real Hermes loader verification is
@@ -84,7 +84,7 @@ for (const [version, keyStyle] of [
         expect(
           parse(configured.slice(directive.length), { version: "1.1" }),
         ).toMatchObject({
-          mcp_servers: { reverseport: { env: environment, enabled: true } },
+          mcp_servers: { rea: { env: environment, enabled: true } },
         });
       }
       expect(configured.startsWith(settings)).toBe(true);
@@ -113,7 +113,7 @@ cliTest(
     const original = [
       "# Caller configuration",
       "mcp_servers:",
-      "  reverseport:",
+      "  rea:",
       "    command: rea-old",
       "    args: [mcp]",
       "    env:",
@@ -159,7 +159,7 @@ cliTest(
     const configured = await readFile(config, "utf8");
     expect(parse(configured)).toMatchObject({
       mcp_servers: {
-        reverseport: {
+        rea: {
           command: expect.stringMatching(/\S/u),
           args: expect.arrayContaining(["mcp"]),
           enabled: true,
@@ -173,7 +173,7 @@ cliTest(
       },
     });
     expect(parse(configured)).not.toMatchObject({
-      mcp_servers: { reverseport: { command: "rea-old" } },
+      mcp_servers: { rea: { command: "rea-old" } },
     });
     expect(configured).toContain("# Curated for this client.");
     expect(await readFile(`${config}.rea.backup`, "utf8")).toBe(original);
@@ -248,7 +248,7 @@ cliTest(
       model: "custom",
       mcp_servers: {
         other: { command: "other-server" },
-        reverseport: { enabled: true },
+        rea: { enabled: true },
       },
     });
     expect(await readFile(config + ".rea.backup", "utf8")).toBe(original);
@@ -353,7 +353,7 @@ for (const selection of ["default", "custom", "suffix", "explicit"] as const) {
       expect(applied.exitCode, applied.stdout).toBe(0);
       expect(parse(await readFile(config, "utf8"))).toMatchObject({
         mcp_servers: {
-          reverseport: { enabled: true },
+          rea: { enabled: true },
           other: { command: "other-server" },
         },
       });
@@ -531,7 +531,7 @@ cliTest.skipIf(process.platform === "win32")(
       model: "custom",
       mcp_servers: {
         other: { command: "other-server" },
-        reverseport: { enabled: true },
+        rea: { enabled: true },
       },
     });
     expect(await readFile(`${config}.rea.backup`, "utf8")).toBe(original);

@@ -20,9 +20,6 @@ import {
 } from "./lib/verify-setup-terminal.mjs";
 import { setupPlanFailureMessage } from "./verify-package-setup-plan.mjs";
 
-/** The MCP server name setup registers (the CLI binary stays `rea`). */
-const SERVER_KEY = PRODUCT_IDENTITY.mcpServerKey;
-
 const OPENCODE_ORIGINAL = `{
   // OpenCode preferences must survive setup.
   "model": "provider/model",
@@ -43,7 +40,7 @@ const CODEX_ORIGINAL = [
 const verifyMcpAdd = async ({ commands, cli, environment, npxLog }) => {
   await commands.run(cli, ["mcp", "add"], environment);
   const mcpRegistration = await readFile(npxLog, "utf8");
-  const expected = `add-mcp npx -y ${PRODUCT_IDENTITY.registrationPackageSpecifier} mcp --name ${SERVER_KEY}`;
+  const expected = `add-mcp npx -y ${PRODUCT_IDENTITY.registrationPackageSpecifier} mcp --name rea`;
   if (!mcpRegistration.includes(expected))
     throw new Error("Incur mcp add did not register the pinned npx command");
 };
@@ -123,10 +120,9 @@ const verifyAbsentOpenCodeSetup = async ({
     execution.status !== 0 ||
     result.status !== "ready" ||
     !result.appliedActions.includes("configured_opencode") ||
-    config.mcp?.[SERVER_KEY]?.type !== "local" ||
-    config.mcp[SERVER_KEY].enabled !== true ||
-    JSON.stringify(config.mcp[SERVER_KEY].command) !==
-      JSON.stringify([cli, "mcp"])
+    config.mcp?.rea?.type !== "local" ||
+    config.mcp.rea.enabled !== true ||
+    JSON.stringify(config.mcp.rea.command) !== JSON.stringify([cli, "mcp"])
   )
     throw new Error(
       `packaged setup did not configure explicitly selected OpenCode without a config file: ${JSON.stringify(result)}`,
@@ -176,9 +172,8 @@ const verifyAbsentClaudeCodeSetup = async ({
     firstExecution.status !== 0 ||
     first.status !== "ready" ||
     !first.appliedActions.includes("configured_claude_code") ||
-    config.mcpServers?.[SERVER_KEY]?.command !== cli ||
-    JSON.stringify(config.mcpServers?.[SERVER_KEY]?.args) !==
-      JSON.stringify(["mcp"]) ||
+    config.mcpServers?.rea?.command !== cli ||
+    JSON.stringify(config.mcpServers?.rea?.args) !== JSON.stringify(["mcp"]) ||
     (await pathExists(markerPath)) ||
     registration?.state !== "aligned" ||
     registration.config_path !== configPath
@@ -275,9 +270,8 @@ export const assertClientConfig = async (cli, configPath, original) => {
   const config = JSON.parse(await readFile(configPath, "utf8"));
   if (
     config.existing !== true ||
-    config.mcpServers?.[SERVER_KEY]?.command !== cli ||
-    JSON.stringify(config.mcpServers?.[SERVER_KEY]?.args) !==
-      JSON.stringify(["mcp"])
+    config.mcpServers?.rea?.command !== cli ||
+    JSON.stringify(config.mcpServers?.rea?.args) !== JSON.stringify(["mcp"])
   )
     throw new Error("packaged client readback failed");
   if (!(await readFile(`${configPath}.rea.backup`)).equals(original))
@@ -300,11 +294,10 @@ const assertOpenCodeConfig = async ({
     config?.model !== "provider/model" ||
     mcp?.other?.command?.[0] !== "node" ||
     (expectedRegistration &&
-      (mcp?.[SERVER_KEY]?.type !== "local" ||
-        mcp[SERVER_KEY].enabled !== true ||
-        JSON.stringify(mcp[SERVER_KEY].command) !==
-          JSON.stringify([cli, "mcp"]))) ||
-    (!expectedRegistration && mcp?.[SERVER_KEY] !== undefined)
+      (mcp?.rea?.type !== "local" ||
+        mcp.rea.enabled !== true ||
+        JSON.stringify(mcp.rea.command) !== JSON.stringify([cli, "mcp"]))) ||
+    (!expectedRegistration && mcp?.rea !== undefined)
   )
     throw new Error("packaged OpenCode JSONC registration readback failed");
 };
@@ -319,7 +312,7 @@ const assertCodexSymlink = async ({
   if (
     !(await lstat(codexConfig)).isSymbolicLink() ||
     !(await lstat(cursorConfig)).isSymbolicLink() ||
-    !codex.includes(`[mcp_servers.${SERVER_KEY}]`) ||
+    !codex.includes("[mcp_servers.rea]") ||
     !codex.includes(`command = "${cli}"`) ||
     !codex.includes("startup_timeout_sec = 30") ||
     !codex.startsWith(CODEX_ORIGINAL) ||
@@ -441,7 +434,7 @@ const verifySetupFailureRecovery = async ({
     !failed.remediation?.includes("Claude Desktop") ||
     (await readFile(claudeConfig, "utf8")) !== "malformed" ||
     cursorAfterFailure.existing !== true ||
-    cursorAfterFailure.mcpServers?.[SERVER_KEY] !== undefined
+    cursorAfterFailure.mcpServers?.rea !== undefined
   )
     throw new Error(
       `packaged setup mutated clients after a preflight failure: ${JSON.stringify(failed)}`,
@@ -456,7 +449,7 @@ const verifySetupFailureRecovery = async ({
   if (
     recovered.status !== status ||
     recoveredExecution.status !== (status === "ready" ? 0 : 1) ||
-    JSON.parse(await readFile(cursorConfig, "utf8")).mcpServers?.[SERVER_KEY]
+    JSON.parse(await readFile(cursorConfig, "utf8")).mcpServers?.rea
       ?.command !== cli
   )
     throw new Error("packaged setup did not recover");
@@ -523,12 +516,12 @@ const verifyUninstall = async ({
     !(await lstat(cursorConfig)).isSymbolicLink() ||
     !(await lstat(codexConfig)).isSymbolicLink() ||
     cursorAfterUninstall.existing !== true ||
-    cursorAfterUninstall.mcpServers?.[SERVER_KEY] !== undefined ||
+    cursorAfterUninstall.mcpServers?.rea !== undefined ||
     codexAfterUninstall !== CODEX_ORIGINAL ||
-    codexAfterUninstall.includes(`mcp_servers.${SERVER_KEY}`) ||
+    codexAfterUninstall.includes("mcp_servers.rea") ||
     openCodeErrors.length !== 0 ||
     openCodeAfterUninstall?.model !== "provider/model" ||
-    openCodeAfterUninstall?.mcp?.[SERVER_KEY] !== undefined ||
+    openCodeAfterUninstall?.mcp?.rea !== undefined ||
     openCodeAfterUninstall?.mcp?.other?.command?.[0] !== "node" ||
     !(await readFile(`${opencodeConfig}.rea.backup`, "utf8")).includes(
       "OpenCode preferences must survive setup",

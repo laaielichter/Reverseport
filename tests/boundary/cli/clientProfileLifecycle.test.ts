@@ -26,7 +26,7 @@ cliTest(
     const second = join(directory, "opencode.jsonc");
     const original = JSON.stringify({
       mcp: {
-        reverseport: {
+        rea: {
           type: "local",
           command: ["npx", "-y", "reverseport@6.7.0", "mcp"],
         },
@@ -320,8 +320,8 @@ for (const group of groups) {
           await writeFile(
             config,
             original.replace(
-              "[mcp_servers.reverseport]",
-              "[mcp_servers.reverseport]\ndisabled = true",
+              "[mcp_servers.rea]",
+              "[mcp_servers.rea]\ndisabled = true",
             ),
           );
           expect(

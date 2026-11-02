@@ -28,7 +28,7 @@ it("rejects a backup replaced with the post-setup client configuration", async (
   const configured = JSON.stringify({
     existing: true,
     model: "caller",
-    mcpServers: { reverseport: { command: process.execPath, args: ["mcp"] } },
+    mcpServers: { rea: { command: process.execPath, args: ["mcp"] } },
   });
   await writeFile(path, configured);
   await writeFile(`${path}.rea.backup`, original);
@@ -47,7 +47,7 @@ it("compares backup bytes even when invalid UTF-8 decodes to the same text", asy
   const original = Buffer.from('{"existing":true,"note":"\uFFFD"}\n');
   const configured = JSON.stringify({
     existing: true,
-    mcpServers: { reverseport: { command: process.execPath, args: ["mcp"] } },
+    mcpServers: { rea: { command: process.execPath, args: ["mcp"] } },
   });
   const changed = Buffer.concat([
     Buffer.from('{"existing":true,"note":"'),

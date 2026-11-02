@@ -96,8 +96,6 @@ export const createCli = (
     version: PRODUCT_IDENTITY.packageVersion,
     description: "Reverse engineer anything from your terminal or agent.",
     mcp: {
-      // Incur names `rea mcp add` registrations after the CLI binary unless told.
-      name: PRODUCT_IDENTITY.mcpServerKey,
       command: npxRegistrationCommand().join(" "),
       instructions:
         "Ask what software, artifact, protocol, or behavior the user wants to understand, then choose the available investigation capabilities that can produce evidence.",

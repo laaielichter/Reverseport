@@ -98,7 +98,7 @@ describe("Qwen Code client lifecycle", () => {
       model: { name: "qwen3-coder-plus" },
       mcpServers: {
         other: { command: "other-server" },
-        reverseport: { command: "npx", args: command.slice(1) },
+        rea: { command: "npx", args: command.slice(1) },
       },
     });
     expect(await configureClientConfiguration(client, {}, command)).toEqual({

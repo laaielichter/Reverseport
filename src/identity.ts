@@ -11,13 +11,7 @@ export const PRODUCT_IDENTITY = {
   packageVersion: PACKAGE_METADATA.version,
   cliBinary: "rea",
   mcpCommand: `npx -y ${PACKAGE_METADATA.name}@${PACKAGE_METADATA.version} mcp`,
-  /** The one name setup registers and the engine reports as its MCP server. */
-  mcpServerKey: "reverseport",
-  /**
-   * Names earlier releases registered. Setup, status and uninstall read and
-   * remove REA-owned entries under them; nothing writes them.
-   */
-  previousMcpServerKeys: ["rea"],
+  mcpServerKey: "rea",
   skillName: "reverse-engineer-anything",
   skillVersion: PACKAGE_METADATA.skillVersion,
   configFileName: "rea.json",

@@ -12,7 +12,6 @@ import {
   type JsonValue,
 } from "../../../src/domain/jsonValue.js";
 import { canonicalJson } from "../../../src/domain/comparisonSemantics.js";
-import { PRODUCT_IDENTITY } from "../../../src/identity.js";
 
 /** Only authenticated, successful, non-conflicting transcript deliveries. */
 export interface FixtureClaimContext {
@@ -255,7 +254,7 @@ const parseToolResult = (
       ? error.code
       : null;
   const evidenceValue =
-    server?.toLowerCase() === PRODUCT_IDENTITY.mcpServerKey &&
+    server?.toLowerCase() === "rea" &&
     item.status !== "failed" &&
     (item.error === undefined || item.error === null) &&
     consistentJsonAliases(item, "result", "output") &&

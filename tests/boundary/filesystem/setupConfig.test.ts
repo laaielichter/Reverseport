@@ -42,7 +42,7 @@ it.skipIf(process.platform === "win32")(
     const configPath = join(home, ".cursor", "mcp.json");
     const original = JSON.stringify({
       mcpServers: {
-        reverseport: { command: alias, args: ["mcp"], future_policy: { retain: true } },
+        rea: { command: alias, args: ["mcp"], future_policy: { retain: true } },
       },
     });
     await writeFile(configPath, original);
@@ -64,7 +64,7 @@ it.skipIf(process.platform === "win32")(
       await configureClientConfiguration(client, {}, [other, "mcp"]),
     ).toMatchObject({ status: "configured" });
     expect(JSON.parse(await readFile(configPath, "utf8"))).toMatchObject({
-      mcpServers: { reverseport: { command: other, future_policy: { retain: true } } },
+      mcpServers: { rea: { command: other, future_policy: { retain: true } } },
     });
     expect(await readFile(`${configPath}.rea.backup`, "utf8")).toBe(original);
   },
@@ -83,14 +83,14 @@ it.skipIf(process.platform === "win32")(
     await mkdir(join(home, ".codex"));
     const configPath = join(home, ".codex", "config.toml");
     const original = [
-      "[mcp_servers.reverseport]",
+      "[mcp_servers.rea]",
       `command = ${JSON.stringify(alias)}`,
       'args = ["mcp"]',
       "startup_timeout_sec = 0",
       "tool_timeout_sec = 450",
       "future_policy = { retain = true }",
       "",
-      "[mcp_servers.reverseport.env]",
+      "[mcp_servers.rea.env]",
       'CALLER_SETTING = "keep exactly"',
       "",
     ].join("\n");
@@ -102,7 +102,7 @@ it.skipIf(process.platform === "win32")(
     const configured = await readFile(configPath, "utf8");
     expect(parseToml(configured)).toMatchObject({
       mcp_servers: {
-        reverseport: {
+        rea: {
           command: alias,
           args: ["mcp"],
           startup_timeout_sec: 30,
@@ -194,7 +194,7 @@ describe("JSON client configuration transaction: writing configuration through s
       theme: "dark",
       mcpServers: {
         other: { command: "other" },
-        reverseport: {
+        rea: {
           command: "npx",
           args: ["-y", pinnedPackage, "mcp"],
         },
@@ -222,7 +222,7 @@ describe("JSON client configuration transaction: writing configuration through s
     expect(JSON.parse(await readFile(targetPath, "utf8"))).toMatchObject({
       theme: "dark",
       mcpServers: {
-        reverseport: {
+        rea: {
           command: "npx",
           args: ["-y", pinnedPackage, "mcp"],
         },
@@ -267,7 +267,7 @@ describe("JSON client configuration transaction: keeping matching configuration 
     const configPath = join(directory, "mcp.json");
     await writeFile(
       configPath,
-      `${JSON.stringify({ mcpServers: { reverseport: { command: "npx", args: ["-y", pinnedPackage, "mcp"] } } })}\n`,
+      `${JSON.stringify({ mcpServers: { rea: { command: "npx", args: ["-y", pinnedPackage, "mcp"] } } })}\n`,
     );
     expect(
       await configureClientConfiguration({
@@ -290,7 +290,7 @@ describe("JSON client configuration transaction: keeping matching configuration 
       configPath,
       `${JSON.stringify({
         mcpServers: {
-          reverseport: {
+          rea: {
             env: {
               JAVA_HOME: "/usr/lib/jvm/jdk-21",
               GHIDRA_INSTALL_DIR: "/opt/ghidra",
@@ -322,7 +322,7 @@ describe("JSON client configuration migration and provider paths", () => {
     const directory = await createTestTempDirectory("rea-setup-");
     const configPath = join(directory, "mcp.json");
     const original =
-      '{"theme":"dark","mcpServers":{"reverseport":{"command":"npx","args":["-y","reverseport","mcp"]},"other":{"command":"other"}}}\n';
+      '{"theme":"dark","mcpServers":{"rea":{"command":"npx","args":["-y","reverseport","mcp"]},"other":{"command":"other"}}}\n';
     await writeFile(configPath, original);
 
     expect(
@@ -336,7 +336,7 @@ describe("JSON client configuration migration and provider paths", () => {
     expect(JSON.parse(await readFile(configPath, "utf8"))).toEqual({
       theme: "dark",
       mcpServers: {
-        reverseport: {
+        rea: {
           command: "npx",
           args: ["-y", pinnedPackage, "mcp"],
         },
@@ -362,7 +362,7 @@ describe("JSON client configuration migration and provider paths", () => {
     });
     expect(JSON.parse(await readFile(configPath, "utf8"))).toMatchObject({
       mcpServers: {
-        reverseport: {
+        rea: {
           command: "npx",
           args: ["-y", pinnedPackage, "mcp"],
           env: { HOPPER_LAUNCHER_PATH: hopperPath },
@@ -400,7 +400,7 @@ describe("JSON client configuration migration and provider paths", () => {
     });
     expect(JSON.parse(await readFile(configPath, "utf8"))).toMatchObject({
       mcpServers: {
-        reverseport: {
+        rea: {
           env: {
             GHIDRA_INSTALL_DIR: environment.GHIDRA_INSTALL_DIR,
             JAVA_HOME: environment.JAVA_HOME,
@@ -479,13 +479,13 @@ describe("JSON client configuration shape diagnostics", () => {
     {
       format: "json" as const,
       original:
-        '{"__proto__":{"mcpServers":{"reverseport":{"command":"rea","args":["mcp"]}}}}',
+        '{"__proto__":{"mcpServers":{"rea":{"command":"rea","args":["mcp"]}}}}',
       serversKey: "mcpServers",
     },
     {
       format: "opencode" as const,
       original:
-        '{"mcp":{"__proto__":{"servers":{"reverseport":{"type":"local","command":["rea","mcp"]}}}}}',
+        '{"mcp":{"__proto__":{"servers":{"rea":{"type":"local","command":["rea","mcp"]}}}}}',
       serversKey: "mcp",
     },
   ])(
@@ -507,8 +507,8 @@ describe("JSON client configuration shape diagnostics", () => {
       ).toMatchObject({ status: "configured" });
       const document = JSON.parse(await readFile(configPath, "utf8"));
       expect(Object.hasOwn(document, serversKey)).toBe(true);
-      expect(Object.hasOwn(document[serversKey], "reverseport")).toBe(true);
-      expect(document[serversKey].reverseport.command).toEqual(
+      expect(Object.hasOwn(document[serversKey], "rea")).toBe(true);
+      expect(document[serversKey].rea.command).toEqual(
         format === "json" ? "rea" : ["rea", "mcp"],
       );
       const originalDocument = JSON.parse(original);
@@ -656,7 +656,7 @@ it("keeps setup and registration diagnostics blocked for an unrecognized Claude 
     "claude_desktop_config.json",
   );
   await mkdir(join(environment.APPDATA, "Claude"), { recursive: true });
-  const original = '{"mcpServers":{"reverseport":{"command":"rea","args":["mcp"]}}}\n';
+  const original = '{"mcpServers":{"rea":{"command":"rea","args":["mcp"]}}}\n';
   await writeFile(config, original);
   const client = supportedClients(home, "win32", environment).find(
     (client) => client.name === "claude_desktop",

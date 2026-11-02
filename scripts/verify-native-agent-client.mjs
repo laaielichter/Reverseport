@@ -284,12 +284,10 @@ await withVerifierCleanup(async () => {
         } else if (client === "hermes") {
           const search = tools.find((t) => t.name === "tool_search");
           const exposed = tools
-            .filter((t) => t.name.startsWith("mcp__reverseport__"))
-            .map((t) => t.name.slice("mcp__reverseport__".length));
+            .filter((t) => t.name.startsWith("mcp__rea__"))
+            .map((t) => t.name.slice(10));
           const deferred = [
-            ...(search?.description ?? "").matchAll(
-              /^- mcp__reverseport__(\w+):/gmu,
-            ),
+            ...(search?.description ?? "").matchAll(/^- mcp__rea__(\w+):/gmu),
           ].map((m) => m[1]);
           const native = [...new Set([...exposed, ...deferred])];
           // Hermes advertises MCP prompt utilities beside server tools.
@@ -321,7 +319,7 @@ await withVerifierCleanup(async () => {
           );
           callRequested = true;
           return call(tool.name, {
-            code: `await describeNamespace("reverseport"); const skill = await tools.read({path:${JSON.stringify(skillPath)}}); const result = await tools.mcp__reverseport__analyze_javascript_application({input_path:${JSON.stringify(target)},format:"directory"}); if(result.isError) throw new Error(JSON.stringify(result)); const evidence = result.structuredContent ?? JSON.parse(result.content.find(c=>c.type==="text").text); await tools.write({path:${JSON.stringify(artifactPath)},content:JSON.stringify(evidence)}); text({REA_CLIENT_FIXTURE:true,skill_loaded:typeof skill==="string"&&skill.includes("name: reverse-engineer-anything"),catalog:ALL_TOOLS.filter(t=>t.name.startsWith("mcp__reverseport__")).map(t=>t.name.slice(18))});`,
+            code: `await describeNamespace("rea"); const skill = await tools.read({path:${JSON.stringify(skillPath)}}); const result = await tools.mcp__rea__analyze_javascript_application({input_path:${JSON.stringify(target)},format:"directory"}); if(result.isError) throw new Error(JSON.stringify(result)); const evidence = result.structuredContent ?? JSON.parse(result.content.find(c=>c.type==="text").text); await tools.write({path:${JSON.stringify(artifactPath)},content:JSON.stringify(evidence)}); text({REA_CLIENT_FIXTURE:true,skill_loaded:typeof skill==="string"&&skill.includes("name: reverse-engineer-anything"),catalog:ALL_TOOLS.filter(t=>t.name.startsWith("mcp__rea__")).map(t=>t.name.slice(10))});`,
           });
         }
         if (!skillRequested) {
@@ -339,9 +337,7 @@ await withVerifierCleanup(async () => {
           });
         }
         assert(
-          serializedTools.includes(
-            "mcp__reverseport__analyze_javascript_application",
-          ),
+          serializedTools.includes("mcp__rea__analyze_javascript_application"),
           "Hermes must discover the analysis tool.",
         );
         if (!describeRequested) {
@@ -349,7 +345,7 @@ await withVerifierCleanup(async () => {
           assert(tool, "Hermes must load the actual parameter schema.");
           describeRequested = true;
           return call(tool.name, {
-            names: ["mcp__reverseport__analyze_javascript_application"],
+            names: ["mcp__rea__analyze_javascript_application"],
           });
         }
         const tool = tools.find((t) => t.name === "tool_call");
@@ -358,7 +354,7 @@ await withVerifierCleanup(async () => {
         return call(tool.name, {
           calls: [
             {
-              name: "mcp__reverseport__analyze_javascript_application",
+              name: "mcp__rea__analyze_javascript_application",
               arguments: { input_path: target, format: "directory" },
             },
           ],

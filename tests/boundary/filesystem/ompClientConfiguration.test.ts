@@ -81,7 +81,7 @@ describe("OMP disabledServers denylist", () => {
       `{
   // Keep this note.
   "mcpServers": { "other": { "command": "other-server" } },
-  "disabledServers": ["other", "reverseport"]
+  "disabledServers": ["other", "rea"]
 }
 `,
     );
@@ -93,7 +93,7 @@ describe("OMP disabledServers denylist", () => {
     expect(parseJsonc(text)).toEqual({
       mcpServers: {
         other: { command: "other-server" },
-        reverseport: { type: "stdio", command: "npx", args: command.slice(1) },
+        rea: { type: "stdio", command: "npx", args: command.slice(1) },
       },
       disabledServers: ["other"],
     });
@@ -119,8 +119,8 @@ describe("OMP disabledServers denylist", () => {
     await writeFile(
       client.configPath,
       JSON.stringify({
-        mcpServers: { reverseport: registration },
-        disabledServers: ["reverseport"],
+        mcpServers: { rea: registration },
+        disabledServers: ["rea"],
       }),
     );
     const status = async () =>
@@ -133,36 +133,36 @@ describe("OMP disabledServers denylist", () => {
     const disabledEntry = { ...registration, enabled: false };
     await writeFile(
       client.configPath,
-      JSON.stringify({ mcpServers: { reverseport: disabledEntry } }),
+      JSON.stringify({ mcpServers: { rea: disabledEntry } }),
     );
     expect(await status()).toMatchObject({ state: "stale" });
     await writeFile(
       client.configPath,
       JSON.stringify({
-        mcpServers: { reverseport: disabledEntry },
-        enabledServers: ["reverseport"],
+        mcpServers: { rea: disabledEntry },
+        enabledServers: ["rea"],
       }),
     );
     expect(await status()).toMatchObject({ state: "aligned" });
     await writeFile(
       client.configPath,
       JSON.stringify({
-        mcpServers: { reverseport: disabledEntry },
-        enabledServers: ["reverseport"],
-        disabledServers: ["reverseport"],
+        mcpServers: { rea: disabledEntry },
+        enabledServers: ["rea"],
+        disabledServers: ["rea"],
       }),
     );
     expect(await status()).toMatchObject({ state: "stale" });
     // OMP infers stdio for a command entry without an explicit type.
     await writeFile(
       client.configPath,
-      JSON.stringify({ mcpServers: { reverseport: registration } }),
+      JSON.stringify({ mcpServers: { rea: registration } }),
     );
     expect(await status()).toMatchObject({ state: "aligned" });
     await writeFile(
       client.configPath,
       JSON.stringify({
-        mcpServers: { reverseport: { ...registration, type: "http" } },
+        mcpServers: { rea: { ...registration, type: "http" } },
       }),
     );
     expect(await status()).toMatchObject({ state: "invalid" });

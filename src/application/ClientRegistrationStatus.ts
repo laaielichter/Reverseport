@@ -459,12 +459,11 @@ const registrationAligned = ({
   )
     return "stale";
   if (client.name === "kimi" && !kimiInputSchemaProfileSelected) return "stale";
-  // A Harness registration connects as REA's stdio server under its current
-  // name; another server name or transport is refreshed by setup.
+  // A Harness registration only connects as the rea stdio server; another
+  // server name or transport leaves the session without REA tools.
   if (
     client.format === "dsh" &&
-    (registration.serverName !== PRODUCT_IDENTITY.mcpServerKey ||
-      registration.transport !== "stdio")
+    (registration.serverName !== "rea" || registration.transport !== "stdio")
   )
     return "stale";
   if (

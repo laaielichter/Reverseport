@@ -107,6 +107,6 @@ cliTest(
     expect(result.json).toMatchObject({ status: "ready" });
     expect(
       JSON.parse(await readFile(join(agent, "mcp.json"), "utf8")),
-    ).toHaveProperty("mcpServers.reverseport");
+    ).toHaveProperty("mcpServers.rea");
   },
 );

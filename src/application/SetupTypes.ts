@@ -92,8 +92,6 @@ export type ClientConfigurationInspection =
   | {
       readonly status: "create" | "update";
       readonly backupPath?: string;
-      /** Plan lines about previous-name entries, lists and tool names. */
-      readonly notes?: readonly string[];
     }
   | {
       readonly status: "invalid";

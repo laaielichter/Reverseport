@@ -33,7 +33,7 @@ const citationMetrics = (
         item: {
           type: "mcp_tool_call",
           status: "completed",
-          server: "reverseport",
+          server: "rea",
           tool,
           arguments: {},
           result,
@@ -56,7 +56,7 @@ describe("Codex agent release evaluation", () => {
     const call = {
       id: "item-tool-1",
       type: "mcp_tool_call",
-      server: "reverseport",
+      server: "rea",
       tool: "analyze_javascript_application",
       arguments: { input_path: "/tmp/app" },
     };
@@ -107,7 +107,7 @@ describe("Codex agent release evaluation", () => {
         item: {
           id: "item-tool",
           type: "mcp_tool_call",
-          server: "reverseport",
+          server: "rea",
           tool: "inspect_managed_artifact",
           arguments: { path: "/tmp/app.dll" },
           result: { structuredContent: evidence },
@@ -143,7 +143,7 @@ describe("Codex completed tool call parsing", () => {
           type: "mcp_tool_call",
           id: "same-call",
           status: "in_progress",
-          server: "reverseport",
+          server: "rea",
           tool: evidence.operation,
           arguments: {},
         },
@@ -153,7 +153,7 @@ describe("Codex completed tool call parsing", () => {
             id: "same-call",
             type: "mcp_tool_call",
             status: "completed",
-            server: "reverseport",
+            server: "rea",
             tool: evidence.operation,
             arguments: {},
             result: { structuredContent: evidence },
@@ -182,7 +182,7 @@ describe("Codex completed tool call parsing", () => {
   });
 
   it.each([
-    { server: "reverseport", server_name: "other" },
+    { server: "rea", server_name: "other" },
     { tool: "inspect_managed_artifact", name: "other_tool" },
     { server: 42 },
     { arguments: { value: 1 }, input: { value: 2 } },
@@ -197,7 +197,7 @@ describe("Codex completed tool call parsing", () => {
             item: {
               type: "mcp_tool_call",
               status: "completed",
-              server: "reverseport",
+              server: "rea",
               tool: evidence.operation,
               arguments: {},
               result: { structuredContent: evidence },
@@ -231,7 +231,7 @@ describe("Codex completed tool call parsing", () => {
     },
     {
       label: "verified REA alias",
-      identity: { server_name: "reverseport" },
+      identity: { server_name: "rea" },
       routed: true,
     },
   ])("routes only $label calls", ({ identity, routed }) => {
@@ -257,7 +257,7 @@ describe("Codex completed tool call parsing", () => {
       correctFirstTool: routed,
       firstTool: routed ? "inspect_managed_artifact" : null,
       requiredToolSubsequenceMet: routed,
-      reaCalls: routed ? [{ server: "reverseport" }] : [],
+      reaCalls: routed ? [{ server: "rea" }] : [],
     });
   });
 });
@@ -386,7 +386,7 @@ describe("Codex request accounting", () => {
       item: {
         id,
         type: "mcp_tool_call",
-        server: "reverseport",
+        server: "rea",
         tool: "binary_session",
         arguments: {},
       },
@@ -404,7 +404,7 @@ describe("Codex request accounting", () => {
       item: {
         id,
         type: "mcp_tool_call",
-        server: "reverseport",
+        server: "rea",
         tool,
         arguments: {},
         status,
@@ -433,7 +433,7 @@ describe("Codex request accounting", () => {
       item: {
         id,
         type: "mcp_tool_call",
-        server: "reverseport",
+        server: "rea",
         tool: "inspect_artifact",
         arguments: arguments_,
       },
@@ -459,7 +459,7 @@ describe("Codex agent routing and error evaluation", () => {
           type: "item.completed",
           item: {
             type: "mcp_tool_call",
-            server: "reverseport",
+            server: "rea",
             tool: "close_binary",
             arguments: {},
             result: { structured_content: { error: "unrecognized failure" } },
@@ -488,7 +488,7 @@ describe("Codex agent routing and error evaluation", () => {
           item: {
             id: `failure-${String(index)}`,
             type: "mcp_tool_call",
-            server: "reverseport",
+            server: "rea",
             tool: "close_binary",
             arguments: {},
             ...(status === undefined ? {} : { status }),
@@ -533,7 +533,7 @@ describe("Codex agent routing and error evaluation", () => {
             type: "item.completed",
             item: {
               type: "mcp_tool_call",
-              server: "reverseport",
+              server: "rea",
               tool: "analyze_javascript_application",
               arguments: { input_path: "/nearby/test-fixture" },
             },
@@ -554,7 +554,7 @@ describe("Codex agent routing and error evaluation", () => {
       item: {
         id,
         type: "mcp_tool_call",
-        server: "reverseport",
+        server: "rea",
         tool: "inspect_analysis_view",
         arguments: arguments_,
         status: "failed",
@@ -615,7 +615,7 @@ describe("Codex agent completion evaluation", () => {
           item: {
             id: "item-tool",
             type: "mcp_tool_call",
-            server: "reverseport",
+            server: "rea",
             tool: "analyze_javascript_application",
             arguments: { input_path: "/tmp/app.asar" },
             result: { structuredContent: evidence },
@@ -658,7 +658,7 @@ describe("Codex agent completion evaluation", () => {
         type: "item.completed",
         item: {
           type: "mcp_tool_call",
-          server: "reverseport",
+          server: "rea",
           tool: "analyze_javascript_application",
           arguments: {},
         },
@@ -698,7 +698,7 @@ describe("Codex agent completion evaluation", () => {
       const item = {
         id: "item-failed",
         type: "mcp_tool_call",
-        server: "reverseport",
+        server: "rea",
         tool: "analyze_javascript_application",
         arguments: { input_path: "/tmp/app.asar" },
         result: { structured_content: { error: { code: "denied" } } },
@@ -736,7 +736,7 @@ describe("Codex agent workflow evaluation", () => {
       item: {
         id,
         type: "mcp_tool_call",
-        server: "reverseport",
+        server: "rea",
         tool,
         arguments: { id },
         result,

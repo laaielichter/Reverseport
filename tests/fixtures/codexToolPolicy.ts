@@ -1,5 +1,4 @@
 import { npxRegistrationCommand } from "../../src/application/ClientRegistrationIdentity.js";
-import { PRODUCT_IDENTITY } from "../../src/identity.js";
 
 export const codexToolPolicy = {
   default_tools_approval_mode: "prompt",
@@ -19,13 +18,9 @@ export const codexToolPolicy = {
   },
 };
 
-/**
- * The same client policy in native table and inline-table representations,
- * registered under `serverKey` (a previous server name exercises migration).
- */
+/** The same client policy in native table and inline-table representations. */
 export const codexToolPolicySource = (
   layout: "tables" | "inline table",
-  serverKey: string = PRODUCT_IDENTITY.mcpServerKey,
 ): string => {
   const [command, ...args] = npxRegistrationCommand();
   return layout === "tables"
@@ -34,7 +29,7 @@ export const codexToolPolicySource = (
         'model = "caller-model"',
         "[mcp_servers.other]",
         'command = "other"',
-        `[mcp_servers.${serverKey}]`,
+        "[mcp_servers.rea]",
         `command = ${JSON.stringify(command)}`,
         `args = ${JSON.stringify(args)}`,
         "startup_timeout_sec = 19",
@@ -45,16 +40,16 @@ export const codexToolPolicySource = (
         "required = true",
         'cwd = "/caller/working-directory"',
         'future_policy = { label = "retain this client setting" }',
-        `[mcp_servers.${serverKey}.env]`,
+        "[mcp_servers.rea.env]",
         'CALLER_SETTING = "kept exactly"',
-        `[mcp_servers.${serverKey}.tools.binary_session]`,
+        "[mcp_servers.rea.tools.binary_session]",
         'approval_mode = "approve" # caller approval',
         "output_token_limit = 9007199254740993",
-        `[mcp_servers.${serverKey}.tools."inspect.binary"]`,
+        '[mcp_servers.rea.tools."inspect.binary"]',
         'approval_mode = "auto"',
-        `[mcp_servers.${serverKey}.tools."run/script"]`,
+        '[mcp_servers.rea.tools."run/script"]',
         'approval_mode = "writes"',
-        `[mcp_servers.${serverKey}.tools.__proto__]`,
+        "[mcp_servers.rea.tools.__proto__]",
         'approval_mode = "prompt"',
         "future_option = true",
         "",
@@ -62,7 +57,7 @@ export const codexToolPolicySource = (
     : [
         "# retained root comment",
         'model = "caller-model"',
-        `mcp_servers = { other = { command = "other" }, ${serverKey} = { command = ${JSON.stringify(command)}, args = ${JSON.stringify(args)}, startup_timeout_sec = 19, tool_timeout_sec = 999, default_tools_approval_mode = "prompt", enabled_tools = ["binary_session", "inspect_binary"], disabled_tools = ["run_script"], required = true, cwd = "/caller/working-directory", future_policy = { label = "retain this client setting" }, env = { CALLER_SETTING = "kept exactly" }, tools = { binary_session = { approval_mode = "approve", output_token_limit = 9007199254740993 }, "inspect.binary" = { approval_mode = "auto" }, "run/script" = { approval_mode = "writes" }, __proto__ = { approval_mode = "prompt", future_option = true } } } }`,
+        `mcp_servers = { other = { command = "other" }, rea = { command = ${JSON.stringify(command)}, args = ${JSON.stringify(args)}, startup_timeout_sec = 19, tool_timeout_sec = 999, default_tools_approval_mode = "prompt", enabled_tools = ["binary_session", "inspect_binary"], disabled_tools = ["run_script"], required = true, cwd = "/caller/working-directory", future_policy = { label = "retain this client setting" }, env = { CALLER_SETTING = "kept exactly" }, tools = { binary_session = { approval_mode = "approve", output_token_limit = 9007199254740993 }, "inspect.binary" = { approval_mode = "auto" }, "run/script" = { approval_mode = "writes" }, __proto__ = { approval_mode = "prompt", future_option = true } } } }`,
         "",
       ].join("\n");
 };

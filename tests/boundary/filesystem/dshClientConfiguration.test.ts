@@ -162,7 +162,7 @@ describe("DeepSeek Harness Cordis patch registration", () => {
             id: "rea-mcp",
             name: "@deepseek-ai/dsh-mcp-client",
             config: {
-              serverName: "reverseport",
+              serverName: "rea",
               transport: "stdio",
               command: command[0],
               args: command.slice(1),
@@ -212,7 +212,7 @@ describe("DeepSeek Harness Cordis patch registration", () => {
     - id: rea-mcp
       name: "@deepseek-ai/dsh-mcp-client"
       config:
-        serverName: reverseport
+        serverName: rea
         transport: stdio
         command: stale-launcher
         args: [mcp]
@@ -240,7 +240,7 @@ describe("DeepSeek Harness Cordis patch registration", () => {
     - id: rea-mcp
       name: not-the-harness-client
       config:
-        serverName: reverseport
+        serverName: rea
         transport: stdio
         command: stale-launcher
         args: [mcp]
@@ -280,13 +280,13 @@ describe("DeepSeek Harness registration identity", () => {
     - id: rea-mcp
       name: "@deepseek-ai/dsh-mcp-client"
       config:
-        serverName: reverseport
+        serverName: rea
         transport: stdio
         command: ${command[0]}
         args: [${command.slice(1).join(", ")}]
 - id: rea-mcp
   config:
-    serverName: reverseport
+    serverName: rea
     transport: stdio
     command: redirected-launcher
     args: [mcp]
@@ -323,7 +323,7 @@ describe("DeepSeek Harness registration identity", () => {
     - id: rea-mcp
       name: "@deepseek-ai/dsh-mcp-client"
       config:
-        serverName: reverseport
+        serverName: rea
         transport: stdio
         command: first-launcher
         args: [mcp]
@@ -331,7 +331,7 @@ describe("DeepSeek Harness registration identity", () => {
     - id: rea-mcp
       name: "@deepseek-ai/dsh-mcp-client"
       config:
-        serverName: reverseport
+        serverName: rea
         transport: stdio
         command: second-launcher
         args: [mcp]
@@ -395,7 +395,7 @@ describe("DeepSeek Harness registration identity", () => {
             id: "rea-mcp",
             name: "@deepseek-ai/dsh-mcp-client",
             config: {
-              serverName: "reverseport",
+              serverName: "rea",
               transport: "stdio",
               command: command[0],
               args: command.slice(1),
@@ -419,7 +419,7 @@ describe("DeepSeek Harness repair boundaries", () => {
       `- id: rea-mcp
   name: "@deepseek-ai/dsh-mcp-client"
   config:
-    serverName: reverseport
+    serverName: rea
     transport: stdio
     command: stale-launcher
     args: [mcp]
@@ -438,7 +438,7 @@ describe("DeepSeek Harness repair boundaries", () => {
             id: "rea-mcp",
             name: "@deepseek-ai/dsh-mcp-client",
             config: {
-              serverName: "reverseport",
+              serverName: "rea",
               transport: "stdio",
               command: command[0],
               args: command.slice(1),
@@ -589,7 +589,7 @@ describe("DeepSeek Harness registration state", () => {
       name: "@deepseek-ai/dsh-mcp-client"
       disabled: true
       config:
-        serverName: reverseport
+        serverName: rea
         transport: stdio
         command: ${command[0]}
         args: [${command.slice(1).join(", ")}]
@@ -627,7 +627,7 @@ describe("DeepSeek Harness registration state", () => {
     - id: rea-mcp
       name: "@deepseek-ai/dsh-mcp-client"
       config:
-        serverName: reverseport
+        serverName: rea
         transport: stdio
         command: stale-launcher
         args: [mcp]
@@ -654,7 +654,7 @@ describe("DeepSeek Harness registration state", () => {
       `- id: rea-mcp
   name: "@deepseek-ai/dsh-mcp-client"
   config:
-    serverName: reverseport
+    serverName: rea
     transport: stdio
     command: ${command[0]}
     args: [${command.slice(1).join(", ")}]
@@ -692,7 +692,7 @@ describe("DeepSeek Harness registration state", () => {
     - id: rea-mcp
       name: "@deepseek-ai/dsh-mcp-client"
       config:
-        serverName: reverseport
+        serverName: rea
         transport: stdio
         command: stale-launcher
         args: [mcp]
@@ -722,7 +722,7 @@ describe("DeepSeek Harness canonical row repair", () => {
     - id: rea-mcp
       name: "@deepseek-ai/dsh-mcp-client"
       config:
-        serverName: reverseport
+        serverName: rea
         transport: stdio
         command: ${command[0]}
         args: [${command.slice(1).join(", ")}]
@@ -768,7 +768,7 @@ describe("DeepSeek Harness canonical row repair", () => {
     - id: rea-mcp
       name: "@deepseek-ai/dsh-mcp-client"
       config:
-        serverName: reverseport
+        serverName: rea
         transport: stdio
         command: stale-launcher
         args: [mcp]
@@ -805,13 +805,13 @@ describe("DeepSeek Harness canonical row repair", () => {
     - id: rea-mcp
       name: "@deepseek-ai/dsh-mcp-client"
       config:
-        serverName: reverseport
+        serverName: rea
         transport: stdio
         command: first-launcher
         args: [mcp]
 - id: rea-mcp
   config:
-    serverName: reverseport
+    serverName: rea
     transport: stdio
     command: stale-launcher
     args: [mcp]
@@ -844,7 +844,7 @@ describe("DeepSeek Harness document edges", () => {
     - id: rea-mcp
       name: "@deepseek-ai/dsh-mcp-client"
       config:
-        serverName: reverseport
+        serverName: rea
         transport: stdio
         command: stale-launcher
         args: [mcp]
@@ -887,7 +887,7 @@ describe("DeepSeek Harness document edges", () => {
     - id: rea-mcp
       name: "@deepseek-ai/dsh-mcp-client"
       config:
-        serverName: reverseport
+        serverName: rea
         transport: stdio
         command: stale-launcher
         args: [mcp]
@@ -976,7 +976,7 @@ describe("DeepSeek Harness entry ownership", () => {
     - id: rea-mcp
       name: "@deepseek-ai/dsh-mcp-client"
       config:
-        serverName: reverseport
+        serverName: rea
         transport: stdio
         command: stale-launcher
         args: [mcp]
@@ -1018,7 +1018,7 @@ describe("DeepSeek Harness entry ownership", () => {
       name: "@deepseek-ai/dsh-mcp-client"
       disabled: !!js process.env.DISABLE_REA === "1"
       config:
-        serverName: reverseport
+        serverName: rea
         transport: stdio
         command: ${command[0]}
         args: [${command.slice(1).join(", ")}]
@@ -1046,7 +1046,7 @@ describe("DeepSeek Harness entry ownership", () => {
     - id: rea-mcp
       name: "@deepseek-ai/dsh-mcp-client"
       config:
-        serverName: reverseport
+        serverName: rea
         transport: stdio
         command: stale-launcher
         args: [mcp]
@@ -1096,7 +1096,7 @@ describe("DeepSeek Harness alias collapse", () => {
     - id: rea-mcp
       name: "@deepseek-ai/dsh-mcp-client"
       config:
-        serverName: reverseport
+        serverName: rea
         transport: stdio
         command: stale-launcher
         args: [mcp]
@@ -1130,7 +1130,7 @@ describe("DeepSeek Harness alias collapse", () => {
       id: rea-mcp
       name: "@deepseek-ai/dsh-mcp-client"
       config:
-        serverName: reverseport
+        serverName: rea
         transport: stdio
         command: stale-launcher
         args: [mcp]
@@ -1168,7 +1168,7 @@ describe("DeepSeek Harness alias targets", () => {
     - id: rea-mcp
       name: "@deepseek-ai/dsh-mcp-client"
       config:
-        serverName: reverseport
+        serverName: rea
         transport: stdio
         command: stale-launcher
         args: [mcp]
@@ -1200,7 +1200,7 @@ describe("DeepSeek Harness alias targets", () => {
       client.configPath,
       `- &cfg
   cwd: !!js process.cwd() # caller launch directory
-  serverName: reverseport
+  serverName: rea
   transport: stdio
   command: stale-launcher
   args: [mcp]
@@ -1242,7 +1242,7 @@ describe("DeepSeek Harness alias identity", () => {
   - id: rea-mcp
     name: "@deepseek-ai/dsh-mcp-client"
     config:
-      serverName: reverseport
+      serverName: rea
       transport: stdio
       command: stale-launcher
       args: [mcp]
@@ -1280,7 +1280,7 @@ describe("DeepSeek Harness alias identity", () => {
     - id: rea-mcp
       name: "@deepseek-ai/dsh-mcp-client"
       config:
-        serverName: reverseport
+        serverName: rea
         transport: stdio
         command: stale-launcher
         args: [mcp]
@@ -1311,7 +1311,7 @@ describe("DeepSeek Harness alias identity", () => {
     - id: *entryId
       name: "@deepseek-ai/dsh-mcp-client"
       config:
-        serverName: reverseport
+        serverName: rea
         transport: stdio
         command: stale-launcher
         args: [mcp]
@@ -1347,7 +1347,7 @@ describe("DeepSeek Harness alias cleanup", () => {
     - id: rea-mcp
       name: "@deepseek-ai/dsh-mcp-client"
       config:
-        serverName: reverseport
+        serverName: rea
         transport: stdio
         command: stale-launcher
         args: [mcp]
@@ -1376,7 +1376,7 @@ describe("DeepSeek Harness alias cleanup", () => {
     - id: rea-mcp
       name: "@deepseek-ai/dsh-mcp-client"
       config:
-        serverName: reverseport
+        serverName: rea
         transport: stdio
         command: stale-launcher
         args: [mcp]
@@ -1409,7 +1409,7 @@ describe("DeepSeek Harness alias cleanup", () => {
     - id: rea-mcp
       name: "@deepseek-ai/dsh-mcp-client"
       config:
-        serverName: reverseport
+        serverName: rea
         transport: stdio
         command: ${command[0]}
         args: [${command.slice(1).join(", ")}]
@@ -1435,7 +1435,7 @@ describe("DeepSeek Harness root aliases", () => {
     - id: rea-mcp
       name: "@deepseek-ai/dsh-mcp-client"
       config:
-        serverName: reverseport
+        serverName: rea
         transport: stdio
         command: first-launcher
         args: [mcp]
@@ -1444,7 +1444,7 @@ describe("DeepSeek Harness root aliases", () => {
 - &patch
   id: rea-mcp
   config:
-    serverName: reverseport
+    serverName: rea
     transport: stdio
     command: stale-launcher
     args: [mcp]
@@ -1479,7 +1479,7 @@ describe("DeepSeek Harness root aliases", () => {
     - id: rea-mcp
       name: "@deepseek-ai/dsh-mcp-client"
       config:
-        serverName: reverseport
+        serverName: rea
         transport: stdio
         command: ${command[0]}
         args: [${command.slice(1).join(", ")}]
@@ -1503,7 +1503,7 @@ describe("DeepSeek Harness root aliases", () => {
   id: rea-mcp
   name: "@deepseek-ai/dsh-mcp-client"
   config:
-    serverName: reverseport
+    serverName: rea
     transport: stdio
     command: stale-launcher
     args: [mcp]
@@ -1551,7 +1551,7 @@ describe("DeepSeek Harness inert anchors", () => {
       - id: rea-mcp
         name: "@deepseek-ai/dsh-mcp-client"
         config:
-          serverName: reverseport
+          serverName: rea
           transport: stdio
           command: stale-launcher
           args: [mcp]
@@ -1589,7 +1589,7 @@ describe("DeepSeek Harness inert anchors", () => {
       - id: rea-mcp
         name: "@deepseek-ai/dsh-mcp-client"
         config:
-          serverName: reverseport
+          serverName: rea
           transport: stdio
           command: ${command[0]}
           args: [${command.slice(1).join(", ")}]
@@ -1617,7 +1617,7 @@ describe("DeepSeek Harness alias anchors", () => {
       client.configPath,
       `- id: &entryId rea-mcp
   config:
-    serverName: reverseport
+    serverName: rea
     transport: stdio
     command: stale-launcher
     args: [mcp]
@@ -1625,7 +1625,7 @@ describe("DeepSeek Harness alias anchors", () => {
     - id: *entryId
       name: "@deepseek-ai/dsh-mcp-client"
       config:
-        serverName: reverseport
+        serverName: rea
         transport: stdio
         command: stale-launcher
         args: [mcp]
@@ -1653,7 +1653,7 @@ describe("DeepSeek Harness alias anchors", () => {
   - id: rea-mcp
     name: "@deepseek-ai/dsh-mcp-client"
     config:
-      serverName: reverseport
+      serverName: rea
       transport: stdio
       command: ${command[0]}
       args: [${command.slice(1).join(", ")}]
@@ -1689,7 +1689,7 @@ const canonicalEntry = () => ({
   id: "rea-mcp",
   name: "@deepseek-ai/dsh-mcp-client",
   config: {
-    serverName: "reverseport",
+    serverName: "rea",
     transport: "stdio",
     command: command[0],
     args: command.slice(1),
@@ -1831,7 +1831,7 @@ describe("DeepSeek Harness source ownership", () => {
         config: {command: keep-me}
       - id: rea-mcp
         name: '@deepseek-ai/dsh-mcp-client'
-        config: {serverName: reverseport, transport: stdio, command: stale, args: [mcp]}
+        config: {serverName: rea, transport: stdio, command: stale, args: [mcp]}
 - *op
 `;
       await writeFile(client.configPath, initial);
@@ -1859,7 +1859,7 @@ describe("DeepSeek Harness source ownership", () => {
     "snapshots environment aliases before replacing their anchor in %s",
     async (shape) => {
       const { client } = await harnessClient();
-      const config = `serverName: reverseport
+      const config = `serverName: rea
       transport: stdio
       command: stale-launcher
       args: [mcp]
@@ -2336,7 +2336,7 @@ describe("DeepSeek Harness uninstall of a shared operation", () => {
     - id: rea-mcp
       name: "${entry.name}"
       config:
-        serverName: reverseport
+        serverName: rea
         transport: stdio
         command: ${entry.config.command}
         args: ${JSON.stringify(entry.config.args)}
@@ -2362,7 +2362,7 @@ describe("DeepSeek Harness uninstall of a shared operation", () => {
     const row = (launcher: string) => `    - id: rea-mcp
       name: "${entry.name}"
       config:
-        serverName: reverseport
+        serverName: rea
         transport: stdio
         command: ${launcher}
         args: [mcp]
@@ -2394,7 +2394,7 @@ ${row("second-launcher")}`,
         { insert: [{ id: "user-a", name: "plugin-a" }] },
         {
           id: "rea-mcp",
-          config: { serverName: "reverseport" },
+          config: { serverName: "rea" },
           insert: [canonicalEntry()],
         },
       ]),

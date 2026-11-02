@@ -102,17 +102,12 @@ After round 4:
 - Typo suggestions scale with the word, so "cobol" is no longer "godot"; `connect` prints an exact version.
 - The docs' tool counts are checked against the code by a test.
 
-Since round 4, for the next round (not rated yet):
-
-- One server name: setup, `connect` and the engine register and report the server as `reverseport` instead of `rea`,
-  the deep-analysis engine's historical name (raised in rounds 2, 3 and 4). Setup moves a ReversePort-owned `rea`
-  entry to `reverseport` in one approved, backed-up edit and leaves any other `rea` entry alone. The `rea` command
-  stays as an alias.
-
 ## Open items on the way to 9
 
 Each item names the round that raised it.
 
+- **One server name.** Setup still registers the server as `rea`, the deep-analysis engine's historical name;
+  `connect` uses the same name. The plugin uses `reverseport`. _(rounds 2, 3 and 4)_
 - **Defaults.** The engine's evidence bundle still defaults to the full form, and call-graph traversals have no
   depth limit. _(rounds 1 and 2)_
 - **Smaller results for large folders.** `re_symbols` and `re_graph` on very large folders still return 14–16k
