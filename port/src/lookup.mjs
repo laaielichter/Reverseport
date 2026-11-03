@@ -285,7 +285,8 @@ async function wikidataSource(t, opt, { steamAppId, kind } = {}) {
 }
 
 function ghHeaders() {
-  const token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
+  // Optional, for GitHub's own API only: the plugin passes it from its github_token setting (stored as a secret).
+  const token = process.env.REVERSEPORT_GITHUB_TOKEN;
   return { accept: 'application/vnd.github+json', ...(token ? { authorization: `Bearer ${token}` } : {}) };
 }
 

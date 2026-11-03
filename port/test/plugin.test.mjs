@@ -104,6 +104,21 @@ test('Claude plugin directory tree: only what the plugin loads, within the direc
     '[a](#x) [b](https://github.com/laaielichter/Reverseport/tree/v1/docs/) ![c](https://raw.githubusercontent.com/laaielichter/Reverseport/v1/x.svg) [d](https://e.f)');
 });
 
+test('directory build: no file over the scanner size, and split API snapshots load the same', async () => {
+  const { buildClaudeDirectory } = await import('../../scripts/build-claude-directory.mjs');
+  const os = await import('node:os');
+  const fsp = await import('node:fs/promises');
+  const out = path.join(await fsp.mkdtemp(path.join(os.tmpdir(), 'rp-dir-')), 'tree');
+  buildClaudeDirectory({ out });
+  const walk = async (dir) => (await Promise.all((await fsp.readdir(dir, { withFileTypes: true })).map(e => e.isDirectory() ? walk(path.join(dir, e.name)) : [path.join(dir, e.name)]))).flat();
+  for (const file of await walk(out)) assert.ok((await fsp.stat(file)).size <= 256 * 1024, `${path.relative(out, file)} is over 256 KiB`);
+  const original = JSON.parse(await fsp.readFile(new URL('../knowledge/apis/godot-4.7.json', import.meta.url), 'utf8'));
+  const index = JSON.parse(await fsp.readFile(path.join(out, 'port/knowledge/apis/godot-4.7.json'), 'utf8'));
+  const merged = { ...index.classes };
+  for (const part of index.parts) Object.assign(merged, JSON.parse(await fsp.readFile(path.join(out, 'port/knowledge/apis', part), 'utf8')).classes);
+  assert.deepEqual(merged, original.classes);
+});
+
 test('plugin settings: empty or unsubstituted values are unset; the engine setting fetches the engine', async () => {
   const { applyPluginSettings } = await import('../plugin/mcp-launch.mjs');
   const env = applyPluginSettings({ REVERSEPORT_PLUGIN_ENGINE: 'true', REVERSEPORT_PROFILE: 'compact', REVERSEPORT_HOME: '', GHIDRA_INSTALL_DIR: '${user_config.ghidra_install_dir}' });
@@ -112,6 +127,7 @@ test('plugin settings: empty or unsubstituted values are unset; the engine setti
   assert.equal('REVERSEPORT_HOME' in env, false);
   assert.equal('GHIDRA_INSTALL_DIR' in env, false);
   assert.equal('REVERSEPORT_PLUGIN_ENGINE' in env, false);
+  assert.equal('REVERSEPORT_GITHUB_TOKEN' in applyPluginSettings({ REVERSEPORT_GITHUB_TOKEN: '${user_config.github_token}' }), false, 'an empty token setting is unset');
   const off = applyPluginSettings({ REVERSEPORT_PLUGIN_ENGINE: 'false' });
   assert.equal(off.REVERSEPORT_ENGINE_FETCH, undefined);
   assert.equal(applyPluginSettings({ REVERSEPORT_PLUGIN_ENGINE: 'true', REVERSEPORT_ENGINE_FETCH: 'off' }).REVERSEPORT_ENGINE_FETCH, 'off', 'an explicit environment choice wins');

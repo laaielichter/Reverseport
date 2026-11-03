@@ -26,9 +26,15 @@ function locate(env = process.env) {
   return { missing: MISSING };
 }
 
+// agentdisk only reads the disk: give it the environment without tokens, keys or passwords.
+const SECRET = /token|secret|passw|api.?key|_key$|auth|cookie|session|credential/i;
+function childEnv() {
+  return Object.fromEntries(Object.entries(process.env).filter(([name]) => !SECRET.test(name)));
+}
+
 function run(command, args) {
   return new Promise(resolve => {
-    execFile(command[0], [...command.slice(1), ...args], { timeout: TIMEOUT_MS, maxBuffer: 1024 * 1024, windowsHide: true, shell: process.platform === 'win32' && /\.cmd$/i.test(command[0]) }, (err, stdout, stderr) => {
+    execFile(command[0], [...command.slice(1), ...args], { env: childEnv(), timeout: TIMEOUT_MS, maxBuffer: 1024 * 1024, windowsHide: true, shell: process.platform === 'win32' && /\.cmd$/i.test(command[0]) }, (err, stdout, stderr) => {
       resolve({ code: err ? (typeof err.code === 'number' ? err.code : 1) : 0, stdout: String(stdout), stderr: String(stderr).trim() });
     });
   });

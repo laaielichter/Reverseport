@@ -22,6 +22,9 @@ function snapshot(version) {
     const file = path.join(ROOT, `${key}.json`);
     if (!fs.existsSync(file)) throw new RPError('INVALID_ARGUMENT', `No API snapshot for Godot ${version}. Available: ${GODOT_VERSIONS.join(', ')}.`);
     const api = JSON.parse(fs.readFileSync(file, 'utf8'));
+    // The plugin directory build splits big snapshots into parts (each under its scan size); merge them back.
+    for (const part of api.parts ?? []) Object.assign(api.classes, JSON.parse(fs.readFileSync(path.join(ROOT, part), 'utf8')).classes);
+    delete api.parts;
     api.classSet = new Set(Object.keys(api.classes));
     api.memberCache = new Map();
     cache.set(key, api);
