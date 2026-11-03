@@ -2,9 +2,18 @@
  * Variables a Windows child process needs from the host even when a verifier
  * isolates everything else. Without SystemRoot, Node aborts at startup with
  * `Assertion failed: ncrypto::CSPRNG(nullptr, 0)`; without ComSpec and PATHEXT
- * npm `.cmd` shims such as `qwen.cmd` cannot be resolved or run.
+ * npm `.cmd` shims such as `qwen.cmd` cannot be resolved or run; without TEMP
+ * and TMP, Windows falls back to C:\Windows\temp, which a normal account may
+ * not open, and analysis fails at startup with "Access is denied".
  */
-const WINDOWS_HOST_VARIABLES = ["SystemRoot", "WINDIR", "ComSpec", "PATHEXT"];
+const WINDOWS_HOST_VARIABLES = [
+  "SystemRoot",
+  "WINDIR",
+  "ComSpec",
+  "PATHEXT",
+  "TEMP",
+  "TMP",
+];
 
 /** Host variables to keep in an isolated verifier environment. */
 export const verifierHostEnvironment = (
