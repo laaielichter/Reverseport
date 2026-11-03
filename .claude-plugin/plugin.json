@@ -44,7 +44,8 @@
         "REVERSEPORT_PLUGIN_ENGINE": "${user_config.engine}",
         "REVERSEPORT_PROFILE": "${user_config.tool_profile}",
         "REVERSEPORT_HOME": "${user_config.workspace}",
-        "GHIDRA_INSTALL_DIR": "${user_config.ghidra_install_dir}"
+        "GHIDRA_INSTALL_DIR": "${user_config.ghidra_install_dir}",
+        "REVERSEPORT_GITHUB_TOKEN": "${user_config.github_token}"
       }
     }
   },
@@ -70,6 +71,12 @@
       "type": "directory",
       "title": "Ghidra installation (optional)",
       "description": "Your own Ghidra folder for native decompilation. Empty: none or found by setup."
+    },
+    "github_token": {
+      "type": "string",
+      "title": "GitHub token (optional)",
+      "description": "Only sent to api.github.com, for higher rate limits when looking up public repositories. Empty: lookups run without it.",
+      "sensitive": true
     }
   }
 }
