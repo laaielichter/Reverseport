@@ -1,0 +1,42 @@
+{
+  "from": "godot",
+  "to": "threejs",
+  "title": "Godot 4 (GDScript) → three.js (TypeScript, browser)",
+  "conventions": [
+    "three.js is a renderer, not a game engine: physics, input mapping, scene files, audio buses and UI are yours to choose. A common stack: three + Rapier (@dimforge/rapier3d-compat) for physics, plain DOM/CSS for UI, Vite for building.",
+    "Axes match Godot (right-handed, Y up, cameras look down -Z, meters): positions and quaternions carry over unchanged. Godot's default Euler order is YXZ; set object.rotation.order = 'YXZ' when copying Euler angles.",
+    "Godot scenes: export meshes and materials as glTF 2.0 (Scene → Export As → glTF 2.0) and load them with GLTFLoader; recreate the node logic in TypeScript classes that own an Object3D. ReversePort can write a TypeScript scene-builder module from a .tscn (port_scene).",
+    "Each GDScript becomes a TypeScript class with update(dt) and fixedUpdate(dt) methods; a small game loop calls them from renderer.setAnimationLoop.",
+    "Dispose geometries, materials and textures when removing objects (the browser does not free GPU memory for you)."
+  ],
+  "entries": [
+    { "id": "script-class", "topic": "structure", "from": "extends Node3D", "to": "class X { object = new THREE.Group(); update(dt: number) {} }", "pattern": "^extends\\s" },
+    { "id": "ready", "topic": "lifecycle", "from": "_ready()", "to": "constructor / async init() after assets are loaded", "pattern": "\\bfunc\\s+_ready\\b" },
+    { "id": "process", "topic": "lifecycle", "from": "_process(delta)", "to": "update(dt) called from renderer.setAnimationLoop with clock.getDelta()", "pattern": "\\bfunc\\s+_process\\b" },
+    { "id": "physics-process", "topic": "lifecycle", "from": "_physics_process(delta)", "to": "fixedUpdate(1/60) from an accumulator loop; step the physics world there", "pattern": "\\bfunc\\s+_physics_process\\b" },
+    { "id": "input", "topic": "input", "from": "Input.is_action_pressed(\"x\") / InputMap", "to": "own action map over keydown/keyup listeners and the Gamepad API (navigator.getGamepads())", "pattern": "Input\\.(is_action|get_axis|get_vector)" },
+    { "id": "signal", "topic": "events", "from": "signal / emit / connect", "to": "THREE.EventDispatcher (dispatchEvent / addEventListener) or a typed emitter", "pattern": "^signal\\s|\\.emit\\(|\\.connect\\(" },
+    { "id": "get-node", "topic": "scene tree", "from": "$Path / get_node", "to": "object.getObjectByName(\"Path\") or keep direct references in the class", "pattern": "(get_node\\(|\\$[A-Za-z\"%])", "leftover": "\\bget_node\\(" },
+    { "id": "preload", "topic": "resources", "from": "preload(\"res://x.tscn\")", "to": "await new GLTFLoader().loadAsync('x.glb') once, then clone per instance", "pattern": "\\bpreload\\(|\\bload\\(" },
+    { "id": "instantiate", "topic": "scene tree", "from": "instantiate() + add_child()", "to": "template.clone() (SkeletonUtils.clone for skinned meshes) + parent.add(obj)", "pattern": "\\.instantiate\\(" },
+    { "id": "queue-free", "topic": "scene tree", "from": "queue_free()", "to": "obj.removeFromParent() + dispose() of geometry/material/texture", "pattern": "\\bqueue_free\\(?", "leftover": "queue_free" },
+    { "id": "timer", "topic": "async", "from": "await get_tree().create_timer(t).timeout", "to": "await new Promise(r => setTimeout(r, t * 1000)) — or a game-time timer that respects pause", "pattern": "create_timer\\(" },
+    { "id": "tween", "topic": "animation", "from": "create_tween()", "to": "a small tween in update(dt), or @tweenjs/tween.js / GSAP", "pattern": "create_tween\\(" },
+    { "id": "character-body", "topic": "physics", "from": "CharacterBody3D.move_and_slide()", "to": "Rapier KinematicCharacterController.computeColliderMovement + setNextKinematicTranslation", "pattern": "move_and_slide\\(|CharacterBody3D" },
+    { "id": "rigid-body", "topic": "physics", "from": "RigidBody3D.apply_central_impulse", "to": "Rapier RigidBody.applyImpulse({x, y, z}, true)", "pattern": "RigidBody3D|apply_(central_)?impulse\\(" },
+    { "id": "area", "topic": "physics", "from": "Area3D.body_entered", "to": "Rapier sensor collider + collision events (EventQueue)", "pattern": "Area3D|body_entered" },
+    { "id": "raycast", "topic": "physics", "from": "RayCast3D", "to": "THREE.Raycaster (meshes) or Rapier world.castRay (physics)", "pattern": "RayCast3D|intersect_ray" },
+    { "id": "camera", "topic": "rendering", "from": "Camera3D (fov vertical)", "to": "THREE.PerspectiveCamera(fov, aspect, near, far) (fov vertical, degrees)", "pattern": "Camera3D" },
+    { "id": "lights", "topic": "rendering", "from": "DirectionalLight3D / OmniLight3D / SpotLight3D", "to": "DirectionalLight (+ target) / PointLight / SpotLight", "pattern": "(Directional|Omni|Spot)Light3D", "notes": "three.js uses physical light units; retune intensities." },
+    { "id": "environment", "topic": "rendering", "from": "WorldEnvironment (sky, tonemap, glow)", "to": "scene.background / scene.environment (PMREMGenerator), renderer.toneMapping, postprocessing (EffectComposer, UnrealBloomPass)", "pattern": "WorldEnvironment|Environment" },
+    { "id": "animation", "topic": "animation", "from": "AnimationPlayer.play(\"x\")", "to": "new THREE.AnimationMixer(root).clipAction(clip).play(); mixer.update(dt)", "pattern": "AnimationPlayer" },
+    { "id": "audio", "topic": "audio", "from": "AudioStreamPlayer3D", "to": "THREE.PositionalAudio with an AudioListener on the camera", "pattern": "AudioStreamPlayer" },
+    { "id": "ui", "topic": "ui", "from": "Control / Label / CanvasLayer", "to": "HTML/CSS overlay (or a UI library) above the canvas", "pattern": "\\b(Control|Label|Button|CanvasLayer)\\b" },
+    { "id": "autoload", "topic": "architecture", "from": "Autoload singleton", "to": "an exported module-level instance (ES module singletons)", "pattern": "^\\[autoload\\]" },
+    { "id": "change-scene", "topic": "architecture", "from": "change_scene_to_file", "to": "dispose the current world, build the next one (your own scene manager)", "pattern": "change_scene_to_(file|packed)\\(" },
+    { "id": "groups", "topic": "architecture", "from": "groups", "to": "Sets/arrays per group, or object.userData.tags", "pattern": "(add_to_group|get_nodes_in_group)\\(" },
+    { "id": "print", "topic": "debug", "from": "print()", "to": "console.log()", "pattern": "\\bprint\\(", "leftover": "^\\s*print\\(" },
+    { "id": "math", "topic": "math", "from": "lerp, clamp, deg_to_rad", "to": "THREE.MathUtils.lerp, clamp, degToRad", "pattern": "\\b(lerp|clamp|deg_to_rad)\\(" },
+    { "id": "shader", "topic": "rendering", "from": ".gdshader", "to": "ShaderMaterial (GLSL) or TSL node materials (WebGPU renderer)", "pattern": "shader_type\\s" }
+  ]
+}

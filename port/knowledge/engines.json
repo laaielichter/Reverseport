@@ -1,0 +1,67 @@
+{
+  "godot": {
+    "name": "Godot 4 (GDScript)",
+    "language": "gdscript",
+    "scriptExt": ".gd",
+    "sceneFormat": ".tscn (text) / .scn (binary)",
+    "axes": { "right": "+X", "up": "+Y", "forward": "-Z (cameras, look_at, Vector3.FORWARD)", "modelFront": "+Z (Vector3.MODEL_FRONT, glTF imports)" },
+    "handedness": "right",
+    "units": "meters",
+    "eulerOrder": "YXZ (rotation in radians, rotation_degrees in degrees)",
+    "fov": "Camera3D.fov is vertical (keep_aspect = KEEP_HEIGHT, default)",
+    "physicsTick": "60 Hz (physics/common/physics_ticks_per_second)",
+    "lifecycle": ["_init", "_enter_tree", "_ready", "_process(delta)", "_physics_process(delta)", "_input(event)", "_unhandled_input(event)", "_exit_tree", "_notification(what)"]
+  },
+  "godot-csharp": {
+    "name": "Godot 4 (C#)",
+    "language": "csharp",
+    "scriptExt": ".cs",
+    "sceneFormat": ".tscn",
+    "axes": { "right": "+X", "up": "+Y", "forward": "-Z", "modelFront": "+Z" },
+    "handedness": "right",
+    "units": "meters",
+    "eulerOrder": "YXZ",
+    "fov": "vertical",
+    "physicsTick": "60 Hz",
+    "lifecycle": ["_Ready()", "_Process(double delta)", "_PhysicsProcess(double delta)", "_Input(InputEvent @event)", "_UnhandledInput(InputEvent @event)", "_ExitTree()"]
+  },
+  "unity": {
+    "name": "Unity (C#)",
+    "language": "csharp",
+    "scriptExt": ".cs",
+    "sceneFormat": ".unity / .prefab (YAML when Asset Serialization = Force Text)",
+    "axes": { "right": "+X", "up": "+Y", "forward": "+Z (transform.forward)" },
+    "handedness": "left",
+    "units": "meters",
+    "eulerOrder": "applied Z, then X, then Y (same matrix order as Godot YXZ); degrees",
+    "fov": "Camera.fieldOfView is vertical (degrees)",
+    "physicsTick": "50 Hz (Fixed Timestep 0.02 s)",
+    "lifecycle": ["Awake()", "OnEnable()", "Start()", "FixedUpdate()", "Update()", "LateUpdate()", "OnDisable()", "OnDestroy()"]
+  },
+  "unreal": {
+    "name": "Unreal Engine 5 (C++ / Blueprint)",
+    "language": "cpp",
+    "scriptExt": ".h + .cpp",
+    "sceneFormat": ".umap (level) / .uasset (Blueprint) — binary",
+    "axes": { "right": "+Y", "up": "+Z", "forward": "+X" },
+    "handedness": "left",
+    "units": "centimeters",
+    "eulerOrder": "FRotator(Pitch, Yaw, Roll) in degrees",
+    "fov": "UCameraComponent::FieldOfView is horizontal (degrees)",
+    "physicsTick": "variable by default (frame rate); optional substepping / async physics tick",
+    "lifecycle": ["constructor (CreateDefaultSubobject)", "PostInitializeComponents()", "BeginPlay()", "Tick(float DeltaTime)", "EndPlay(EEndPlayReason::Type)"]
+  },
+  "threejs": {
+    "name": "three.js (TypeScript)",
+    "language": "typescript",
+    "scriptExt": ".ts",
+    "sceneFormat": "code + glTF (.glb) assets",
+    "axes": { "right": "+X", "up": "+Y", "forward": "-Z (cameras and lights look down -Z; Object3D.lookAt points +Z for other objects)" },
+    "handedness": "right",
+    "units": "meters by convention (physical lights assume meters)",
+    "eulerOrder": "XYZ by default (radians); set object.rotation.order = 'YXZ' to match Godot",
+    "fov": "PerspectiveCamera.fov is vertical (degrees)",
+    "physicsTick": "none built in — fixed-step accumulator with Rapier / cannon-es",
+    "lifecycle": ["constructor / init()", "renderer.setAnimationLoop(update)", "dispose()"]
+  }
+}
