@@ -669,8 +669,10 @@ const registrationAligned = ({
   )
     return "stale";
   if (client.name === "kimi" && !kimiInputSchemaProfileSelected) return "stale";
-  // A Harness registration connects as REA's stdio server under its current
-  // name; another server name or transport is refreshed by setup.
+  // A Harness row is owned by its entry id (`rea-mcp`), but the session
+  // connects under `serverName`, which must be the current server name
+  // (`reverseport`) over stdio. A row that still says `rea`, or any other
+  // name or transport, is stale and setup rewrites it.
   if (
     client.format === "dsh" &&
     (registration.serverName !== PRODUCT_IDENTITY.mcpServerKey ||
