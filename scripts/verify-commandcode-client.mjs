@@ -11,6 +11,7 @@ import {
 } from "../dist/contracts/toolContracts.js";
 import { createVerifierCommands } from "./lib/verify-commands.mjs";
 import { withVerifierCleanup } from "./lib/verifier-cleanup.mjs";
+import { verifierHostEnvironment } from "./lib/verifier-host-environment.mjs";
 import { saveVerifierCommandOutput } from "./lib/verifier-command-output.mjs";
 import { assertJavaScriptApplicationInputPaths } from "./lib/javascript-application-paths.mjs";
 import { createVerifierRun, completeVerifierRun } from "./lib/verifier-run.mjs";
@@ -85,6 +86,7 @@ await withVerifierCleanup(async () => {
       'export function result() { return { clientCompatibility: "REA_CLIENT_FIXTURE", count: 7 }; }\n',
     );
     const environment = {
+      ...verifierHostEnvironment(),
       PATH: process.env.PATH,
       NODE_OPTIONS: process.env.NODE_OPTIONS,
       USERPROFILE: account,

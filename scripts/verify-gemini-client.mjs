@@ -17,6 +17,7 @@ import {
 import { createVerifierCommands } from "./lib/verify-commands.mjs";
 import { saveVerifierCommandOutput } from "./lib/verifier-command-output.mjs";
 import { withVerifierCleanup } from "./lib/verifier-cleanup.mjs";
+import { verifierHostEnvironment } from "./lib/verifier-host-environment.mjs";
 import { assertJavaScriptApplicationInputPaths } from "./lib/javascript-application-paths.mjs";
 import { createVerifierRun, completeVerifierRun } from "./lib/verifier-run.mjs";
 import { createGeminiModelFixture } from "./verify/clients/gemini-model-fixture.mjs";
@@ -78,6 +79,7 @@ await withVerifierCleanup(async () => {
     await writeFile(join(lab, "system-settings.json"), "{}\n");
     await writeFile(join(lab, "system-defaults.json"), "{}\n");
     const environment = {
+      ...verifierHostEnvironment(),
       PATH: process.env.PATH ?? "",
       USERPROFILE: account,
       GEMINI_CLI_HOME: profile,

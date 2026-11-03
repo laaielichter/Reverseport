@@ -13,6 +13,7 @@ import {
 import { pathExists } from "./lib/verify-package-core.mjs";
 import { createVerifierCommands } from "./lib/verify-commands.mjs";
 import { withVerifierCleanup } from "./lib/verifier-cleanup.mjs";
+import { verifierHostEnvironment } from "./lib/verifier-host-environment.mjs";
 import { saveVerifierCommandOutput } from "./lib/verifier-command-output.mjs";
 import { assertJavaScriptApplicationInputPaths } from "./lib/javascript-application-paths.mjs";
 import { createVerifierRun, completeVerifierRun } from "./lib/verifier-run.mjs";
@@ -61,6 +62,7 @@ await withVerifierCleanup(async () => {
       mkdir(target, { recursive: true }),
     ]);
     const environment = {
+      ...verifierHostEnvironment(),
       PATH: process.env.PATH ?? "",
       HOME: account,
       USERPROFILE: account,

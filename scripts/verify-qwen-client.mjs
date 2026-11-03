@@ -14,6 +14,7 @@ import { createHash } from "node:crypto";
 import { createVerifierCommands } from "./lib/verify-commands.mjs";
 import { saveVerifierCommandOutput } from "./lib/verifier-command-output.mjs";
 import { withVerifierCleanup } from "./lib/verifier-cleanup.mjs";
+import { verifierHostEnvironment } from "./lib/verifier-host-environment.mjs";
 import { assertJavaScriptApplicationInputPaths } from "./lib/javascript-application-paths.mjs";
 import { createVerifierRun, completeVerifierRun } from "./lib/verifier-run.mjs";
 import {
@@ -66,6 +67,7 @@ await withVerifierCleanup(async () => {
       mkdir(workspace),
     ]);
     const baseEnvironment = {
+      ...verifierHostEnvironment(),
       PATH: process.env.PATH ?? "",
       HOME: account,
       USERPROFILE: account,
