@@ -20,6 +20,8 @@ describe("isolated verifier environments", () => {
           windir: "C:\\Windows",
           ComSpec: "C:\\Windows\\system32\\cmd.exe",
           PATHEXT: ".COM;.EXE;.BAT;.CMD",
+          Temp: "C:\\Users\\someone\\AppData\\Local\\Temp",
+          TMP: "C:\\Users\\someone\\AppData\\Local\\Temp",
           USERPROFILE: "C:\\Users\\someone",
           SECRET: "not copied",
         },
@@ -30,6 +32,10 @@ describe("isolated verifier environments", () => {
       WINDIR: "C:\\Windows",
       ComSpec: "C:\\Windows\\system32\\cmd.exe",
       PATHEXT: ".COM;.EXE;.BAT;.CMD",
+      // Without TEMP and TMP Windows falls back to C:\Windows\temp, which a
+      // normal account may not open: analysis then fails with access denied.
+      TEMP: "C:\\Users\\someone\\AppData\\Local\\Temp",
+      TMP: "C:\\Users\\someone\\AppData\\Local\\Temp",
     });
   });
 
@@ -52,17 +58,21 @@ describe("isolated verifier environments", () => {
   );
 
   it.runIf(process.platform === "win32")(
-    "lets a child Node process start on Windows",
+    "lets a child Node process start on Windows with the account's temp directory",
     async () => {
       const { stdout } = await execute(
         process.execPath,
         [
           "-e",
-          "process.stdout.write(String(require('node:crypto').randomInt(1, 2)))",
+          "process.stdout.write(JSON.stringify({ random: require('node:crypto').randomInt(1, 2), temp: require('node:os').tmpdir() }))",
         ],
         { env: { ...verifierHostEnvironment(), PATH: process.env.PATH ?? "" } },
       );
-      expect(stdout).toBe("1");
+      const child = JSON.parse(stdout) as { random: number; temp: string };
+      expect(child.random).toBe(1);
+      expect(child.temp.toLowerCase()).toBe(
+        (process.env.TEMP ?? "").toLowerCase(),
+      );
     },
   );
 });
