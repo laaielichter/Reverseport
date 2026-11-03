@@ -1,0 +1,33 @@
+{
+  "from": "unity",
+  "to": "unreal",
+  "title": "Unity (C#) → Unreal Engine 5 (C++ / Blueprint)",
+  "conventions": [
+    "MonoBehaviours on a GameObject become an Actor class (or ActorComponents for reusable behaviour); prefabs become Blueprint classes, scenes become levels.",
+    "Coordinates: both left-handed. Unity (x right, y up, z forward, m) → Unreal (x forward, y right, z up, cm): (x, y, z) → (z, x, y) × 100. Use port_convert.",
+    "Unity Camera.fieldOfView is vertical, Unreal FieldOfView horizontal: convert with port_convert {fov, aspect}.",
+    "Unreal reflection: UCLASS/UPROPERTY/UFUNCTION/GENERATED_BODY on everything the editor, Blueprints or delegates touch."
+  ],
+  "entries": [
+    { "id": "monobehaviour", "topic": "structure", "from": "class X : MonoBehaviour", "to": "UCLASS() class AX : public AActor (or UXComponent : public UActorComponent)", "pattern": ":\\s*MonoBehaviour" },
+    { "id": "awake-start", "topic": "lifecycle", "from": "Awake() / Start()", "to": "constructor (components) + BeginPlay()", "pattern": "\\b(Awake|Start)\\s*\\(\\s*\\)" },
+    { "id": "update", "topic": "lifecycle", "from": "Update() / FixedUpdate()", "to": "Tick(float DeltaTime) (enable PrimaryActorTick.bCanEverTick)", "pattern": "\\b(Fixed)?Update\\s*\\(" },
+    { "id": "serialize-field", "topic": "inspector", "from": "[SerializeField] float speed", "to": "UPROPERTY(EditAnywhere) float Speed (cm/s: ×100)", "pattern": "\\[SerializeField\\]" },
+    { "id": "get-component", "topic": "structure", "from": "GetComponent<T>()", "to": "FindComponentByClass<T>() / UPROPERTY component pointers", "pattern": "GetComponent<" },
+    { "id": "instantiate", "topic": "structure", "from": "Instantiate(prefab)", "to": "GetWorld()->SpawnActor<AActor>(Class, Transform)", "pattern": "\\bInstantiate\\(" },
+    { "id": "destroy", "topic": "structure", "from": "Destroy(gameObject)", "to": "Destroy() / SetLifeSpan(seconds)", "pattern": "\\bDestroy\\(" },
+    { "id": "coroutine", "topic": "async", "from": "StartCoroutine + WaitForSeconds", "to": "FTimerHandle + GetWorldTimerManager().SetTimer, or latent Delay in Blueprint", "pattern": "StartCoroutine|WaitForSeconds" },
+    { "id": "events", "topic": "events", "from": "event Action<T> / UnityEvent", "to": "DECLARE_DYNAMIC_MULTICAST_DELEGATE_*; Broadcast(); AddDynamic()", "pattern": "\\bevent\\s+Action|UnityEvent" },
+    { "id": "input", "topic": "input", "from": "Input.GetAxis / Input System actions", "to": "Enhanced Input (UInputAction + UInputMappingContext)", "pattern": "Input\\.Get|InputAction" },
+    { "id": "rigidbody", "topic": "physics", "from": "Rigidbody.AddForce", "to": "UPrimitiveComponent::AddForce / AddImpulse with SetSimulatePhysics(true)", "pattern": "AddForce\\(|Rigidbody" },
+    { "id": "character-controller", "topic": "physics", "from": "CharacterController", "to": "ACharacter + UCharacterMovementComponent", "pattern": "CharacterController" },
+    { "id": "triggers", "topic": "physics", "from": "OnTriggerEnter", "to": "OnComponentBeginOverlap.AddDynamic", "pattern": "OnTrigger(Enter|Exit)" },
+    { "id": "raycast", "topic": "physics", "from": "Physics.Raycast", "to": "GetWorld()->LineTraceSingleByChannel", "pattern": "Physics\\.Raycast" },
+    { "id": "tags", "topic": "architecture", "from": "CompareTag", "to": "ActorHasTag / Gameplay Tags", "pattern": "CompareTag\\(" },
+    { "id": "scene-load", "topic": "architecture", "from": "SceneManager.LoadScene", "to": "UGameplayStatics::OpenLevel", "pattern": "SceneManager\\.LoadScene" },
+    { "id": "scriptable-object", "topic": "data", "from": "ScriptableObject", "to": "UDataAsset / DataTable", "pattern": "ScriptableObject" },
+    { "id": "debug-log", "topic": "debug", "from": "Debug.Log", "to": "UE_LOG(LogTemp, Log, TEXT(\"…\"))", "pattern": "Debug\\.Log", "leftover": "Debug\\.Log" },
+    { "id": "mathf", "topic": "math", "from": "Mathf.*", "to": "FMath::*", "pattern": "Mathf\\.", "leftover": "Mathf\\." },
+    { "id": "ui", "topic": "ui", "from": "uGUI / TextMeshPro", "to": "UMG widgets (UUserWidget, UTextBlock)", "pattern": "TextMeshPro|UnityEngine\\.UI" }
+  ]
+}

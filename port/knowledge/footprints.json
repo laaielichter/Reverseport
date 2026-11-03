@@ -1,0 +1,189 @@
+{
+  "about": "What an engine or stack leaves behind in a shipped game or app: install layout, file formats, scripting, which ReversePort tools read it, and the natural rebuild target. Used by re_lookup (to tell an agent where the material is and how it is structured, without files) and re_blueprint. Only layouts that are stable across versions are listed.",
+  "footprints": {
+    "unity": {
+      "name": "Unity",
+      "match": ["unity"],
+      "engineId": "unity",
+      "scripting": "C# (Mono or IL2CPP)",
+      "layout": [
+        "<Game>.exe + UnityPlayer.dll (Windows player)",
+        "<Game>_Data/ — globalgamemanagers (holds the Unity version), level0…levelN (scenes), sharedassets*.assets, resources.assets",
+        "<Game>_Data/Managed/Assembly-CSharp.dll — game code (Mono builds)",
+        "GameAssembly.dll + <Game>_Data/il2cpp_data/Metadata/global-metadata.dat — game code compiled to native (IL2CPP builds)",
+        "<Game>_Data/StreamingAssets/ — files shipped as-is (often AssetBundles, videos, configs)"
+      ],
+      "formats": [".assets", ".resS", "AssetBundles (UnityFS)", ".dll (.NET)"],
+      "readWith": ["re_scan on the install folder → engine, version, Mono or IL2CPP", "re_binary on Assembly-CSharp.dll → classes and methods (Mono)", "re_probe on .assets/.resS for embedded data"],
+      "limits": "IL2CPP builds have no .NET assemblies: only native code plus metadata. Asset files are binary serialized; ReversePort lists and probes them but does not unpack them.",
+      "rebuildTarget": "unity"
+    },
+    "godot": {
+      "name": "Godot",
+      "match": ["godot"],
+      "engineId": "godot",
+      "scripting": "GDScript or C#",
+      "layout": [
+        "<Game>.exe / .x86_64 + <Game>.pck (or the pack embedded at the end of the executable)",
+        "inside the pack: project.godot, *.tscn/*.scn scenes, *.gd scripts (text or tokenized), .import/ converted assets",
+        "C# games: data_<Game>_<platform>/ with the .NET assemblies"
+      ],
+      "formats": [".pck (GDPC)", ".tscn/.scn", ".gd/.gdc", ".ctex/.stex", ".import"],
+      "readWith": ["re_scan → engine + packs", "re_archive on the .pck or .exe → list/extract scenes and scripts", "re_scene on extracted .tscn"],
+      "limits": "Encrypted packs are reported and left alone.",
+      "rebuildTarget": "godot"
+    },
+    "unreal": {
+      "name": "Unreal Engine",
+      "match": ["unreal"],
+      "engineId": "unreal",
+      "scripting": "C++ and Blueprints",
+      "layout": [
+        "<Project>/Binaries/<Platform>/<Project>-<Platform>-Shipping.exe — game code (native)",
+        "<Project>/Content/Paks/*.pak — cooked assets (UE5 also .utoc/.ucas IoStore containers)",
+        "Engine/ — engine binaries and shared content"
+      ],
+      "formats": [".pak", ".utoc/.ucas", ".uasset/.umap (cooked)", ".exe (native)"],
+      "readWith": ["re_scan → Unreal build, paks, IoStore", "re_archive identifies paks (header only)", "re_binary on the Shipping exe → imports, sections, strings"],
+      "limits": "Paks are often encrypted and cooked assets are binary; no source code ships. Rebuild from observation.",
+      "rebuildTarget": "unreal"
+    },
+    "gamemaker": {
+      "name": "GameMaker",
+      "match": ["gamemaker", "game maker"],
+      "scripting": "GML",
+      "layout": ["<Game>.exe + data.win (all rooms, sprites, sounds and compiled code in one file); YYC builds compile GML to native code"],
+      "formats": ["data.win (FORM/IFF chunks)", "audiogroup*.dat"],
+      "readWith": ["re_scan → GameMaker build", "re_probe on data.win → chunk layout, embedded PNG/OGG"],
+      "limits": "YYC builds contain native code only.",
+      "rebuildTarget": "godot"
+    },
+    "rpgmaker": {
+      "name": "RPG Maker MV/MZ",
+      "match": ["rpg maker"],
+      "scripting": "JavaScript",
+      "layout": ["www/ or root: index.html, js/rpg_*.js (MV) or js/rmmz_*.js (MZ), js/plugins/*.js, data/*.json (maps, actors, items, events), img/, audio/"],
+      "formats": [".json", ".js", ".rpgmvp/.png_ (encrypted images, optional)", ".rpgmvo/.ogg_ (encrypted audio, optional)"],
+      "readWith": ["re_scan → RPG Maker MV/MZ", "re_symbols on js/plugins", "data/*.json is readable as is"],
+      "limits": "Encrypted images/audio are left alone.",
+      "rebuildTarget": "godot"
+    },
+    "renpy": {
+      "name": "Ren'Py",
+      "match": ["ren'py", "renpy"],
+      "scripting": "Ren'Py script / Python",
+      "layout": ["game/ with *.rpy (source), *.rpyc (compiled), *.rpa (archives with images/audio)", "renpy/ engine, lib/ Python runtime"],
+      "formats": [".rpy", ".rpyc", ".rpa"],
+      "readWith": ["re_scan → Ren'Py", "re_symbols on .rpy (labels, screens)"],
+      "rebuildTarget": "renpy"
+    },
+    "love2d": {
+      "name": "LÖVE",
+      "match": ["löve", "love2d", "love 2d"],
+      "scripting": "Lua",
+      "layout": ["<Game>.exe with a .love (zip) appended, or a .love file next to love.exe; main.lua + conf.lua inside"],
+      "formats": [".love (zip)", ".lua"],
+      "readWith": ["re_probe on the exe → embedded ZIP offset", "re_extract the ZIP, then re_archive"],
+      "rebuildTarget": "godot"
+    },
+    "source": {
+      "name": "Source engine (Valve)",
+      "match": ["source engine", "source 2", "source"],
+      "scripting": "C++ (Source 2: also Lua/Panorama JS)",
+      "layout": ["<game>/ with gameinfo.txt, bin/ (client.dll, server.dll), *.vpk archives, maps/*.bsp (Source 2: .vpk with .vmap_c)"],
+      "formats": [".vpk", ".bsp", ".mdl/.vtx/.vvd", ".vtf/.vmt"],
+      "readWith": ["re_binary on client.dll/server.dll", "re_probe on .vpk/.bsp"],
+      "rebuildTarget": "unreal"
+    },
+    "electron": {
+      "name": "Electron",
+      "match": ["electron"],
+      "scripting": "JavaScript/TypeScript + HTML/CSS",
+      "layout": ["<App>.exe + resources/app.asar (the app's JS/HTML/CSS) or resources/app/ unpacked; *.node native modules"],
+      "formats": [".asar", ".js", ".node"],
+      "readWith": ["re_scan → Electron build", "re_archive on app.asar → list/extract", "re_graph/re_symbols on the extracted code"],
+      "rebuildTarget": "electron"
+    },
+    "nwjs": {
+      "name": "NW.js",
+      "match": ["nw.js", "node-webkit", "nwjs"],
+      "scripting": "JavaScript",
+      "layout": ["nw.exe/<Game>.exe + package.nw (zip) or package.json + html/js next to it (Construct 2/3 and RPG Maker MV desktop exports use it)"],
+      "formats": [".nw (zip)", ".js"],
+      "readWith": ["re_archive on package.nw", "re_probe on the exe for an appended zip"],
+      "rebuildTarget": "threejs"
+    },
+    "monogame": {
+      "name": "MonoGame / XNA / FNA",
+      "match": ["monogame", "xna", "fna"],
+      "scripting": "C#",
+      "layout": ["<Game>.exe/.dll (.NET) + Content/*.xnb (compiled content)"],
+      "formats": [".xnb", ".dll (.NET)"],
+      "readWith": ["re_binary on the game .exe/.dll → .NET types and methods", "re_probe on .xnb"],
+      "rebuildTarget": "godot-csharp"
+    },
+    "construct": {
+      "name": "Construct",
+      "match": ["construct"],
+      "scripting": "event sheets (exported to JavaScript)",
+      "layout": ["HTML5 export: index.html, scripts/c3runtime.js (Construct 3) or c2runtime.js, data.json (project data), images/, media/"],
+      "formats": ["data.json", "c3runtime.js"],
+      "readWith": ["re_scan on the export folder", "data.json is readable as is"],
+      "rebuildTarget": "godot"
+    },
+    "defold": {
+      "name": "Defold",
+      "match": ["defold"],
+      "scripting": "Lua",
+      "layout": ["game.arcd + game.arci (resource archive and index), game.dmanifest, game.projectc"],
+      "formats": [".arcd/.arci", ".projectc"],
+      "readWith": ["re_probe on game.arcd"],
+      "rebuildTarget": "godot"
+    },
+    "cocos": {
+      "name": "Cocos2d-x / Cocos Creator",
+      "match": ["cocos"],
+      "scripting": "C++, Lua or JavaScript/TypeScript",
+      "layout": ["Android: lib/<abi>/libcocos2d*.so or libcocos*.so, assets/ with .jsc/.luac or res/ and src/"],
+      "formats": [".jsc/.luac (compiled scripts)", ".plist sprite sheets"],
+      "readWith": ["re_archive on the .apk", "re_binary on the .so"],
+      "rebuildTarget": "godot"
+    },
+    "libgdx": {
+      "name": "libGDX / Java",
+      "match": ["libgdx", "java"],
+      "scripting": "Java/Kotlin",
+      "layout": ["desktop: <game>.jar (classes + assets); Android: classes*.dex + assets/"],
+      "formats": [".jar", ".class", ".dex"],
+      "readWith": ["re_archive on the .jar/.apk", "re_binary on .class/.dex → classes and methods"],
+      "rebuildTarget": "godot"
+    },
+    "flutter": {
+      "name": "Flutter",
+      "match": ["flutter"],
+      "scripting": "Dart",
+      "layout": ["Android: lib/<abi>/libapp.so (compiled Dart) + libflutter.so, assets/flutter_assets/ (images, fonts, AssetManifest)", "iOS: Frameworks/App.framework + flutter_assets"],
+      "formats": ["libapp.so (AOT snapshot)", "flutter_assets/"],
+      "readWith": ["re_archive on the .apk", "re_binary on libapp.so → strings"],
+      "rebuildTarget": "flutter"
+    },
+    "react-native": {
+      "name": "React Native",
+      "match": ["react native", "react-native"],
+      "scripting": "JavaScript/TypeScript",
+      "layout": ["Android: assets/index.android.bundle (JS or Hermes bytecode); iOS: main.jsbundle"],
+      "formats": ["index.android.bundle", "Hermes bytecode (.hbc)"],
+      "readWith": ["re_archive on the .apk", "re_probe on the bundle"],
+      "rebuildTarget": "react-native"
+    },
+    "web": {
+      "name": "Web app / browser game",
+      "match": ["html5", "javascript", "webgl", "three.js", "phaser", "pixijs", "babylon.js", "playcanvas"],
+      "scripting": "JavaScript/TypeScript (+ WebAssembly)",
+      "layout": ["index.html + bundled scripts (often hashed names under /assets or /_next), styles, images, .wasm and data files loaded at runtime"],
+      "formats": [".js", ".wasm", ".data", ".json", ".glb"],
+      "readWith": ["re_lookup {url} lists the scripts, wasm and data files the page loads", "re_binary on a downloaded .wasm"],
+      "rebuildTarget": "threejs"
+    }
+  }
+}

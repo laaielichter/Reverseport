@@ -1,0 +1,1554 @@
+{
+  "about": "Rebuild knowledge for re_blueprint: which systems a kind of game or app is made of, and for each system the parameters to measure on the original so a rebuild matches it in function and feel. Archetypes are matched on genres, tags, categories and descriptions (lower-case substrings). Measurements are taken by observing the original (playing or using it, recorded video, screenshots), never by copying its files.",
+  "method": {
+    "capture": [
+      "Record the original at a fixed resolution (e.g. 1920×1080) and 60 fps, with input display on if possible; keep the raw recordings.",
+      "Screenshot every screen, menu and state at the same resolution; name them by screen id.",
+      "Note the settings used (difficulty, graphics, controller or keyboard) so the rebuild is compared under the same conditions."
+    ],
+    "measure": [
+      "Time: step through the video frame by frame; frames ÷ 60 = seconds. Measure every duration three times and take the median.",
+      "Distance and speed: use something of known size in the scene (character height, tile, door, car length) as the ruler; speed = distance ÷ time over a straight stretch.",
+      "Curves (acceleration, jump arcs, easing, camera follow): sample the position every 2–4 frames into a table and fit the curve; store the samples, not only the fit.",
+      "Screen layout: measure positions and sizes as a fraction of screen height (resolution-independent); pick colors as hex.",
+      "Input feel: count frames from button press (input display) to the first visible reaction.",
+      "Rules and numbers (damage, prices, cooldowns, drop rates): read them from in-game UI and public wikis; for probabilities count over many trials."
+    ],
+    "verify": [
+      "Record the rebuild with the same settings and resolution; put it side by side with the original or overlay at 50% opacity.",
+      "Every measured parameter gets a tolerance (default ±5% or ±1 frame) and passes only when the rebuild is inside it.",
+      "Blind test: someone who knows the original plays both and names what feels different; turn every remark into a parameter."
+    ]
+  },
+  "cleanRoom": {
+    "free": [
+      "mechanics, rules and systems",
+      "numbers and timings (measured)",
+      "screen flow and layout proportions",
+      "genre conventions, controls, camera behaviour",
+      "the feel: acceleration curves, input response, game juice"
+    ],
+    "own": [
+      "all code (written new, not translated from the original's decompiled code)",
+      "all art, models, textures, animations",
+      "all audio and music",
+      "all text: names, dialogue, item and level names",
+      "the product name, logo and icon"
+    ],
+    "never": [
+      "copying or extracting the original's assets, code or level files into the rebuild",
+      "names, logos or trade dress close enough to be mistaken for the original",
+      "bypassing encryption, DRM or licence checks"
+    ],
+    "note": "Precise functional rebuilds of mechanics are a long-standing practice in games and software; copyright protects the expression (code, art, audio, text), and trademarks protect names and look. When you own the original, re_scan/re_archive may help you understand its structure, but its files stay out of the rebuild."
+  },
+  "core": {
+    "game": [
+      {
+        "id": "game-loop",
+        "name": "Game loop and states",
+        "build": "Boot → title → main menu → gameplay → pause → game over/results → back; scene/state manager; fixed physics tick.",
+        "measure": [
+          {
+            "param": "boot_to_title_s",
+            "unit": "s",
+            "how": "time from launch to the first interactive screen"
+          },
+          {
+            "param": "fade_duration_s",
+            "unit": "s",
+            "how": "screen transition length"
+          },
+          {
+            "param": "physics_hz",
+            "unit": "Hz",
+            "how": "engine default of the original (footprint) unless motion steps show otherwise"
+          }
+        ]
+      },
+      {
+        "id": "input",
+        "name": "Input and controls",
+        "build": "Action map (keyboard/mouse, gamepad, touch), rebinding, dead zones, buffering.",
+        "measure": [
+          {
+            "param": "input_latency_frames",
+            "unit": "frames",
+            "how": "press → first reaction"
+          },
+          {
+            "param": "stick_deadzone",
+            "unit": "0–1",
+            "how": "smallest stick tilt that moves the character"
+          },
+          {
+            "param": "input_buffer_frames",
+            "unit": "frames",
+            "how": "press slightly early before landing/recovery: does it still trigger?"
+          }
+        ]
+      },
+      {
+        "id": "camera",
+        "name": "Camera",
+        "build": "Follow, framing, dead zone, look-ahead, smoothing, shake, FOV.",
+        "measure": [
+          {
+            "param": "fov_deg",
+            "unit": "deg (vertical)",
+            "how": "from known object size at known distance, or the settings menu"
+          },
+          {
+            "param": "follow_lag_s",
+            "unit": "s",
+            "how": "time for the camera to settle after the player stops"
+          },
+          {
+            "param": "deadzone_frac",
+            "unit": "screen fraction",
+            "how": "how far the player moves before the camera moves"
+          },
+          {
+            "param": "shake_amp_px_duration_s",
+            "unit": "px, s",
+            "how": "on hits/explosions"
+          }
+        ]
+      },
+      {
+        "id": "hud-ui",
+        "name": "HUD and menus",
+        "build": "Every screen from the screenshots, same layout proportions and navigation order; own art and font.",
+        "measure": [
+          {
+            "param": "screens",
+            "unit": "list",
+            "how": "every screen id with its screenshot"
+          },
+          {
+            "param": "layout_fracs",
+            "unit": "screen fraction",
+            "how": "position and size of each HUD element"
+          },
+          {
+            "param": "menu_nav_order",
+            "unit": "list",
+            "how": "focus order with keyboard/gamepad"
+          }
+        ]
+      },
+      {
+        "id": "audio",
+        "name": "Audio and feedback",
+        "build": "Own sounds and music on the same events; mixing levels; ducking.",
+        "measure": [
+          {
+            "param": "sfx_events",
+            "unit": "list",
+            "how": "every action that plays a sound, with its timing relative to the action"
+          },
+          {
+            "param": "music_states",
+            "unit": "list",
+            "how": "when music changes (menu, combat, boss, victory)"
+          }
+        ]
+      },
+      {
+        "id": "save-settings",
+        "name": "Save, progress and settings",
+        "build": "What is saved and when (checkpoints, autosave), settings menu options.",
+        "measure": [
+          {
+            "param": "save_triggers",
+            "unit": "list",
+            "how": "when the save icon appears / what survives a restart"
+          },
+          {
+            "param": "settings",
+            "unit": "list",
+            "how": "every option in the settings menu with its range"
+          }
+        ]
+      }
+    ],
+    "app": [
+      {
+        "id": "navigation",
+        "name": "Screens and navigation",
+        "build": "Every screen and route, the navigation model (tabs, stack, drawer, modal), deep links, back behaviour.",
+        "measure": [
+          {
+            "param": "screens",
+            "unit": "list",
+            "how": "screenshot every screen and state (empty, loading, error, full)"
+          },
+          {
+            "param": "nav_graph",
+            "unit": "graph",
+            "how": "which action leads from which screen to which"
+          },
+          {
+            "param": "transition_ms",
+            "unit": "ms",
+            "how": "frame-step screen transitions"
+          }
+        ]
+      },
+      {
+        "id": "design-system",
+        "name": "Design system",
+        "build": "Own tokens for color, type scale, spacing, radius, elevation, motion; own icons and font with the same proportions.",
+        "measure": [
+          {
+            "param": "colors",
+            "unit": "hex",
+            "how": "pick from screenshots (light and dark mode)"
+          },
+          {
+            "param": "type_scale_px",
+            "unit": "px at 1x",
+            "how": "text heights of title, body, caption"
+          },
+          {
+            "param": "spacing_grid_px",
+            "unit": "px",
+            "how": "common margins and gaps (often 4 or 8 px grid)"
+          },
+          {
+            "param": "motion_ms_easing",
+            "unit": "ms, curve",
+            "how": "button press, sheet open, list insert"
+          }
+        ]
+      },
+      {
+        "id": "data-model",
+        "name": "Data model and state",
+        "build": "Entities, fields and relations visible in the UI; local state, cache and sync.",
+        "measure": [
+          {
+            "param": "entities",
+            "unit": "list",
+            "how": "every kind of thing the user creates or sees, with its visible fields and limits (max lengths, counts)"
+          },
+          {
+            "param": "offline_behaviour",
+            "unit": "notes",
+            "how": "what works in airplane mode"
+          }
+        ]
+      },
+      {
+        "id": "accounts",
+        "name": "Accounts and onboarding",
+        "build": "Sign-up/sign-in methods, onboarding steps, permissions requests, profile.",
+        "measure": [
+          {
+            "param": "onboarding_steps",
+            "unit": "list",
+            "how": "every step and its order"
+          },
+          {
+            "param": "auth_methods",
+            "unit": "list",
+            "how": "email, phone, social sign-in options"
+          }
+        ]
+      },
+      {
+        "id": "backend-api",
+        "name": "Backend and integrations",
+        "build": "Your own API for the same features (REST/GraphQL), push notifications, payments, analytics.",
+        "measure": [
+          {
+            "param": "features_needing_server",
+            "unit": "list",
+            "how": "what syncs across devices or between users"
+          },
+          {
+            "param": "notifications",
+            "unit": "list",
+            "how": "every push/email the app sends and its trigger"
+          }
+        ]
+      },
+      {
+        "id": "settings",
+        "name": "Settings and edge states",
+        "build": "Settings screen, errors, empty states, rate limits, accessibility.",
+        "measure": [
+          {
+            "param": "settings",
+            "unit": "list",
+            "how": "every option"
+          },
+          {
+            "param": "error_states",
+            "unit": "list",
+            "how": "what the app shows when things fail"
+          }
+        ]
+      }
+    ]
+  },
+  "archetypes": [
+    {
+      "id": "platformer",
+      "kind": "game",
+      "name": "Platformer",
+      "match": [
+        "platformer",
+        "platform",
+        "metroidvania",
+        "jump"
+      ],
+      "systems": [
+        {
+          "id": "character-controller",
+          "name": "Character controller",
+          "build": "Run, acceleration/deceleration, jump with variable height, coyote time, jump buffer, wall/dash moves if present.",
+          "measure": [
+            {
+              "param": "run_speed",
+              "unit": "units/s",
+              "how": "top speed over a straight stretch"
+            },
+            {
+              "param": "accel_time_s",
+              "unit": "s",
+              "how": "standstill → top speed"
+            },
+            {
+              "param": "decel_time_s",
+              "unit": "s",
+              "how": "top speed → standstill after release"
+            },
+            {
+              "param": "jump_height_max",
+              "unit": "units",
+              "how": "full press, apex height"
+            },
+            {
+              "param": "jump_height_min",
+              "unit": "units",
+              "how": "tap press"
+            },
+            {
+              "param": "jump_time_to_apex_s",
+              "unit": "s",
+              "how": "frames from takeoff to apex"
+            },
+            {
+              "param": "fall_gravity_mult",
+              "unit": "×",
+              "how": "fall time vs rise time"
+            },
+            {
+              "param": "coyote_frames",
+              "unit": "frames",
+              "how": "late jump after leaving a ledge"
+            },
+            {
+              "param": "air_control",
+              "unit": "0–1",
+              "how": "turn speed in air vs ground"
+            }
+          ]
+        },
+        {
+          "id": "level-structure",
+          "name": "Levels and tiles",
+          "build": "Tile size, level dimensions, checkpoints, hazards, collectibles; own levels in the same grammar.",
+          "measure": [
+            {
+              "param": "tile_size_px",
+              "unit": "px",
+              "how": "screen pixels per tile at the reference resolution"
+            },
+            {
+              "param": "screen_tiles_visible",
+              "unit": "tiles",
+              "how": "tiles visible horizontally/vertically"
+            },
+            {
+              "param": "checkpoint_spacing",
+              "unit": "s of play",
+              "how": "average time between checkpoints"
+            }
+          ]
+        },
+        {
+          "id": "enemies-hazards",
+          "name": "Enemies and hazards",
+          "build": "Enemy behaviours, contact damage, knockback, invincibility frames.",
+          "measure": [
+            {
+              "param": "iframes_s",
+              "unit": "s",
+              "how": "blink duration after a hit"
+            },
+            {
+              "param": "knockback_dist",
+              "unit": "units",
+              "how": "distance pushed on hit"
+            },
+            {
+              "param": "enemy_patterns",
+              "unit": "list",
+              "how": "per enemy: speed, range, cycle time"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "shooter",
+      "kind": "game",
+      "name": "Shooter (FPS/TPS)",
+      "match": [
+        "shooter",
+        "fps",
+        "first-person",
+        "third-person shooter",
+        "tps",
+        "first person"
+      ],
+      "systems": [
+        {
+          "id": "player-movement-3d",
+          "name": "First/third-person movement",
+          "build": "Walk/sprint/crouch/jump, slide, mantle; head bob; air control.",
+          "measure": [
+            {
+              "param": "walk_speed",
+              "unit": "m/s",
+              "how": "distance between known objects ÷ time"
+            },
+            {
+              "param": "sprint_speed",
+              "unit": "m/s",
+              "how": "same"
+            },
+            {
+              "param": "jump_height",
+              "unit": "m",
+              "how": "against a known wall/crate height"
+            },
+            {
+              "param": "eye_height",
+              "unit": "m",
+              "how": "camera height vs door frames (~2 m)"
+            },
+            {
+              "param": "fov_deg",
+              "unit": "deg",
+              "how": "settings menu or measurement"
+            }
+          ]
+        },
+        {
+          "id": "weapons",
+          "name": "Weapons and gunplay",
+          "build": "Fire modes, rate of fire, magazine/reload, recoil pattern, spread, ADS, damage falloff, hitscan vs projectile.",
+          "measure": [
+            {
+              "param": "rpm",
+              "unit": "rounds/min",
+              "how": "count muzzle flashes over 1–2 s of full auto"
+            },
+            {
+              "param": "mag_size",
+              "unit": "rounds",
+              "how": "HUD"
+            },
+            {
+              "param": "reload_s",
+              "unit": "s",
+              "how": "partial and empty reload"
+            },
+            {
+              "param": "recoil_pattern",
+              "unit": "px per shot",
+              "how": "fire at a wall, screenshot the spray"
+            },
+            {
+              "param": "ads_time_s",
+              "unit": "s",
+              "how": "hip → aimed"
+            },
+            {
+              "param": "damage_table",
+              "unit": "hp",
+              "how": "shots to kill per body part and range"
+            }
+          ]
+        },
+        {
+          "id": "ai-combat",
+          "name": "Enemy AI",
+          "build": "Perception (sight cone, hearing), cover, attack timing, accuracy.",
+          "measure": [
+            {
+              "param": "reaction_s",
+              "unit": "s",
+              "how": "from being seen to first shot"
+            },
+            {
+              "param": "sight_range",
+              "unit": "m",
+              "how": "max detection distance"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "racing",
+      "kind": "game",
+      "name": "Racing",
+      "match": [
+        "racing",
+        "driving",
+        "race",
+        "kart"
+      ],
+      "systems": [
+        {
+          "id": "vehicle-physics",
+          "name": "Vehicle handling",
+          "build": "Engine/gearbox curve, grip, drift, steering assist, boost.",
+          "measure": [
+            {
+              "param": "top_speed",
+              "unit": "km/h",
+              "how": "speedometer"
+            },
+            {
+              "param": "0_100_s",
+              "unit": "s",
+              "how": "speedometer + frame count"
+            },
+            {
+              "param": "braking_100_0_s",
+              "unit": "s",
+              "how": "same"
+            },
+            {
+              "param": "turn_radius_m",
+              "unit": "m",
+              "how": "full lock at low speed vs track width"
+            },
+            {
+              "param": "drift_entry",
+              "unit": "notes",
+              "how": "what triggers a drift and how long it holds"
+            }
+          ]
+        },
+        {
+          "id": "track-race",
+          "name": "Tracks, laps and race rules",
+          "build": "Checkpoints, lap timing, positions, respawn, countdown.",
+          "measure": [
+            {
+              "param": "countdown_s",
+              "unit": "s",
+              "how": "start sequence"
+            },
+            {
+              "param": "lap_time_typical_s",
+              "unit": "s",
+              "how": "clean lap"
+            },
+            {
+              "param": "respawn_s",
+              "unit": "s",
+              "how": "off-track to driving"
+            }
+          ]
+        },
+        {
+          "id": "ai-drivers",
+          "name": "AI drivers",
+          "build": "Racing line, rubber-banding, aggression.",
+          "measure": [
+            {
+              "param": "rubber_band",
+              "unit": "notes",
+              "how": "gap behaviour when you lead/trail"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "flight",
+      "kind": "game",
+      "name": "Flight / helicopter / vehicle sim",
+      "match": [
+        "flight",
+        "helicopter",
+        "aircraft",
+        "plane",
+        "pilot",
+        "air combat",
+        "flight sim"
+      ],
+      "systems": [
+        {
+          "id": "flight-model",
+          "name": "Flight model",
+          "build": "Thrust/lift/drag, collective/cyclic/pedals (helicopter) or pitch/roll/yaw (plane), stability assist, ground effect.",
+          "measure": [
+            {
+              "param": "max_speed",
+              "unit": "km/h",
+              "how": "HUD"
+            },
+            {
+              "param": "climb_rate",
+              "unit": "m/s",
+              "how": "altimeter over time"
+            },
+            {
+              "param": "roll_rate_deg_s",
+              "unit": "deg/s",
+              "how": "full stick roll"
+            },
+            {
+              "param": "yaw_rate_deg_s",
+              "unit": "deg/s",
+              "how": "full pedal/rudder"
+            },
+            {
+              "param": "hover_drift",
+              "unit": "notes",
+              "how": "how it behaves with no input"
+            },
+            {
+              "param": "inertia_feel",
+              "unit": "s",
+              "how": "time to stop rotating after release"
+            }
+          ]
+        },
+        {
+          "id": "cockpit-hud",
+          "name": "Cockpit and HUD instruments",
+          "build": "Instruments, HUD symbology, camera views (cockpit/chase), head movement.",
+          "measure": [
+            {
+              "param": "views",
+              "unit": "list",
+              "how": "every camera view and its FOV/offset"
+            },
+            {
+              "param": "instruments",
+              "unit": "list",
+              "how": "each gauge with range and units"
+            }
+          ]
+        },
+        {
+          "id": "missions",
+          "name": "Missions and world",
+          "build": "Mission types, objectives, landing zones, scoring.",
+          "measure": [
+            {
+              "param": "mission_types",
+              "unit": "list",
+              "how": "objective, fail conditions, time limits"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "rpg",
+      "kind": "game",
+      "name": "RPG",
+      "match": [
+        "rpg",
+        "role-playing",
+        "role playing",
+        "jrpg",
+        "crpg",
+        "action rpg",
+        "arpg"
+      ],
+      "systems": [
+        {
+          "id": "stats-progression",
+          "name": "Stats, levels and progression",
+          "build": "Attributes, XP curve, level-up rewards, skill trees.",
+          "measure": [
+            {
+              "param": "xp_curve",
+              "unit": "xp per level",
+              "how": "XP needed for levels 1–20 (HUD/wiki)"
+            },
+            {
+              "param": "stat_growth",
+              "unit": "per level",
+              "how": "stat values at several levels"
+            },
+            {
+              "param": "damage_formula",
+              "unit": "formula",
+              "how": "fit from damage numbers at known stats"
+            }
+          ]
+        },
+        {
+          "id": "inventory-items",
+          "name": "Inventory, items and equipment",
+          "build": "Item types, rarity, slots, stacking, shops, loot tables.",
+          "measure": [
+            {
+              "param": "inventory_size",
+              "unit": "slots",
+              "how": "UI"
+            },
+            {
+              "param": "item_schema",
+              "unit": "fields",
+              "how": "every stat an item can have"
+            },
+            {
+              "param": "drop_rates",
+              "unit": "%",
+              "how": "count drops over many kills or use a public wiki"
+            }
+          ]
+        },
+        {
+          "id": "dialogue-quests",
+          "name": "Dialogue and quests",
+          "build": "Dialogue trees, choices, flags, quest log, journal.",
+          "measure": [
+            {
+              "param": "quest_structure",
+              "unit": "notes",
+              "how": "steps, branches, rewards (write your own story)"
+            }
+          ]
+        },
+        {
+          "id": "combat",
+          "name": "Combat",
+          "build": "Turn order or real-time combat, abilities, status effects, cooldowns.",
+          "measure": [
+            {
+              "param": "abilities",
+              "unit": "table",
+              "how": "cost, cooldown, cast time, effect"
+            },
+            {
+              "param": "status_effects",
+              "unit": "table",
+              "how": "duration, tick rate, stacking"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "roguelike",
+      "kind": "game",
+      "name": "Roguelike / roguelite",
+      "match": [
+        "roguelike",
+        "roguelite",
+        "rogue-like",
+        "rogue-lite",
+        "dungeon crawler"
+      ],
+      "systems": [
+        {
+          "id": "run-structure",
+          "name": "Run structure",
+          "build": "Run → floors/rooms → boss → death/reset; meta progression between runs.",
+          "measure": [
+            {
+              "param": "rooms_per_floor",
+              "unit": "count",
+              "how": "count over several runs"
+            },
+            {
+              "param": "run_length_min",
+              "unit": "min",
+              "how": "typical full run"
+            },
+            {
+              "param": "meta_currency",
+              "unit": "table",
+              "how": "what persists after death and prices of unlocks"
+            }
+          ]
+        },
+        {
+          "id": "procgen",
+          "name": "Procedural generation",
+          "build": "Room templates and layout rules, reward/enemy placement, seeds.",
+          "measure": [
+            {
+              "param": "layout_rules",
+              "unit": "notes",
+              "how": "room shapes, branch counts, guaranteed rooms (shop, boss)"
+            }
+          ]
+        },
+        {
+          "id": "upgrades",
+          "name": "Upgrades and builds",
+          "build": "Boon/relic/item pools, rarities, offers per choice, synergies.",
+          "measure": [
+            {
+              "param": "offer_count",
+              "unit": "count",
+              "how": "choices per reward"
+            },
+            {
+              "param": "rarity_weights",
+              "unit": "%",
+              "how": "count rarities over many offers"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "strategy",
+      "kind": "game",
+      "name": "Strategy",
+      "match": [
+        "strategy",
+        "rts",
+        "real-time strategy",
+        "turn-based",
+        "4x",
+        "tactics",
+        "tower defense"
+      ],
+      "systems": [
+        {
+          "id": "economy",
+          "name": "Resources and economy",
+          "build": "Resources, income rates, costs, build times, caps.",
+          "measure": [
+            {
+              "param": "income_rates",
+              "unit": "per s/turn",
+              "how": "count resources over time"
+            },
+            {
+              "param": "cost_table",
+              "unit": "table",
+              "how": "every unit/building cost and build time"
+            }
+          ]
+        },
+        {
+          "id": "units-combat",
+          "name": "Units and combat",
+          "build": "Unit stats, counters, attack timing, pathfinding, selection and commands.",
+          "measure": [
+            {
+              "param": "unit_table",
+              "unit": "table",
+              "how": "hp, damage, range, speed, attack interval per unit"
+            },
+            {
+              "param": "counter_matrix",
+              "unit": "table",
+              "how": "damage multipliers between unit types"
+            }
+          ]
+        },
+        {
+          "id": "map-fog",
+          "name": "Map, grid and fog of war",
+          "build": "Grid/hex/free map, terrain modifiers, vision.",
+          "measure": [
+            {
+              "param": "map_size",
+              "unit": "tiles",
+              "how": "map dimensions"
+            },
+            {
+              "param": "vision_ranges",
+              "unit": "tiles",
+              "how": "per unit"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "management",
+      "kind": "game",
+      "name": "Builder / management / tycoon",
+      "match": [
+        "city builder",
+        "management",
+        "tycoon",
+        "colony",
+        "base building",
+        "farming",
+        "simulation game",
+        "life sim"
+      ],
+      "systems": [
+        {
+          "id": "simulation-tick",
+          "name": "Simulation tick and economy",
+          "build": "Time scale, tick rate, needs/demand, production chains.",
+          "measure": [
+            {
+              "param": "day_length_s",
+              "unit": "s",
+              "how": "one in-game day at speed 1"
+            },
+            {
+              "param": "production_chains",
+              "unit": "graph",
+              "how": "inputs → outputs and rates"
+            }
+          ]
+        },
+        {
+          "id": "placement",
+          "name": "Building and placement",
+          "build": "Grid snapping, footprints, roads/paths, demolition, undo.",
+          "measure": [
+            {
+              "param": "grid_size",
+              "unit": "units",
+              "how": "building footprints in grid cells"
+            }
+          ]
+        },
+        {
+          "id": "agents",
+          "name": "Agents and needs",
+          "build": "Citizens/workers with needs, jobs, pathfinding.",
+          "measure": [
+            {
+              "param": "needs",
+              "unit": "table",
+              "how": "every need, decay rate, how it is satisfied"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "survival",
+      "kind": "game",
+      "name": "Survival / crafting / open world",
+      "match": [
+        "survival",
+        "crafting",
+        "sandbox",
+        "open world"
+      ],
+      "systems": [
+        {
+          "id": "survival-stats",
+          "name": "Survival stats",
+          "build": "Health, hunger, thirst, stamina, temperature.",
+          "measure": [
+            {
+              "param": "decay_rates",
+              "unit": "per min",
+              "how": "time from full to empty for each bar"
+            }
+          ]
+        },
+        {
+          "id": "crafting",
+          "name": "Gathering and crafting",
+          "build": "Resources, gather yields, recipes, stations, tiers.",
+          "measure": [
+            {
+              "param": "recipes",
+              "unit": "table",
+              "how": "inputs, outputs, craft time, station (write your own item names)"
+            },
+            {
+              "param": "gather_yield",
+              "unit": "per hit",
+              "how": "count"
+            }
+          ]
+        },
+        {
+          "id": "world",
+          "name": "World and streaming",
+          "build": "World size, biomes, day/night, spawning, chunk streaming.",
+          "measure": [
+            {
+              "param": "day_night_min",
+              "unit": "min",
+              "how": "full cycle"
+            },
+            {
+              "param": "spawn_rules",
+              "unit": "notes",
+              "how": "what spawns where and when"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "puzzle",
+      "kind": "game",
+      "name": "Puzzle / casual",
+      "match": [
+        "puzzle",
+        "match-3",
+        "match 3",
+        "casual",
+        "word"
+      ],
+      "systems": [
+        {
+          "id": "board-rules",
+          "name": "Board and rules",
+          "build": "Grid, piece types, matching/clearing rules, gravity/refill, scoring, combos.",
+          "measure": [
+            {
+              "param": "grid_size",
+              "unit": "cells",
+              "how": "board dimensions"
+            },
+            {
+              "param": "score_table",
+              "unit": "points",
+              "how": "points per clear type and combo multiplier"
+            },
+            {
+              "param": "anim_timings_ms",
+              "unit": "ms",
+              "how": "swap, clear, fall per cell"
+            }
+          ]
+        },
+        {
+          "id": "levels-progress",
+          "name": "Levels and difficulty",
+          "build": "Level goals, move/time limits, stars, difficulty curve.",
+          "measure": [
+            {
+              "param": "level_goals",
+              "unit": "table",
+              "how": "goal and limit for the first 20 levels (design your own levels)"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "card",
+      "kind": "game",
+      "name": "Card / deckbuilder",
+      "match": [
+        "card",
+        "deckbuilder",
+        "deck-building",
+        "deckbuilding",
+        "ccg",
+        "tcg"
+      ],
+      "systems": [
+        {
+          "id": "card-rules",
+          "name": "Cards and rules engine",
+          "build": "Card schema, costs, targeting, effect resolution order, keywords.",
+          "measure": [
+            {
+              "param": "turn_structure",
+              "unit": "notes",
+              "how": "draw, energy/mana, play, discard, end"
+            },
+            {
+              "param": "hand_size",
+              "unit": "cards",
+              "how": "start and max"
+            },
+            {
+              "param": "keywords",
+              "unit": "table",
+              "how": "each mechanic and its exact rule (write your own cards)"
+            }
+          ]
+        },
+        {
+          "id": "deck-progression",
+          "name": "Deck and progression",
+          "build": "Card rewards, removal, upgrades, collection.",
+          "measure": [
+            {
+              "param": "reward_choices",
+              "unit": "count",
+              "how": "cards offered per reward"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "fighting",
+      "kind": "game",
+      "name": "Fighting / beat 'em up",
+      "match": [
+        "fighting",
+        "fighter",
+        "beat 'em up",
+        "brawler",
+        "hack and slash",
+        "hack-and-slash"
+      ],
+      "systems": [
+        {
+          "id": "frame-data",
+          "name": "Moves and frame data",
+          "build": "Startup/active/recovery frames, hitboxes/hurtboxes, cancels, combos, blocking.",
+          "measure": [
+            {
+              "param": "frame_data",
+              "unit": "frames",
+              "how": "per move: startup, active, recovery, on-block advantage (frame-step video)"
+            },
+            {
+              "param": "hitstop_frames",
+              "unit": "frames",
+              "how": "freeze on hit"
+            },
+            {
+              "param": "combo_rules",
+              "unit": "notes",
+              "how": "what cancels into what"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "sports",
+      "kind": "game",
+      "name": "Sports",
+      "match": [
+        "sports",
+        "football",
+        "soccer",
+        "basketball",
+        "golf",
+        "tennis"
+      ],
+      "systems": [
+        {
+          "id": "ball-physics",
+          "name": "Ball and player physics",
+          "build": "Ball physics, shot/pass power curves, player movement and stamina.",
+          "measure": [
+            {
+              "param": "shot_power_curve",
+              "unit": "samples",
+              "how": "hold time → ball speed"
+            },
+            {
+              "param": "match_length",
+              "unit": "min",
+              "how": "real time per match"
+            }
+          ]
+        },
+        {
+          "id": "rules-ai",
+          "name": "Rules and team AI",
+          "build": "Rules, fouls, positions, team tactics.",
+          "measure": [
+            {
+              "param": "rules",
+              "unit": "notes",
+              "how": "what triggers each rule"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "narrative",
+      "kind": "game",
+      "name": "Narrative / visual novel / adventure",
+      "match": [
+        "visual novel",
+        "adventure",
+        "point-and-click",
+        "point & click",
+        "narrative",
+        "story rich",
+        "interactive fiction"
+      ],
+      "systems": [
+        {
+          "id": "story-engine",
+          "name": "Story engine",
+          "build": "Script format, branching, flags/variables, save points, text speed, auto/skip, backlog.",
+          "measure": [
+            {
+              "param": "text_speed_cps",
+              "unit": "chars/s",
+              "how": "default text reveal speed"
+            },
+            {
+              "param": "ui_features",
+              "unit": "list",
+              "how": "auto, skip, log, save slots, gallery"
+            }
+          ]
+        },
+        {
+          "id": "interaction",
+          "name": "Interaction and puzzles",
+          "build": "Hotspots, inventory combining, verbs, hints.",
+          "measure": [
+            {
+              "param": "verbs",
+              "unit": "list",
+              "how": "interaction types"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "multiplayer",
+      "kind": "game",
+      "name": "Online multiplayer",
+      "match": [
+        "multiplayer",
+        "multi-player",
+        "online pvp",
+        "online co-op",
+        "mmo",
+        "pvp",
+        "co-op",
+        "battle royale"
+      ],
+      "systems": [
+        {
+          "id": "netcode",
+          "name": "Netcode",
+          "build": "Authority model (server/peer), replication, prediction/reconciliation or rollback, lag compensation, tick rate.",
+          "measure": [
+            {
+              "param": "tick_rate_hz",
+              "unit": "Hz",
+              "how": "community knowledge or observed update granularity"
+            },
+            {
+              "param": "max_players",
+              "unit": "count",
+              "how": "lobby size"
+            }
+          ]
+        },
+        {
+          "id": "matchmaking",
+          "name": "Lobbies and matchmaking",
+          "build": "Lobby flow, invites, matchmaking rules, reconnect.",
+          "measure": [
+            {
+              "param": "lobby_flow",
+              "unit": "list",
+              "how": "screens from menu to match"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "idle",
+      "kind": "game",
+      "name": "Idle / incremental / clicker",
+      "match": [
+        "idle",
+        "incremental",
+        "clicker"
+      ],
+      "systems": [
+        {
+          "id": "growth-curves",
+          "name": "Growth curves",
+          "build": "Generators, cost growth, multipliers, prestige, offline progress.",
+          "measure": [
+            {
+              "param": "cost_growth",
+              "unit": "×",
+              "how": "cost of level n+1 ÷ level n"
+            },
+            {
+              "param": "prestige_formula",
+              "unit": "formula",
+              "how": "fit from prestige rewards at several totals"
+            },
+            {
+              "param": "offline_cap_h",
+              "unit": "h",
+              "how": "max offline earnings time"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "horror",
+      "kind": "game",
+      "name": "Horror",
+      "match": [
+        "horror",
+        "survival horror"
+      ],
+      "systems": [
+        {
+          "id": "tension",
+          "name": "Tension and the threat",
+          "build": "Stalker/enemy AI, hiding, sound propagation, lighting and limited resources.",
+          "measure": [
+            {
+              "param": "threat_behaviour",
+              "unit": "notes",
+              "how": "patrol, hearing range, chase speed vs player speed"
+            },
+            {
+              "param": "resource_scarcity",
+              "unit": "counts",
+              "how": "ammo/battery per area"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "social-app",
+      "kind": "app",
+      "name": "Social / messaging app",
+      "match": [
+        "social networking",
+        "social",
+        "messaging",
+        "chat",
+        "communication",
+        "dating"
+      ],
+      "systems": [
+        {
+          "id": "feed-messaging",
+          "name": "Feed and messaging",
+          "build": "Posts/messages, real-time delivery, read receipts, media, reactions, groups.",
+          "measure": [
+            {
+              "param": "message_types",
+              "unit": "list",
+              "how": "text, image, voice, video, file"
+            },
+            {
+              "param": "limits",
+              "unit": "table",
+              "how": "max text length, group size, media size"
+            },
+            {
+              "param": "states",
+              "unit": "list",
+              "how": "sending, sent, delivered, read"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "productivity-app",
+      "kind": "app",
+      "name": "Productivity / notes / tasks",
+      "match": [
+        "productivity",
+        "business",
+        "utilities",
+        "notes",
+        "task",
+        "to-do",
+        "todo",
+        "calendar",
+        "office"
+      ],
+      "systems": [
+        {
+          "id": "documents",
+          "name": "Documents and items",
+          "build": "Item CRUD, editor, lists/boards, search, sharing, sync, undo.",
+          "measure": [
+            {
+              "param": "item_fields",
+              "unit": "list",
+              "how": "every field of a task/note"
+            },
+            {
+              "param": "views",
+              "unit": "list",
+              "how": "list, board, calendar…"
+            },
+            {
+              "param": "shortcuts",
+              "unit": "list",
+              "how": "keyboard shortcuts and gestures"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "shopping-app",
+      "kind": "app",
+      "name": "Shopping / marketplace",
+      "match": [
+        "shopping",
+        "marketplace",
+        "e-commerce",
+        "ecommerce",
+        "food & drink",
+        "delivery"
+      ],
+      "systems": [
+        {
+          "id": "catalog-checkout",
+          "name": "Catalog, cart and checkout",
+          "build": "Catalog, filters, product page, cart, checkout, order tracking.",
+          "measure": [
+            {
+              "param": "checkout_steps",
+              "unit": "list",
+              "how": "every step to payment"
+            },
+            {
+              "param": "filters",
+              "unit": "list",
+              "how": "every filter and sort"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "media-app",
+      "kind": "app",
+      "name": "Media / music / video / photo",
+      "match": [
+        "music",
+        "video",
+        "photo",
+        "entertainment",
+        "podcast",
+        "streaming",
+        "camera"
+      ],
+      "systems": [
+        {
+          "id": "player-library",
+          "name": "Player and library",
+          "build": "Player controls, queue, library, offline downloads, editing tools.",
+          "measure": [
+            {
+              "param": "player_controls",
+              "unit": "list",
+              "how": "every control and gesture"
+            },
+            {
+              "param": "editing_tools",
+              "unit": "list",
+              "how": "filters/tools with their parameter ranges"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "fitness-app",
+      "kind": "app",
+      "name": "Health / fitness tracker",
+      "match": [
+        "health & fitness",
+        "fitness",
+        "workout",
+        "tracker",
+        "lifestyle"
+      ],
+      "systems": [
+        {
+          "id": "tracking",
+          "name": "Tracking and insights",
+          "build": "Logging, goals, streaks, charts, reminders, device sensors.",
+          "measure": [
+            {
+              "param": "tracked_metrics",
+              "unit": "list",
+              "how": "every metric and its unit"
+            },
+            {
+              "param": "charts",
+              "unit": "list",
+              "how": "chart types and time ranges"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "web-saas",
+      "kind": "app",
+      "name": "Web app / SaaS dashboard",
+      "match": [
+        "web app",
+        "saas",
+        "dashboard",
+        "developer tools",
+        "finance",
+        "education"
+      ],
+      "systems": [
+        {
+          "id": "workspace",
+          "name": "Workspace and permissions",
+          "build": "Organizations/teams, roles, billing plans, settings, audit log.",
+          "measure": [
+            {
+              "param": "roles",
+              "unit": "table",
+              "how": "what each role can do"
+            },
+            {
+              "param": "plans",
+              "unit": "table",
+              "how": "plan limits from the pricing page"
+            }
+          ]
+        },
+        {
+          "id": "core-objects",
+          "name": "Core objects and views",
+          "build": "The main objects, list/detail/edit views, filters, bulk actions, import/export.",
+          "measure": [
+            {
+              "param": "objects",
+              "unit": "list",
+              "how": "every object with fields and actions"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

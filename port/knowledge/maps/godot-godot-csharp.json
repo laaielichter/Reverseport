@@ -1,0 +1,38 @@
+{
+  "from": "godot",
+  "to": "godot-csharp",
+  "title": "Godot 4 GDScript → Godot 4 C# (.NET)",
+  "conventions": [
+    "Needs the .NET build of Godot; the project gets a .csproj. Each script: public partial class Name : BaseType, file name = class name.",
+    "Scenes stay as they are: swap the script path in each .tscn ext_resource from res://x.gd to res://X.cs once the C# class compiles.",
+    "Names become PascalCase: _physics_process → _PhysicsProcess, move_and_slide → MoveAndSlide, global_position → GlobalPosition. Delta is double.",
+    "Struct properties cannot be changed in place: var v = Velocity; v.X = 3; Velocity = v;",
+    "Engine collections are Godot.Collections.Array/Dictionary (Variant-compatible); use them for exported and signal data, .NET List/Dictionary elsewhere."
+  ],
+  "entries": [
+    { "id": "script-class", "topic": "structure", "from": "class_name Player / extends CharacterBody3D", "to": "public partial class Player : CharacterBody3D", "pattern": "^extends\\s" },
+    { "id": "ready", "topic": "lifecycle", "from": "_ready()", "to": "public override void _Ready()", "pattern": "\\bfunc\\s+_ready\\b" },
+    { "id": "process", "topic": "lifecycle", "from": "_process(delta)", "to": "public override void _Process(double delta)", "pattern": "\\bfunc\\s+_process\\b" },
+    { "id": "physics-process", "topic": "lifecycle", "from": "_physics_process(delta)", "to": "public override void _PhysicsProcess(double delta)", "pattern": "\\bfunc\\s+_physics_process\\b" },
+    { "id": "input-event", "topic": "input", "from": "_input(event) / _unhandled_input(event)", "to": "public override void _Input(InputEvent @event) / _UnhandledInput", "pattern": "\\bfunc\\s+_(unhandled_)?input\\b" },
+    { "id": "export", "topic": "inspector", "from": "@export var speed := 6.0", "to": "[Export] public float Speed { get; set; } = 6f;", "pattern": "@export" },
+    { "id": "onready", "topic": "scene tree", "from": "@onready var anim = $AnimationPlayer", "to": "private AnimationPlayer _anim; … in _Ready(): _anim = GetNode<AnimationPlayer>(\"AnimationPlayer\");", "pattern": "@onready" },
+    { "id": "get-node", "topic": "scene tree", "from": "$Path / get_node(\"Path\") / %Unique", "to": "GetNode<T>(\"Path\") / GetNode<T>(\"%Unique\")", "pattern": "(get_node\\(|\\$[A-Za-z\"%])", "leftover": "\\bget_node\\(|\\$\\w" },
+    { "id": "signal-declare", "topic": "events", "from": "signal hit(damage: int)", "to": "[Signal] public delegate void HitEventHandler(int damage);", "pattern": "^signal\\s" },
+    { "id": "signal-emit", "topic": "events", "from": "hit.emit(d) / emit_signal(\"hit\", d)", "to": "EmitSignal(SignalName.Hit, d);", "pattern": "\\.emit\\(|emit_signal\\(", "leftover": "emit_signal\\(" },
+    { "id": "signal-connect", "topic": "events", "from": "hit.connect(_on_hit)", "to": "Hit += OnHit;", "pattern": "\\.connect\\(" },
+    { "id": "preload", "topic": "resources", "from": "preload(\"res://x.tscn\")", "to": "GD.Load<PackedScene>(\"res://x.tscn\") (cache it in a static readonly field)", "pattern": "\\bpreload\\(", "leftover": "\\bpreload\\(" },
+    { "id": "instantiate", "topic": "scene tree", "from": "scene.instantiate()", "to": "scene.Instantiate<Node3D>()", "pattern": "\\.instantiate\\(" },
+    { "id": "queue-free", "topic": "scene tree", "from": "queue_free()", "to": "QueueFree()", "pattern": "\\bqueue_free\\(?", "leftover": "\\bqueue_free\\(" },
+    { "id": "timer-await", "topic": "async", "from": "await get_tree().create_timer(t).timeout", "to": "await ToSignal(GetTree().CreateTimer(t), SceneTreeTimer.SignalName.Timeout);", "pattern": "create_timer\\(" },
+    { "id": "await-signal", "topic": "async", "from": "await some_signal", "to": "await ToSignal(obj, Obj.SignalName.SomeSignal); (method becomes async)", "pattern": "\\bawait\\s" },
+    { "id": "input", "topic": "input", "from": "Input.is_action_pressed / get_axis", "to": "Input.IsActionPressed / Input.GetAxis", "pattern": "Input\\.(is_action|get_axis|get_vector)" },
+    { "id": "velocity", "topic": "physics", "from": "velocity.x = …; move_and_slide()", "to": "var v = Velocity; v.X = …; Velocity = v; MoveAndSlide();", "pattern": "\\bvelocity\\.|move_and_slide\\(" },
+    { "id": "groups", "topic": "architecture", "from": "add_to_group(\"x\")", "to": "AddToGroup(\"x\")", "pattern": "add_to_group\\(" },
+    { "id": "autoload", "topic": "architecture", "from": "Global.add_score(…) (autoload by name)", "to": "GetNode<Global>(\"/root/Global\").AddScore(…) or a static Instance set in _Ready", "pattern": "^\\[autoload\\]" },
+    { "id": "print", "topic": "debug", "from": "print(), push_error()", "to": "GD.Print(), GD.PushError()", "pattern": "\\b(print|push_error|push_warning)\\(", "leftover": "^\\s*print\\(" },
+    { "id": "math", "topic": "math", "from": "lerp, clamp, deg_to_rad, randf", "to": "Mathf.Lerp, Mathf.Clamp, Mathf.DegToRad, GD.Randf()", "pattern": "\\b(lerp|clamp|deg_to_rad|randf|randi)\\(" },
+    { "id": "typed", "topic": "language", "from": "var x := 1, Array[int], Dictionary", "to": "var x = 1; Godot.Collections.Array<int>; Godot.Collections.Dictionary", "pattern": "\\bArray\\[|\\bDictionary\\b" },
+    { "id": "match", "topic": "language", "from": "match value:", "to": "switch statement / switch expression", "pattern": "^\\s*match\\s" }
+  ]
+}
