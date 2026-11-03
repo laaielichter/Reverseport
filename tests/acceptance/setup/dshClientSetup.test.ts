@@ -204,12 +204,18 @@ cliTest(
     expect(rows.filter(({ id }) => id === "rea-mcp")).toHaveLength(1);
     const registration = z
       .object({
+        serverName: z.string(),
+        transport: z.string(),
         command: z.string(),
         args: z.array(z.string()),
         cwd: z.unknown(),
         env: z.unknown(),
       })
       .parse(rows.find(({ id }) => id === "rea-mcp")?.config);
+    // The row keeps its `rea-mcp` id, but the session must connect under the
+    // current server name, so clients see `mcp__reverseport__*` tools.
+    expect(registration.serverName).toBe("reverseport");
+    expect(registration.transport).toBe("stdio");
     expect(registration.cwd).toEqual({ __jsExpr: "process.cwd()" });
     expect(registration.env).toMatchObject({
       REA_LOG_LEVEL: { __jsExpr: "process.env.REA_LOG_LEVEL" },
