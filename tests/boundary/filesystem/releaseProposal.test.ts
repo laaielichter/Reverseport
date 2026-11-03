@@ -673,7 +673,7 @@ it("requires complete local history when sizing the upstream search", async () =
   );
 });
 
-const releasePatchFixture = async () => {
+const releasePatchFixture = async ({ crlfPatch = false } = {}) => {
   const root = await createTestTempDirectory("rea-release-git-patch-");
   const project = join(root, "project space Ω");
   const dependencyPath = "node_modules/release dependency space Ω";
@@ -723,6 +723,8 @@ const releasePatchFixture = async () => {
   // Installation owns the patched dependency. Reverse only the private copy
   // to obtain the exact upstream input for the fresh-application control.
   await git("apply", "--reverse", "--directory", dependencyPath, patchPath);
+  // A Windows checkout with core.autocrlf=true stores the patch with CRLF.
+  if (crlfPatch) await writeFile(patchPath, patch.replaceAll("\n", "\r\n"));
   const apply = () =>
     execute(
       process.execPath,
@@ -755,6 +757,18 @@ it("applies the private dependency patch with protected Git paths and is idempot
     fixture.dependencyPath,
     fixture.patchPath,
   );
+  await fixture.apply();
+  expect(await fixture.contents()).toEqual(patched);
+});
+
+it("applies a CRLF copy of the patch from a Windows autocrlf checkout", async () => {
+  const fixture = await releasePatchFixture({ crlfPatch: true });
+  const original = await fixture.contents();
+  await fixture.apply();
+  const patched = await fixture.contents();
+  expect(patched).not.toEqual(original);
+  expect(patched.join("\n")).toContain("const rootOnlyNode =");
+  expect(patched.join("\n")).not.toContain("\r");
   await fixture.apply();
   expect(await fixture.contents()).toEqual(patched);
 });
