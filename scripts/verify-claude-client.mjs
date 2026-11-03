@@ -16,6 +16,7 @@ import {
   toolContract,
 } from "../dist/contracts/toolContracts.js";
 import { createVerifierCommands } from "./lib/verify-commands.mjs";
+import { readPersistedToolOutput } from "./lib/persisted-tool-output.mjs";
 import { withVerifierCleanup } from "./lib/verifier-cleanup.mjs";
 import { saveVerifierCommandOutput } from "./lib/verifier-command-output.mjs";
 import { assertJavaScriptApplicationInputPaths } from "./lib/javascript-application-paths.mjs";
@@ -108,6 +109,11 @@ await withVerifierCleanup(async () => {
     };
     const extractInlineResult = (value, matches) => {
       if (typeof value === "string") {
+        // Claude Code saves a large result (binary_session is about 64 KB) to a
+        // file and passes only a preview; read the complete saved result.
+        const persisted = readPersistedToolOutput(value, lab);
+        if (persisted !== undefined)
+          return extractInlineResult(persisted, matches);
         try {
           // Native Claude appends this resource hint to tool results. Original bodies remain intact in request artifacts.
           const json = value.replace(
@@ -133,13 +139,30 @@ await withVerifierCleanup(async () => {
       onRequest: async ({ body, tools, requestIndex }) => {
         if (tools.length === 0)
           return [{ type: "text", text: "REA fixture title" }];
+        // Loading a deferred catalog takes up to four ToolSearch turns.
         assert(
-          requestIndex <= 8,
+          requestIndex <= 12,
           "Local model workflow exceeded its turn budget",
         );
         const call = (name, input) => [
           { type: "tool_use", id: `toolu_rea_${requestIndex}`, name, input },
         ];
+        const search = tools.find((t) => t.name === "ToolSearch");
+        // Newer Claude Code defers a large MCP catalog behind ToolSearch, which
+        // loads at most 64 tools per call. Load the missing REA tools in
+        // batches, as a model would, before checking the complete catalog.
+        const declared = new Set(tools.map((t) => t.name));
+        const deferred = TOOL_CONTRACTS.map(
+          (t) => `mcp__reverseport__${t.name}`,
+        ).filter((name) => !declared.has(name));
+        if (search && deferred.length > 0) {
+          pendingServerWaits++;
+          const batch = deferred.slice(0, 64);
+          return call(search.name, {
+            query: `select:${batch.join(",")}`,
+            max_results: batch.length,
+          });
+        }
         const analysis = tools.find((t) =>
           t.name.endsWith("analyze_javascript_application"),
         );
@@ -148,7 +171,7 @@ await withVerifierCleanup(async () => {
           const wait = tools.find((t) => t.name === "WaitForMcpServers");
           assert(
             wait,
-            "Claude must expose REA tools or its native pending-server wait",
+            "Claude must expose REA tools, its native pending-server wait or ToolSearch",
           );
           pendingServerWaits++;
           return call(wait.name, { servers: ["reverseport"] });
