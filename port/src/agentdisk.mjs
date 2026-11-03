@@ -26,10 +26,15 @@ function locate(env = process.env) {
   return { missing: MISSING };
 }
 
-// agentdisk only reads the disk: give it the environment without tokens, keys or passwords.
-const SECRET = /token|secret|passw|api.?key|_key$|auth|cookie|session|credential/i;
+// agentdisk only reads the disk. It gets the folders it needs to find things, nothing else from the environment.
+const CHILD_ENV = ['PATH', 'PATHEXT', 'SYSTEMROOT', 'WINDIR', 'COMSPEC', 'HOME', 'USERPROFILE', 'HOMEDRIVE', 'HOMEPATH',
+  'APPDATA', 'LOCALAPPDATA', 'PROGRAMDATA', 'TEMP', 'TMP', 'TMPDIR', 'LANG', 'LC_ALL', 'XDG_DATA_HOME', 'XDG_CONFIG_HOME',
+  'XDG_CACHE_HOME', 'AGENTDISK_HOME', 'CLAUDE_CONFIG_DIR', 'CODEX_HOME', 'HF_HOME', 'OLLAMA_MODELS', 'PI_CODING_AGENT_DIR',
+  'REVERSEPORT_HOME', 'UV_CACHE_DIR', 'PNPM_STORE_DIR'];
 function childEnv() {
-  return Object.fromEntries(Object.entries(process.env).filter(([name]) => !SECRET.test(name)));
+  const env = {};
+  for (const name of CHILD_ENV) if (process.env[name] !== undefined) env[name] = process.env[name];
+  return env;
 }
 
 function run(command, args) {
