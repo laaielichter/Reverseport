@@ -7,6 +7,14 @@ Read [AGENTS.md](../AGENTS.md): layout, architecture rules, checks and tests for
 - `src/` (deep-analysis engine, TypeScript): `npm ci`, `npm run build:cached`, `npm run check:fast`, focused tests.
 - Do not put chat or session links in commits, pull requests or files.
 
+## Branches that must stay
+
+- `main`.
+- `claude-directory`: the Claude plugin directory reads the plugin from this branch. It is built from `main` by
+  `.github/workflows/claude-directory.yml`. Never delete it when cleaning up branches; if it is ever missing, run
+  that workflow (workflow_dispatch on `main`) to rebuild it.
+- Branches of open pull requests (release-please, dependabot).
+
 ## Commits and pull requests
 
 - Commit as `laaielichter <laaielichter@users.noreply.github.com>`.
