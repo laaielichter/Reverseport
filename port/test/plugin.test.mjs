@@ -25,6 +25,9 @@ test('Claude Code plugin and marketplace manifests', async () => {
   assert.equal(m.name, 'reverseport');
   assert.equal(m.version, VERSION);
   assert.equal(m.license, 'MIT');
+  // The Claude plugin directory shows these; without them it guesses (a lowercase name, a badge image as docs link).
+  assert.equal(m.displayName, 'ReversePort');
+  for (const key of ['documentationUrl', 'supportUrl', 'privacyPolicyUrl']) assert.match(m[key] ?? '', /^https:\/\//, `${key}: https URL`);
   await fs.access(m.mcpServers.reverseport.args[0].replace('${CLAUDE_PLUGIN_ROOT}', REPO));
   const market = JSON.parse(await read('.claude-plugin/marketplace.json'));
   assert.deepEqual(market.plugins.map(p => [p.name, p.source]), [
