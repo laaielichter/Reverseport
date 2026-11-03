@@ -46,7 +46,8 @@ describe("isolated verifier environments", () => {
         `${project}scripts/verify-${client}-client.mjs`,
         "utf8",
       );
-      expect(source).toMatch(/\.\.\.verifierHostEnvironment\(\),\n\s+PATH:/u);
+      // `\s+` also spans the CRLF of a Windows autocrlf checkout.
+      expect(source).toMatch(/\.\.\.verifierHostEnvironment\(\),\s+PATH:/u);
     },
   );
 
