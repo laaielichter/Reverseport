@@ -1,7 +1,8 @@
 import { execFile } from "node:child_process";
-import { readFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { createRequire } from "node:module";
-import { dirname, relative, sep } from "node:path";
+import { dirname, join, relative, sep } from "node:path";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import { requireCompleteReleaseHistory } from "./release-notes.mjs";
@@ -24,12 +25,24 @@ export async function applyReleasePleasePatch(
       "The release proposal patch requires release-please 17.3.0",
     );
   }
+  // A Windows checkout with core.autocrlf=true gives the patch CRLF line
+  // endings, which no longer match the LF dependency sources. The repository
+  // cannot pin them with .gitattributes (the Claude plugin directory rejects
+  // one), so apply an LF copy instead.
+  const text = await readFile(patch, "utf8");
+  const scratch = text.includes("\r\n")
+    ? await mkdtemp(join(tmpdir(), "rea-release-patch-"))
+    : undefined;
+  const patchFile =
+    scratch === undefined ? patch : join(scratch, "release-please.patch");
+  if (scratch !== undefined)
+    await writeFile(patchFile, text.replaceAll("\r\n", "\n"));
   // Git prefixes patch filenames with a slash-separated path, even on Windows.
   // Split only native separators so POSIX backslashes remain filename bytes.
   const args = [
     "--directory",
     relative(project, directory).split(sep).join("/"),
-    patch,
+    patchFile,
   ];
   const check = async (reverse) => {
     try {
@@ -44,12 +57,17 @@ export async function applyReleasePleasePatch(
       throw error;
     }
   };
-  if (await check(false)) {
-    await execute("git", ["apply", ...args], { cwd: project });
-  } else if (!(await check(true))) {
-    throw new Error(
-      "The release proposal dependency patch does not match the installed source",
-    );
+  try {
+    if (await check(false)) {
+      await execute("git", ["apply", ...args], { cwd: project });
+    } else if (!(await check(true))) {
+      throw new Error(
+        "The release proposal dependency patch does not match the installed source",
+      );
+    }
+  } finally {
+    if (scratch !== undefined)
+      await rm(scratch, { recursive: true, force: true });
   }
 }
 
