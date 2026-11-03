@@ -5,7 +5,7 @@ import { isMainModule } from '../src/main-module.mjs';
 
 /** Plugin settings (userConfig) arrive as env values; an empty or unsubstituted one means "not set". */
 export function applyPluginSettings(env = process.env) {
-  for (const key of ['REVERSEPORT_PLUGIN_ENGINE', 'REVERSEPORT_PROFILE', 'REVERSEPORT_HOME', 'GHIDRA_INSTALL_DIR']) {
+  for (const key of ['REVERSEPORT_PLUGIN_ENGINE', 'REVERSEPORT_PROFILE', 'REVERSEPORT_HOME', 'GHIDRA_INSTALL_DIR', 'REVERSEPORT_GITHUB_TOKEN']) {
     const value = env[key];
     if (value !== undefined && (value.trim() === '' || /^\$\{user_config\.[A-Za-z0-9_]+\}$/.test(value.trim()))) delete env[key];
   }

@@ -494,6 +494,9 @@ ReversePort keeps its own output in the workspace (`REVERSEPORT_HOME`, else `~/.
 large tool results, port plans, proof cases and reports. `reverseport port doctor` lists how much each folder uses.
 ReversePort never deletes from the workspace by itself.
 
+`lookup` works without a GitHub token. For higher GitHub rate limits, set `REVERSEPORT_GITHUB_TOKEN` (in the Claude
+Code plugin: the optional, secret `github_token` setting). It is only sent to `api.github.com`.
+
 With [agentdisk](https://github.com/laaielichter/agentdisk) installed, `port doctor` also shows what deleting would
 really free (hardlinks counted once) and how to clean up safely. agentdisk knows the workspace: extracted files, tool
 output, the lookup cache and reports are regenerable; port plans, blueprints and scenes are user data; proof cases,

@@ -26,9 +26,20 @@ function locate(env = process.env) {
   return { missing: MISSING };
 }
 
+// agentdisk only reads the disk. It gets the folders it needs to find things, nothing else from the environment.
+const CHILD_ENV = ['PATH', 'PATHEXT', 'SYSTEMROOT', 'WINDIR', 'COMSPEC', 'HOME', 'USERPROFILE', 'HOMEDRIVE', 'HOMEPATH',
+  'APPDATA', 'LOCALAPPDATA', 'PROGRAMDATA', 'TEMP', 'TMP', 'TMPDIR', 'LANG', 'LC_ALL', 'XDG_DATA_HOME', 'XDG_CONFIG_HOME',
+  'XDG_CACHE_HOME', 'AGENTDISK_HOME', 'CLAUDE_CONFIG_DIR', 'CODEX_HOME', 'HF_HOME', 'OLLAMA_MODELS', 'PI_CODING_AGENT_DIR',
+  'REVERSEPORT_HOME', 'UV_CACHE_DIR', 'PNPM_STORE_DIR'];
+function childEnv() {
+  const env = {};
+  for (const name of CHILD_ENV) if (process.env[name] !== undefined) env[name] = process.env[name];
+  return env;
+}
+
 function run(command, args) {
   return new Promise(resolve => {
-    execFile(command[0], [...command.slice(1), ...args], { timeout: TIMEOUT_MS, maxBuffer: 1024 * 1024, windowsHide: true, shell: process.platform === 'win32' && /\.cmd$/i.test(command[0]) }, (err, stdout, stderr) => {
+    execFile(command[0], [...command.slice(1), ...args], { env: childEnv(), timeout: TIMEOUT_MS, maxBuffer: 1024 * 1024, windowsHide: true, shell: process.platform === 'win32' && /\.cmd$/i.test(command[0]) }, (err, stdout, stderr) => {
       resolve({ code: err ? (typeof err.code === 'number' ? err.code : 1) : 0, stdout: String(stdout), stderr: String(stderr).trim() });
     });
   });

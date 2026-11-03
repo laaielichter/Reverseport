@@ -98,6 +98,43 @@ const listTree = (tree, base = "") =>
     return entry.isDirectory() ? listTree(tree, path) : [path];
   });
 
+// The directory's scanner reads each file only up to 256 KiB and holds the plugin for review when one is bigger. The
+// Godot API snapshots are larger, so the tree carries each one as a small index plus parts that port/src/apicheck.mjs
+// merges back when it loads them.
+const SCAN_BYTES = 256 * 1024;
+const PART_BYTES = 200 * 1024;
+const API_SNAPSHOT = /^port\/knowledge\/apis\/godot-\d+(?:\.\d+)*\.json$/u;
+
+const splitSnapshot = (from, to) => {
+  const text = readFileSync(from, "utf8");
+  if (Buffer.byteLength(text) <= SCAN_BYTES) return copyFileSync(from, to);
+  const api = JSON.parse(text);
+  const stem = to.replace(/\.json$/u, "");
+  const name = stem.split(/[\\/]/u).pop();
+  const parts = [];
+  let chunk = {};
+  let size = 0;
+  const flush = () => {
+    if (!size) return;
+    const file = `${name}.part${parts.length + 1}.json`;
+    writeFileSync(
+      `${stem}.part${parts.length + 1}.json`,
+      JSON.stringify({ classes: chunk }),
+    );
+    parts.push(file);
+    chunk = {};
+    size = 0;
+  };
+  for (const [key, value] of Object.entries(api.classes)) {
+    const bytes = Buffer.byteLength(JSON.stringify({ [key]: value }));
+    if (size && size + bytes > PART_BYTES) flush();
+    chunk[key] = value;
+    size += bytes;
+  }
+  flush();
+  writeFileSync(to, JSON.stringify({ ...api, classes: {}, parts }));
+};
+
 /** Build the plugin tree into `out` and check it against the directory's limits. */
 const buildClaudeDirectory = ({ out, ref = "main", cwd = ROOT }) => {
   const target = resolve(out);
@@ -107,7 +144,9 @@ const buildClaudeDirectory = ({ out, ref = "main", cwd = ROOT }) => {
 
   for (const path of pluginFiles(cwd)) {
     mkdirSync(dirname(join(target, path)), { recursive: true });
-    copyFileSync(join(cwd, path), join(target, path));
+    if (API_SNAPSHOT.test(path))
+      splitSnapshot(join(cwd, path), join(target, path));
+    else copyFileSync(join(cwd, path), join(target, path));
   }
 
   writeFileSync(
