@@ -453,7 +453,7 @@
     "oxfmt": "0.72.0",
     "oxlint": "1.87.0",
     "oxlint-tsgolint": "7.0.2005",
-    "release-please": "17.11.2",
+    "release-please": "17.3.0",
     "rolldown": "1.2.12",
     "tsrs": "0.18.0-ts7.1.0-dev.20260929",
     "tsx": "4.23.15",
