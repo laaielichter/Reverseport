@@ -1,5 +1,28 @@
 # Changelog
 
+## [1.15.0](https://github.com/laaielichter/Reverseport/compare/reverseport-1.14.0...reverseport-1.15.0) (2026-11-03)
+
+
+### ⚠ BREAKING CHANGES
+
+* **setup:** clients now see the server as "reverseport", so tool names change from mcp__rea__* to mcp__reverseport__*. Rerun `reverseport setup` (or `reverseport update`) to move an existing "rea" registration; permission rules naming mcp__rea__* need updating.
+
+### Features
+
+* **port:** unpack Unity asset bundles and .assets files in re_archive ([#89](https://github.com/laaielichter/Reverseport/issues/89)) ([d116662](https://github.com/laaielichter/Reverseport/commit/d1166626532b754ecf8ce80a2f8d3cada1a6cff7))
+* **setup:** register the MCP server as "reverseport" everywhere ([#91](https://github.com/laaielichter/Reverseport/issues/91)) ([bdba15f](https://github.com/laaielichter/Reverseport/commit/bdba15f09803e9db9b369e072a59d17f520e4dd7))
+
+
+### Bug Fixes
+
+* **deps:** move glob, minimatch, qs and vite to patched versions ([#98](https://github.com/laaielichter/Reverseport/issues/98)) ([125aa64](https://github.com/laaielichter/Reverseport/commit/125aa64d495c3770ee6b63c58054125c5fa7d908))
+* **install:** apply an LF copy of a CRLF dependency patch on Windows ([#93](https://github.com/laaielichter/Reverseport/issues/93)) ([7a32d9c](https://github.com/laaielichter/Reverseport/commit/7a32d9cbc7192ca4999837e33d40d7d619c9b042))
+* **plugin:** display name and listing links for the Claude plugin directory ([#97](https://github.com/laaielichter/Reverseport/issues/97)) ([14792d6](https://github.com/laaielichter/Reverseport/commit/14792d6e1bfdd5122b79d9f6e16f25c56405be58))
+* **setup:** describe the Harness server name check as "reverseport" ([#92](https://github.com/laaielichter/Reverseport/issues/92)) ([fe91bb5](https://github.com/laaielichter/Reverseport/commit/fe91bb5ee84afab8725982494aeeba7e526c46d5))
+* **verify:** follow Claude Code's deferred catalog and persisted results ([#95](https://github.com/laaielichter/Reverseport/issues/95)) ([7387b99](https://github.com/laaielichter/Reverseport/commit/7387b99432c1e7c57c85dcc26aef6e573810c81c))
+* **verify:** keep TEMP and TMP in isolated Windows verifier environments ([#96](https://github.com/laaielichter/Reverseport/issues/96)) ([1903bc4](https://github.com/laaielichter/Reverseport/commit/1903bc4f66bb1b44714a842ae726696d64d61177))
+* **verify:** keep Windows host variables in isolated client verifiers ([#94](https://github.com/laaielichter/Reverseport/issues/94)) ([f3c734a](https://github.com/laaielichter/Reverseport/commit/f3c734a3c41079f7a9b1c25f181688ed08ece299))
+
 ## [1.14.0](https://github.com/laaielichter/Reverseport/compare/reverseport-1.13.0...reverseport-1.14.0) (2026-11-02)
 
 

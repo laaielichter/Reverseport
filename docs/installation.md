@@ -320,14 +320,14 @@ Register with the variable unset:
 <!-- x-release-please-start-version -->
 
 ```bash
-claude mcp add --scope local reverseport -- npx -y reverseport@1.14.0 mcp
+claude mcp add --scope local reverseport -- npx -y reverseport@1.15.0 mcp
 ```
 
 On native Windows, use the same project directory and wrap the package-runner
 shim so the stdio client can launch it:
 
 ```powershell
-claude mcp add --scope local reverseport -- cmd.exe /d /c npx -y reverseport@1.14.0 mcp
+claude mcp add --scope local reverseport -- cmd.exe /d /c npx -y reverseport@1.15.0 mcp
 ```
 
 <!-- x-release-please-end -->
@@ -1523,7 +1523,7 @@ For a client that requires manual configuration, use:
   "mcpServers": {
     "reverseport": {
       "command": "npx",
-      "args": ["-y", "reverseport@1.14.0", "mcp"]
+      "args": ["-y", "reverseport@1.15.0", "mcp"]
     }
   }
 }
