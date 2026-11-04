@@ -13,6 +13,7 @@ write can use the real names of what it depends on.
 ```text
 re_scan {path}                         → engine, version, languages, entry points
 re_graph {path}                        → cycles (port those files together), externals (need replacements)
+re_graph {path, closure:["src/x"]}     → what a module needs, transitively: self-contained, or the files outside it to cut or bring
 port_map {from, to}                    → conventions (axes, units, lifecycle) and the API map with pitfalls
 ```
 

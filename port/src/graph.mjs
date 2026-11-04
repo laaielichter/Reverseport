@@ -8,6 +8,7 @@ import { languageOf, fileSymbols, stripComments, identifiers, CODE_LANGUAGES } f
 import { unityGuidMap } from './scene.mjs';
 import { detectEngines } from './scan.mjs';
 import { workspacePackages, packageCandidates, splitSpecifier, tsconfigAliases, importMaps, externalPackage } from './jsworkspace.mjs';
+import { closest } from './agent.mjs';
 
 const JS_EXT = ['.ts', '.tsx', '.mts', '.js', '.mjs', '.cjs', '.jsx', '.vue', '.svelte', '.json'];
 const TYPE_INDEX_LANGS = new Set(['csharp', 'java', 'kotlin', 'gdscript', 'swift', 'haxe', 'dart', 'scala']);
@@ -284,8 +285,51 @@ export function graphMermaid(graph, max = 60) {
   return lines.join('\n');
 }
 
-export async function graphTool({ path: dir, limit, format = 'json' } = {}) {
+/**
+ * What a set of files needs to move as a whole: every file they import, transitively, over the full edge list (not the
+ * capped one a listing returns). Grouped by top folder, so "can this module be lifted out as-is" is one answer: the
+ * files outside the starting folders are the coupling to cut or bring along.
+ */
+export function closureOf(g, starts) {
+  const list = (Array.isArray(starts) ? starts : [starts]).map(s => String(s).replace(/\\/g, '/').replace(/^\.\//, '')).filter(Boolean);
+  const keys = [...g.nodes.keys()];
+  const found = [], missing = [];
+  for (const s of list) {
+    if (g.nodes.has(s)) { found.push(s); continue; }
+    // a folder means every file in it; otherwise the closest file name
+    const inDir = keys.filter(k => k.startsWith(`${s.replace(/\/$/, '')}/`));
+    if (inDir.length) { found.push(...inDir); continue; }
+    const near = closest(s, keys, 6);
+    missing.push(near ? { file: s, didYouMean: near } : { file: s });
+  }
+  const seen = new Set(found), queue = [...found];
+  while (queue.length) for (const t of g.outEdges.get(queue.pop()) ?? []) if (!seen.has(t)) { seen.add(t); queue.push(t); }
+  const top = f => (f.includes('/') ? f.slice(0, f.indexOf('/')) : '.');
+  const areas = new Set(found.map(top));
+  const lines = f => g.nodes.get(f)?.lines ?? 0;
+  const outside = new Map();
+  for (const f of seen) if (!areas.has(top(f))) outside.set(top(f), [...(outside.get(top(f)) ?? []), f]);
+  const total = [...seen].reduce((a, f) => a + lines(f), 0);
+  const out = [...outside.entries()].map(([folder, files]) => ({ folder, files: files.sort(), lines: files.reduce((a, f) => a + lines(f), 0) })).sort((a, b) => b.lines - a.lines);
+  return {
+    starts: found.length > 12 ? [...found.slice(0, 12), `+${found.length - 12} more`] : found,
+    files: seen.size, lines: total,
+    selfContained: found.length > 0 && out.length === 0,
+    outside: out,
+    ...(missing.length ? { missing } : {}),
+    verdict: !found.length ? 'none of the starting files are in the graph'
+      : out.length === 0 ? `self-contained: ${seen.size} file(s), ${total} lines, all under ${[...areas].join(', ')}; it can move as a whole`
+        : `needs ${out.reduce((a, o) => a + o.files.length, 0)} file(s) outside ${[...areas].join(', ')} (${out.map(o => `${o.folder} ${o.lines} lines`).join(', ')}): cut that coupling or bring those files along`,
+  };
+}
+
+export async function graphTool({ path: dir, limit, format = 'json', closure } = {}) {
   const g = await buildGraph(dir);
+  if (closure !== undefined && closure !== null && closure !== '') {
+    const c = closureOf(g, closure);
+    return { root: g.root, truncated: g.truncated, fileCount: g.nodes.size, edgeCount: g.edges.length, closure: c,
+      next: `Whole graph: re_graph ${JSON.stringify({ path: g.root })}. The files of one area: re_symbols ${JSON.stringify({ path: g.root, match: '<name>' })}.` };
+  }
   // Small by default (portOrder and mostUsed already summarise the edges); an explicit limit asks for more.
   const small = limit === undefined;
   const max = small ? 30 : Math.max(10, Math.min(5000, limit));

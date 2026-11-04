@@ -37,6 +37,7 @@ internals), go deep with the engine tools on the same server: `open_binary` → 
 
 ```text
 re_graph {path, format:"both"}  → who depends on whom, cycles, entry points, orphans, external packages, mermaid
+re_graph {path, closure:[file]} → everything a file or folder needs over the full edge list (listings are capped: never derive it from them)
 re_symbols {path, match?}       → classes (base classes), functions with line numbers, signals/events, exported fields
 re_scene {file}                 → scene/prefab tree: nodes, types, scripts, transforms, instances, connections
 ```
