@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.16.0](https://github.com/laaielichter/Reverseport/compare/reverseport-1.15.0...reverseport-1.16.0) (2026-11-04)
+
+
+### Bug Fixes
+
+* **port:** accept workspace names that start with two dots ([#112](https://github.com/laaielichter/Reverseport/issues/112)) ([eb55777](https://github.com/laaielichter/Reverseport/commit/eb55777b7762bd487adc152b4d20b1b78d2233ed))
+
+
+### Documentation
+
+* **agents:** contributors commit under their own name; review bot PRs like any other ([f6240e0](https://github.com/laaielichter/Reverseport/commit/f6240e0196a05caff1d61ea690b77a131976bc34))
+
 ## [1.15.0](https://github.com/laaielichter/Reverseport/compare/reverseport-1.14.0...reverseport-1.15.0) (2026-11-03)
 
 
