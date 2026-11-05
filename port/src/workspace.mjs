@@ -18,7 +18,7 @@ export async function workspaceDir(...parts) {
 
 export function isInside(child, parent) {
   const rel = path.relative(path.resolve(parent), path.resolve(child));
-  return rel === '' || (!!rel && !rel.startsWith('..') && !path.isAbsolute(rel));
+  return rel === '' || (rel !== '..' && !rel.startsWith(`..${path.sep}`) && !path.isAbsolute(rel));
 }
 
 /** Join a relative, untrusted path (archive entry, agent-chosen file name) under root; refuse escapes. */
