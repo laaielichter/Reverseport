@@ -110,25 +110,22 @@ That's it. The agent picks the tools; you get answers with the evidence behind t
 
 ## What's new
 
-**1.12** — more formats and game libraries, sturdier big results:
+**1.16** — first contributions from the community:
 
-- More formats recognised: Doom WAD, Quake and Half-Life WAD2/WAD3, XNB (XNA/MonoGame) and Valve VPK, next to Quake
-  PAK from 1.10.
-- `re_scan` recognises melonJS, Kontra, Matter.js, Rapier, cannon-es, Planck.js, Howler.js, Tone.js and React Three
-  Fiber.
-- Monorepos: `pnpm-workspace.yaml` globs, `package.json` `#imports` and Deno import maps.
-- Big results always fit the output budget now, also with emoji, file-name keys and very deep results.
-- A [Godot → three.js walkthrough](docs/walkthrough-godot-to-threejs.md) where every command was run and the result
-  builds.
+- Workspace names that start with two dots work now. Thanks [@bfs2021](https://github.com/bfs2021) (#112)!
 
-**1.11** — a new engine and a new protocol:
+**1.15** — Unity bundles and one server name everywhere:
 
-- The deep-analysis engine is now [REA](https://github.com/morluto/rea) 6.8.
-- MCP 2026-07-28 next to the classic handshake: long calls (a cold Ghidra import, a big port plan) come back as a task
-  with progress instead of timing out.
-- `run_batch` runs up to 20 calls in one, and big results are saved to disk with a resource link.
-- `re_compare` shows which .NET types and methods changed between two builds, and the next step.
-- The Claude Code plugin has settings instead of environment variables, and an icon.
+- `re_archive` unpacks Unity asset bundles and `.assets` files: textures as PNG, meshes as OBJ, audio, text and the
+  scripts in use.
+- The MCP server is now called `reverseport` in every client, so tools are `mcp__reverseport__*`.
+  **Breaking:** rerun `reverseport setup` (or `reverseport update`) and update permission rules that name `mcp__rea__*`.
+- Sturdier on Windows: CRLF patches, TEMP/TMP and host variables in the isolated verifiers.
+
+**1.14** — ready for the Claude plugin directory, with a slim `claude-directory` branch.
+
+**1.12** — more formats (Doom WAD, WAD2/WAD3, XNB, VPK), more game libraries in `re_scan`, monorepo globs and import
+maps, and a [Godot → three.js walkthrough](docs/walkthrough-godot-to-threejs.md).
 
 Every release is in the [changelog](CHANGELOG.md).
 
