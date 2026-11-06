@@ -17,8 +17,12 @@ export default defineConfig({
         text: "Getting started",
         items: [
           { text: "Installation and setup", link: "/installation" },
+          { text: "Connect any agent", link: "/connect-any-agent" },
           { text: "Client configuration", link: "/client-configuration" },
           { text: "CLI and Evidence", link: "/cli" },
+          { text: "Capabilities and porting routes", link: "/capabilities" },
+          { text: "Prompt examples", link: "/prompts-to-try" },
+          { text: "Workflow skills", link: "/agent-skills" },
           {
             text: "Walkthrough: Godot to three.js",
             link: "/walkthrough-godot-to-threejs",
@@ -94,6 +98,7 @@ export default defineConfig({
         collapsed: true,
         items: [
           { text: "MCP contracts", link: "/mcp-contracts" },
+          { text: "Tool overview", link: "/tool-overview" },
           { text: "Tool design", link: "/tool-design" },
           {
             text: "Admission limits and recovery",
