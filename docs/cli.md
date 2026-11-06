@@ -6,6 +6,29 @@ separate process; save results when you want to use them in a later command.
 For a pinned, noninteractive workflow with retained reports, see
 [static analysis in GitHub Actions](ci-analysis.md).
 
+## Game and porting examples
+
+Everything the agent can do, you can do from the shell. Results are JSON.
+
+```bash
+reverseport scan ./MyGame                        # engine, languages, entry points
+reverseport lookup "Some Game"                   # no files: engine, stack, structure, remakes
+reverseport binary ./Build/Game.exe              # sections, imports, .NET types, strings, hints
+reverseport archive ./Build/Game.pck --action extract --match "*.gd"
+reverseport diff ./Build-43 ./Build-44           # what changed between builds
+reverseport analyze /Applications/Notes.app      # deep analysis: open and summarize a binary/app
+reverseport decompile /path/to/binary 0x1000      # pseudocode (Ghidra, Hopper or IDA)
+reverseport blueprint --lookup-id <id>           # clean-room rebuild spec + parity.json + skeleton
+reverseport plan ./MyGame --to unity             # start a port
+reverseport case init --question "…" --target ./Build   # proof case: evidence → claims → decision → tests
+reverseport doctor                               # check engines and agent registrations
+reverseport skills get port-project              # the skill guide that matches this version
+reverseport help                                 # overview · reverseport port help · reverseport engine --help
+```
+
+Install the command for regular use with `npm install --global reverseport`, or run any of these through
+`npx reverseport@latest …`. In a checkout, use `./bin/reverseport.mjs`.
+
 ## Run a command
 
 After [installing ReversePort](installation.md), use `rea`. You can also run a command

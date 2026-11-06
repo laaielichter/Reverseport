@@ -179,6 +179,9 @@ Engine tools work too. In strict function-calling formats, `arguments` is a JSON
 
 ## Errors look the same everywhere
 
+Successful workflow results include a `next` field wherever there is an obvious next step (graphs, truncated
+results and every porting step), with the exact call the agent can make next.
+
 Tool calls on every door return the same error object, so an agent can act on it without guessing:
 
 ```json
