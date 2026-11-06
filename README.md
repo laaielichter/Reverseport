@@ -24,7 +24,7 @@ npx reverseport setup
 
 <sub>A real run on <a href="https://github.com/godotengine/godot-demo-projects/tree/master/2d/platformer">Godot's 2D platformer demo</a>, JSON trimmed to the key fields. <a href="docs/assets/demo.mp4">Watch the MP4</a>.</sub>
 
-<sub>Used ReversePort on something? <a href="https://github.com/laaielichter/Reverseport/discussions">Show us what you ported</a> · ⭐ Star the repo if it saved you time.</sub>
+<sub>Used ReversePort on something? <a href="https://github.com/laaielichter/Reverseport/discussions/124">Show us what you ported</a> · ⭐ Star the repo if it saved you time.</sub>
 
 [Website](https://laaielichter.github.io/Reverseport/) · [Quick start](#quick-start) · [What's new](#whats-new) · [Every agent](#works-with-every-agent) · [Prompts](#prompts-to-try) · [How it compares](#how-it-compares) · [FAQ](#faq) · [Contributing](#contributing) · [Docs](#documentation)
 
