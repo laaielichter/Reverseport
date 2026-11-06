@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.17.0](https://github.com/laaielichter/Reverseport/compare/reverseport-1.16.0...reverseport-1.17.0) (2026-11-06)
+
+
+### Documentation
+
+* **readme:** link the project showcase discussion ([#126](https://github.com/laaielichter/Reverseport/issues/126)) ([ffdd10b](https://github.com/laaielichter/Reverseport/commit/ffdd10bc88f4ee5ec13b662e4866b862b4b6fc10))
+* **readme:** move detailed references into linked guides ([ebecfbc](https://github.com/laaielichter/Reverseport/commit/ebecfbc8e27d42c460222942d44c7dfa8d65050c))
+* **readme:** update What's new through 1.16 ([#119](https://github.com/laaielichter/Reverseport/issues/119)) ([0a74813](https://github.com/laaielichter/Reverseport/commit/0a748132cb196a266937319844a4849ed77df46c))
+
 ## [1.16.0](https://github.com/laaielichter/Reverseport/compare/reverseport-1.15.0...reverseport-1.16.0) (2026-11-04)
 
 
