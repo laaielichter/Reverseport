@@ -58,7 +58,7 @@ export async function createVerifierCommands() {
         { name: "search_tools" },
         { name: "activate_skill", parameters: { properties: { name: { enum: ["reverse-engineer-anything"] } } } },
       ];
-      const system = { role: "system", content: TOOL_CONTRACTS.map((t) => "mcp__rea__" + t.name).join(" ") };
+      const system = { role: "system", content: TOOL_CONTRACTS.map((t) => "mcp__reverseport__" + t.name).join(" ") };
       const first = await globalThis.fakeRequest({ body: { messages: [system] }, tools });
       const body = 'Complete "authored" instructions\nKeep a \\ literal';
       const response = {

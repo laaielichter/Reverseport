@@ -24,7 +24,7 @@ mcpTest(
       if (definition === undefined)
         throw new Error("Missing advertised contract");
       expect(definition.annotations).toMatchObject({
-        readOnlyHint: false,
+        readOnlyHint: true, // ReversePort marks reads that only append Evidence as read-only
         idempotentHint: true,
       });
       const root = await createTestTempDirectory("rea-binary-hardening-mcp-");
