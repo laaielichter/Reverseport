@@ -36,7 +36,7 @@ const OPENCODE_ORIGINAL = `{
   },
 }\n`;
 
-const CODEX_ORIGINAL = [
+export const CODEX_ORIGINAL = [
   "# Keep Codex preferences and their spelling.",
   'model = "gpt-5"',
   'notify = ["a", "b"]',
@@ -347,7 +347,8 @@ const assertOpenCodeConfig = async ({
     throw new Error("packaged OpenCode JSONC registration readback failed");
 };
 
-const assertCodexSymlink = async ({
+/** Codex and Cursor configs stay symlinks while setup writes their targets. */
+export const assertCodexSymlink = async ({
   cli,
   codexConfig,
   cursorConfig,
@@ -358,7 +359,7 @@ const assertCodexSymlink = async ({
   if (
     !(await lstat(codexConfig)).isSymbolicLink() ||
     !(await lstat(cursorConfig)).isSymbolicLink() ||
-    !codex.includes("[mcp_servers[SERVER_KEY]]") ||
+    !codex.includes(`[mcp_servers.${SERVER_KEY}]`) ||
     !(await isDirectRegistration(
       [registration?.command, ...(registration?.args ?? [])],
       cli,

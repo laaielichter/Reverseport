@@ -7,6 +7,17 @@ export function assertClientConfig(
   original: Uint8Array,
 ): Promise<void>;
 
+/** Codex preferences the packaged setup must preserve byte for byte. */
+export const CODEX_ORIGINAL: string;
+
+/** Codex and Cursor configs stay symlinks while setup writes their targets. */
+export function assertCodexSymlink(input: {
+  readonly cli: string;
+  readonly codexConfig: string;
+  readonly cursorConfig: string;
+  readonly codexTarget: string;
+}): Promise<void>;
+
 /** Verify setup using the parent's explicit command owner. */
 export function verifyPackageSetup(input: {
   readonly commands: Pick<
