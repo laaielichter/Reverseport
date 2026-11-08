@@ -15,6 +15,9 @@ import type { Logger } from "pino";
 
 /** Decimal integer argv text. Leading zeros stay decimal; `0x` and exponent spellings do not. */
 const DECIMAL_INTEGER_TOKEN = /^[0-9]+$/u;
+/** Name the accepted spelling so a caller can correct the token without guessing. */
+const DECIMAL_INTEGER_MESSAGE =
+  "Expected a decimal integer: digits only, without a sign, 0x prefix, exponent or fraction";
 
 type DecimalWrapper =
   | { readonly kind: "default"; readonly value: number | null }
@@ -27,13 +30,13 @@ type DecimalWrapper =
 export const cliIntegerArgument = (min: number) =>
   z
     .string()
-    .regex(DECIMAL_INTEGER_TOKEN, "Expected a decimal integer")
+    .regex(DECIMAL_INTEGER_TOKEN, DECIMAL_INTEGER_MESSAGE)
     .pipe(z.coerce.number<string>().safe().min(min));
 
 const decimalToken = (domain: z.ZodNumber) =>
   z
     .string()
-    .regex(DECIMAL_INTEGER_TOKEN, "Expected a decimal integer")
+    .regex(DECIMAL_INTEGER_TOKEN, DECIMAL_INTEGER_MESSAGE)
     .pipe(z.coerce.number<string>())
     .pipe(domain);
 
@@ -141,7 +144,14 @@ export const cliDecimalField = <Field extends z.ZodType>(
       `cliDecimalField expected a numeric domain field, received ${field.constructor.name}`,
     );
   const admitted = applyDecimalWrappers(
-    z.union([numeric.core, decimalToken(numeric.core)]),
+    z.union([numeric.core, decimalToken(numeric.core)], {
+      // Argv always arrives as text: report why the token branch refused it
+      // (its spelling or the domain bound) instead of a bare union failure.
+      error: (issue) =>
+        issue.code === "invalid_union" && typeof issue.input === "string"
+          ? (issue.errors[1]?.[0]?.message ?? DECIMAL_INTEGER_MESSAGE)
+          : undefined,
+    }),
     numeric.wrappers,
   );
   const described =
