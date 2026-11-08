@@ -406,7 +406,7 @@ it.each([
     const address: unknown = Reflect.get(object as object, field);
     if (typeof address !== "string")
       throw new Error("Expected an address fixture");
-    Reflect.set(object as object, field, address.replace("%3A", "%3a"));
+    Reflect.set(object as object, field, address.replaceAll("%3A", "%3a"));
     const result = parseGhidraInventoryResult("search_bytes", value);
     if (result.ok) throw new Error("Expected canonical-address refusal");
     expect(result.error.cause).toBeInstanceOf(z.ZodError);

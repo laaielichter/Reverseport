@@ -308,12 +308,6 @@ export const classifyClientRegistration = (
   );
 };
 
-/** Whether the shared proof establishes that REA setup created `value`. */
-export const isOwnedRegistration = (
-  value: unknown,
-  client: SetupClient,
-): boolean => classifyClientRegistration(value, client) === "owned";
-
 const inspectDirectRegistrationCommand = (
   command: readonly string[],
   currentCommandPath: string | undefined,
