@@ -609,7 +609,7 @@ or `CONTRIBUTING.md` run formatting and generated-document validation without
 the source-test shards or native package lanes. Classification compares the PR
 head with its merge base, so later base-branch changes do not expand that scope.
 Static and coverage aggregate jobs remain present and fail if classification
-fails. Every code change retains the complete four-shard Linux suite; individual
+fails. Every code change retains the complete eight-shard Linux suite; individual
 test files are not selected by imports or filenames.
 
 Ordinary PRs also produce an **observational** test-selection plan. The candidate
