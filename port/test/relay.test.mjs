@@ -170,3 +170,12 @@ test('relay: an engine that fails to start is reported, not fatal', async () => 
     assert.equal(list.result.tools.length, 35, "33 ReversePort tools + set_tool_profile + run_batch");
   } finally { s.close(); }
 });
+
+test('knownEngineToolNames reads every engine tool from the effect audit, not only the core list', async () => {
+  const { knownEngineToolNames, CORE_ENGINE_TOOLS } = await import('../src/relay.mjs');
+  const names = knownEngineToolNames();
+  for (const core of CORE_ENGINE_TOOLS) assert.ok(names.has(core), core);
+  // Tools outside the default list must still be recognised when the engine is not running.
+  for (const tool of ['inspect_sqlite_database', 'inspect_binary_hardening', 'record_unknown']) assert.ok(names.has(tool), tool);
+  assert.ok(names.size > CORE_ENGINE_TOOLS.length * 5, `only ${names.size} names`);
+});

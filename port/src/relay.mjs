@@ -139,9 +139,15 @@ export function knownEngineToolNames() {
   if (staticEngineNames) return staticEngineNames;
   try {
     const text = readFileSync(path.join(REPO, 'src', 'contracts', 'toolEffects.ts'), 'utf8');
-    const start = text.indexOf('export const TOOL_EFFECTS');
-    const end = text.indexOf('\n};', start);
-    staticEngineNames = new Set([...text.slice(start, end).matchAll(/^ {2}([a-z][a-z0-9_]+):/gm)].map(m => m[1]));
+    // The audit table names every public tool; older engines kept it in TOOL_EFFECTS itself.
+    const names = new Set();
+    for (const marker of ['const TOOL_EFFECT_AUDIT', 'export const TOOL_EFFECTS']) {
+      const start = text.indexOf(marker);
+      if (start === -1) continue;
+      const end = text.indexOf('\n};', start);
+      for (const m of text.slice(start, end).matchAll(/^ {2}([a-z][a-z0-9_]+):/gm)) names.add(m[1]);
+    }
+    staticEngineNames = names;
   } catch { staticEngineNames = new Set(CORE_ENGINE_TOOLS); }
   for (const n of CORE_ENGINE_TOOLS) staticEngineNames.add(n);
   return staticEngineNames;
