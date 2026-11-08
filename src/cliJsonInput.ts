@@ -1,4 +1,5 @@
 import { addAbortListener } from "node:events";
+import { z } from "incur";
 import type { Readable } from "node:stream";
 import { getHeapStatistics } from "node:v8";
 
@@ -100,7 +101,7 @@ export const parseCliJsonInput = async (
       const physicalCause = cause.physicalCause;
       const systemCode = accessDeniedSystemCode(physicalCause);
       return systemCode === undefined
-        ? jsonFileError(value, operation, "read-failed", physicalCause)
+        ? jsonFileReadError(value, operation, physicalCause)
         : jsonAccessDeniedError(value, operation, systemCode, physicalCause);
     }
     if (signal?.aborted && isJsonInputCancellation(cause, signal))
@@ -120,7 +121,7 @@ export const parseCliJsonInput = async (
       typeof cause.code !== "string"
     )
       throw cause;
-    return jsonFileError(value, operation, "read-failed", cause);
+    return jsonFileReadError(value, operation, cause);
   }
 };
 
@@ -332,26 +333,21 @@ const inputError = (operation: string): JsonValue => ({
   ),
 });
 
-const jsonFileError = (
-  path: string | undefined,
+const jsonFileReadError = (
+  path: string,
   operation: string,
-  reason: "invalid-json" | "read-failed",
-  cause?: unknown,
+  cause: unknown,
 ) => ({
   ok: false as const,
   error: {
     error: "Application workflow failed",
     ...projectAnalysisError(
-      new AnalysisInputError(
-        operation,
-        cause === undefined ? undefined : { cause },
-        reason === "invalid-json"
-          ? [{ path: [], reason: "invalid_format", expected: "JSON" }]
-          : [readFailureIssue(path, cause)],
-      ),
+      new AnalysisInputError(operation, { cause }, [
+        readFailureIssue(path, cause),
+      ]),
     ),
-    ...(path === undefined ? {} : { input_path: path }),
-    input_reason: reason,
+    input_path: path,
+    input_reason: "read-failed" as const,
   },
 });
 
@@ -373,7 +369,7 @@ const jsonAccessDeniedError = (
 });
 
 /** Preserve file-selection and system failures alongside the requested path. */
-const readFailureIssue = (path: string | undefined, cause: unknown) => {
+const readFailureIssue = (path: string, cause: unknown) => {
   const code =
     typeof cause === "object" &&
     cause !== null &&
@@ -386,7 +382,36 @@ const readFailureIssue = (path: string | undefined, cause: unknown) => {
     reason: "invalid_value" as const,
     message:
       cause instanceof NonRegularFileReadError && cause.code === "ENOTFILE"
-        ? `The JSON input must be a regular file${code}: ${path ?? ""}`
-        : `The JSON input file could not be read${code}: ${path ?? ""}`,
+        ? `The JSON input must be a regular file${code}: ${path}`
+        : `The JSON input file could not be read${code}: ${path}`,
   };
+};
+
+/**
+ * Positional inline-JSON or JSON-file argument. With the payload schema the
+ * command validates, `--schema` advertises that payload as the argument's JSON
+ * content instead of a bare string. The payload schema is converted only when
+ * a schema is requested, not on every CLI start.
+ */
+export const cliJsonInputArgument = (
+  description: string,
+  payload?: z.ZodType,
+) => {
+  const argument = z.string().describe(description);
+  if (payload === undefined) return argument;
+  let contentSchema: Record<string, unknown> | undefined;
+  return argument.meta({
+    description,
+    contentMediaType: "application/json",
+    get contentSchema() {
+      if (contentSchema === undefined) {
+        const { $schema: _dialect, ...schema } = z.toJSONSchema(payload, {
+          io: "input",
+          unrepresentable: "any",
+        });
+        contentSchema = schema;
+      }
+      return contentSchema;
+    },
+  });
 };

@@ -3,20 +3,47 @@ import { z } from "zod";
 import { absoluteLocalPathStringSchema } from "../domain/localPath.js";
 import { bundleComparisonInputSchema } from "../domain/bundleComparison.js";
 
-import { processTraceSpecificationSchema } from "../domain/process/processTraceSpecification.js";
-import { evidenceSchema } from "../domain/evidence.js";
 import { prefixedDigestSchema } from "./../domain/digests.js";
-import { evidenceRecordFiltersSchema } from "../domain/evidenceRecordSummary.js";
+import {
+  EVIDENCE_LINK_INSPECTION_LIMIT,
+  EVIDENCE_RECORD_SELECTION_LIMIT,
+  evidenceLinkStatusFilterSchema,
+  evidenceLinkTraversalSchema,
+  evidenceRecordFiltersSchema,
+} from "../domain/evidenceRecordSummary.js";
+import { residualUnknownSchema } from "../domain/residualUnknown.js";
 
-/** Complete retained Evidence, or selected discovery metadata without payloads. */
+/** Complete retained Evidence, discovery metadata, a page of complete records, or link membership. */
 export const getEvidenceBundleInputSchema = z.strictObject({
   detail: z
-    .enum(["complete", "summary"])
+    .enum(["complete", "summary", "records", "links"])
     .default("complete")
     .describe(
-      "complete (default) returns every record inline and can be very large; summary lists retained records without payloads — call it first",
+      "complete (default) returns every record inline and can be very large; summary lists retained records without payloads — call it first; records pages complete matching records (offset, limit); links reads which evidence_links are retained",
     ),
   filters: evidenceRecordFiltersSchema.optional(),
+  offset: z
+    .int()
+    .nonnegative()
+    .optional()
+    .describe("records or links: first matching row to return; default 0."),
+  limit: z
+    .int()
+    .positive()
+    .optional()
+    .describe(
+      `records: maximum complete records, default ${String(EVIDENCE_RECORD_SELECTION_LIMIT)}. links: maximum link rows, default ${String(EVIDENCE_LINK_INSPECTION_LIMIT)}.`,
+    ),
+  traversal: evidenceLinkTraversalSchema
+    .optional()
+    .describe(
+      "links only: direct (default) reads the selected records' own links; retained-closure also follows retained links.",
+    ),
+  link_status: evidenceLinkStatusFilterSchema
+    .optional()
+    .describe(
+      "links only: rows to return, default missing. Counts always cover every inspected link.",
+    ),
 });
 
 /** Optional document selection for volatile navigation context. */
@@ -48,21 +75,11 @@ export const bundleComparisonMcpInputSchema =
     ),
   });
 
-/** Evidence references for deterministic process comparison. */
-export const processComparisonInputSchema = z.strictObject({
-  left: evidenceSchema,
-  right: evidenceSchema,
-  trace_spec: processTraceSpecificationSchema.optional(),
-  max_capture_age_ms: z.int().nonnegative().optional(),
-});
-
 /** Residual-unknown list filters. */
 export const listUnknownsInputSchema = z.strictObject({
-  status: z
-    .enum(["open", "investigating", "blocked", "contradicted", "resolved"])
-    .optional(),
-  severity: z.enum(["low", "medium", "high", "critical"]).optional(),
-  domain: z.string().trim().min(1).optional(),
+  status: residualUnknownSchema.shape.status.optional(),
+  severity: residualUnknownSchema.shape.severity.optional(),
+  domain: residualUnknownSchema.shape.domain.optional(),
   offset: z
     .int()
     .min(0)

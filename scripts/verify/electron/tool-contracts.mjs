@@ -402,7 +402,7 @@ async function verifyCancellation({ input, ready, entrypoint, root }) {
     const error = JSON.parse(stdout);
     assert.ok(["cancelled", "cleanup_incomplete"].includes(error.code), stdout);
     assert.equal(error.category, "cancelled", stdout);
-    assert.doesNotMatch(error.message, /rea doctor/u);
+    assert.doesNotMatch(error.message, /reverseport doctor/u);
     assert.equal(
       error.details?.partial_observation?.kind,
       "electron-active-observation",

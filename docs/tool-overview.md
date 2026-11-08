@@ -14,5 +14,5 @@ One MCP server (`reverseport mcp`) serves every tool:
 Next to these come the deep-analysis tools — `open_binary`, `procedure_pseudo_code`, `xrefs`, `search_strings`,
 `analyze_javascript_application`, `inspect_android_package`, `inspect_managed_artifact`, `observe_web_session` and
 many more. `engine_tools` lists them from the running server, and `npm run docs:generate` writes the
-[generated tool catalog](mcp-contracts.md#generated-catalog) with every contract. The HTTP API
+[generated tool catalog](reference/mcp-contracts.md#generated-catalog) with every contract. The HTTP API
 (`reverseport serve`) exposes the same tools in every vendor's format; see [Connect any agent](connect-any-agent.md).

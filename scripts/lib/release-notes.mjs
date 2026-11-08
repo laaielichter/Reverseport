@@ -422,7 +422,7 @@ export async function verifyInventoryHistory(run, raw, source) {
       "package-lock.json",
       "server.json",
       "src/generatedPackageMetadata.ts",
-      "docs/installation.md",
+      "docs/getting-started/installation.md",
       `docs/releases/${inventory.version}.contributions.json`,
     ]);
     const paths = (

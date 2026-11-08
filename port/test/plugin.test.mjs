@@ -96,7 +96,7 @@ test('Claude plugin directory tree: only what the plugin loads, within the direc
     // The README points into the full repository, so its links and images still work in the listing.
     const readme = await fs.readFile(path.join(out, 'README.md'), 'utf8');
     assert.match(readme, /src="https:\/\/raw\.githubusercontent\.com\/laaielichter\/Reverseport\/main\/docs\/assets\/demo\.gif"/);
-    assert.match(readme, /\]\(https:\/\/github\.com\/laaielichter\/Reverseport\/blob\/main\/docs\/installation\.md#mcp-registry\)/);
+    assert.match(readme, /\]\(https:\/\/github\.com\/laaielichter\/Reverseport\/blob\/main\/docs\/getting-started\/installation\.md#mcp-registry\)/);
   } finally {
     await fs.rm(path.dirname(out), { recursive: true, force: true });
   }

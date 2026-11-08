@@ -9,16 +9,168 @@ import {
   binaryArchitectureSchema,
   rawBinaryEntryPointSchema,
 } from "../domain/rawBinary.js";
-import { analysisProviderSelectorSchema } from "../contracts/providerSelection.js";
-import type { AnalysisProviderSelector } from "../contracts/providerSelection.js";
+import { analysisProviderSelectorSchema } from "../domain/providerSelection.js";
+import type { AnalysisProviderSelector } from "../domain/providerSelection.js";
 import type { Logger } from "pino";
+
+/** Decimal integer argv text. Leading zeros stay decimal; `0x` and exponent spellings do not. */
+const DECIMAL_INTEGER_TOKEN = /^[0-9]+$/u;
+/** Name the accepted spelling so a caller can correct the token without guessing. */
+const DECIMAL_INTEGER_MESSAGE =
+  "Expected a decimal integer: digits only, without a sign, 0x prefix, exponent or fraction";
+
+type DecimalWrapper =
+  | { readonly kind: "default"; readonly value: number | null }
+  | { readonly kind: "prefault"; readonly value: number | null }
+  | {
+      readonly kind: "optional" | "exactOptional" | "nullable" | "readonly";
+    };
 
 /** Parse decimal integer tokens before Number coercion can erase their syntax. */
 export const cliIntegerArgument = (min: number) =>
   z
     .string()
-    .regex(/^[0-9]+$/u, "Expected a decimal integer")
+    .regex(DECIMAL_INTEGER_TOKEN, DECIMAL_INTEGER_MESSAGE)
     .pipe(z.coerce.number<string>().safe().min(min));
+
+const decimalToken = (domain: z.ZodNumber) =>
+  z
+    .string()
+    .regex(DECIMAL_INTEGER_TOKEN, DECIMAL_INTEGER_MESSAGE)
+    .pipe(z.coerce.number<string>())
+    .pipe(domain);
+
+const unwrapSchema = (field: { unwrap: () => unknown }): z.ZodType =>
+  field.unwrap() as z.ZodType;
+
+/**
+ * Incur advertises Zod's output view. Publish the input view so the decimal
+ * token guard survives `--schema` and other SDK conversions.
+ */
+const publishDecimalInput = (field: z.ZodType): z.ZodType => {
+  const { $schema: _dialect, ...inputSchema } = z.toJSONSchema(field, {
+    io: "input",
+  });
+  return field.meta(inputSchema);
+};
+
+const numericStack = (
+  field: z.ZodType,
+):
+  | {
+      readonly core: z.ZodNumber;
+      readonly wrappers: readonly DecimalWrapper[];
+      readonly description: string | undefined;
+    }
+  | undefined => {
+  const wrappers: DecimalWrapper[] = [];
+  let description: string | undefined;
+  let current = field;
+  for (;;) {
+    if (description === undefined && current.description !== undefined)
+      description = current.description;
+    if (current instanceof z.ZodDefault) {
+      wrappers.push({
+        kind: "default",
+        value: current.parse(undefined) as number | null,
+      });
+      current = unwrapSchema(current);
+      continue;
+    }
+    if (current instanceof z.ZodPrefault) {
+      wrappers.push({
+        kind: "prefault",
+        value: current.parse(undefined) as number | null,
+      });
+      current = unwrapSchema(current);
+      continue;
+    }
+    if (current instanceof z.ZodOptional) {
+      wrappers.push({ kind: "optional" });
+      current = unwrapSchema(current);
+      continue;
+    }
+    if (current instanceof z.ZodExactOptional) {
+      wrappers.push({ kind: "exactOptional" });
+      current = unwrapSchema(current);
+      continue;
+    }
+    if (current instanceof z.ZodNullable) {
+      wrappers.push({ kind: "nullable" });
+      current = unwrapSchema(current);
+      continue;
+    }
+    if (current instanceof z.ZodReadonly) {
+      wrappers.push({ kind: "readonly" });
+      current = unwrapSchema(current);
+      continue;
+    }
+    break;
+  }
+  return current instanceof z.ZodNumber
+    ? { core: current, wrappers, description }
+    : undefined;
+};
+
+const applyDecimalWrappers = (
+  field: z.ZodType,
+  wrappers: readonly DecimalWrapper[],
+): z.ZodType => {
+  let admitted = field;
+  for (const wrapper of wrappers.toReversed()) {
+    if (wrapper.kind === "nullable") admitted = admitted.nullable();
+    else if (wrapper.kind === "optional") admitted = admitted.optional();
+    else if (wrapper.kind === "exactOptional")
+      admitted = admitted.exactOptional();
+    else if (wrapper.kind === "readonly") admitted = admitted.readonly();
+    else if (wrapper.kind === "prefault")
+      admitted = admitted.prefault(wrapper.value as never);
+    else if (wrapper.kind === "default")
+      admitted = admitted.default(wrapper.value as never);
+  }
+  return admitted;
+};
+
+/**
+ * Parse a decimal token, then let the domain field own bounds, defaults,
+ * nullability and help. JSON numbers remain valid for schema consumers.
+ */
+export const cliDecimalField = <Field extends z.ZodType>(
+  field: Field,
+): z.ZodType<z.output<Field>> => {
+  const numeric = numericStack(field);
+  if (numeric === undefined)
+    throw new Error(
+      `cliDecimalField expected a numeric domain field, received ${field.constructor.name}`,
+    );
+  const admitted = applyDecimalWrappers(
+    z.union([numeric.core, decimalToken(numeric.core)], {
+      // Argv always arrives as text: report why the token branch refused it
+      // (its spelling or the domain bound) instead of a bare union failure.
+      error: (issue) =>
+        issue.code === "invalid_union" && typeof issue.input === "string"
+          ? (issue.errors[1]?.[0]?.message ?? DECIMAL_INTEGER_MESSAGE)
+          : undefined,
+    }),
+    numeric.wrappers,
+  );
+  const described =
+    numeric.description === undefined
+      ? admitted
+      : admitted.describe(numeric.description);
+  return publishDecimalInput(described) as z.ZodType<z.output<Field>>;
+};
+
+/** Adapt each numeric property of a shared shape; other properties stay unchanged. */
+export const cliDecimalShape = <Shape extends Record<string, z.ZodType>>(
+  shape: Shape,
+): Shape =>
+  Object.fromEntries(
+    Object.entries(shape).map(([key, field]) => [
+      key,
+      numericStack(field) === undefined ? field : cliDecimalField(field),
+    ]),
+  ) as Shape;
 
 export const providerSelectionOption = analysisProviderSelectorSchema
   .optional()
@@ -33,8 +185,12 @@ export const snapshotSelectionOption = z
   .optional()
   .describe("Load and update a local analysis snapshot");
 
-/** Explicit interpretation for headerless native executable formats. */
+/**
+ * Explicit interpretation for headerless native executable formats. Flash
+ * dumps take their offsets on the artifact commands instead.
+ */
 export const formatSelectionOption = executableFormatHintSchema
+  .exclude(["esp-flash-image"])
   .optional()
   .describe(
     "Explicit interpretation: dos-com or raw-binary (headerless), or gamecube-dol (GameCube/Wii DOL, never auto-detected); omission preserves header-based detection",

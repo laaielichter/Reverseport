@@ -1,14 +1,18 @@
+import { deepStrictEqual } from "node:assert";
 import {
   lstat,
   mkdir,
   readFile,
+  realpath,
   readdir,
   rm,
   symlink,
   writeFile,
 } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { dirname, isAbsolute, join } from "node:path";
+import { parse as parseToml } from "smol-toml";
 
+import { clientRegistrationCommandText } from "../dist/cli/clientRegistrationCommandText.js";
 import { TOOL_CONTRACTS } from "../dist/contracts/toolContracts.js";
 import { PRODUCT_IDENTITY } from "../dist/identity.js";
 import { pathExists } from "./lib/verify-package-core.mjs";
@@ -32,7 +36,7 @@ const OPENCODE_ORIGINAL = `{
   },
 }\n`;
 
-const CODEX_ORIGINAL = [
+export const CODEX_ORIGINAL = [
   "# Keep Codex preferences and their spelling.",
   'model = "gpt-5"',
   'notify = ["a", "b"]',
@@ -40,12 +44,40 @@ const CODEX_ORIGINAL = [
   "",
 ].join("\n");
 
-const verifyMcpAdd = async ({ commands, cli, environment, npxLog }) => {
+const isDirectRegistration = async (command, cli) =>
+  Array.isArray(command) &&
+  command.length === 3 &&
+  typeof command[0] === "string" &&
+  typeof command[1] === "string" &&
+  isAbsolute(command[0]) &&
+  isAbsolute(command[1]) &&
+  command[2] === "mcp" &&
+  (await realpath(command[0])) === (await realpath(process.execPath)) &&
+  (await realpath(command[1])) === (await realpath(cli));
+
+const verifyMcpAdd = async ({ commands, cli, environment, npxLog, home }) => {
   await commands.run(cli, ["mcp", "add"], environment);
-  const mcpRegistration = await readFile(npxLog, "utf8");
-  const expected = `add-mcp npx -y ${PRODUCT_IDENTITY.registrationPackageSpecifier} mcp --name ${SERVER_KEY}`;
-  if (!mcpRegistration.includes(expected))
-    throw new Error("Incur mcp add did not register the pinned npx command");
+  const settings = JSON.parse(
+    await readFile(join(home, ".config", "amp", "settings.json"), "utf8"),
+  );
+  const registration = settings?.["amp.mcpServers"]?.[SERVER_KEY];
+  if (!Array.isArray(registration?.args))
+    throw new Error("Incur mcp add did not write the native Amp registration");
+  const command = [registration.command, ...registration.args];
+  if (!(await isDirectRegistration(command, cli)))
+    throw new Error(
+      "Incur mcp add did not register the selected absolute runtime and REA script",
+    );
+  // Amp consumes the same command through Incur's parser. Check the delegated
+  // helper receives that command as one argument, without flattening its argv.
+  deepStrictEqual(JSON.parse(await readFile(npxLog, "utf8")), [
+    "add-mcp",
+    clientRegistrationCommandText(command),
+    "--name",
+    SERVER_KEY,
+    "-y",
+    "-g",
+  ]);
 };
 
 const verifySetupPlan = async ({
@@ -125,8 +157,7 @@ const verifyAbsentOpenCodeSetup = async ({
     !result.appliedActions.includes("configured_opencode") ||
     config.mcp?.[SERVER_KEY]?.type !== "local" ||
     config.mcp[SERVER_KEY].enabled !== true ||
-    JSON.stringify(config.mcp[SERVER_KEY].command) !==
-      JSON.stringify([cli, "mcp"])
+    !(await isDirectRegistration(config.mcp[SERVER_KEY].command, cli))
   )
     throw new Error(
       `packaged setup did not configure explicitly selected OpenCode without a config file: ${JSON.stringify(result)}`,
@@ -176,9 +207,13 @@ const verifyAbsentClaudeCodeSetup = async ({
     firstExecution.status !== 0 ||
     first.status !== "ready" ||
     !first.appliedActions.includes("configured_claude_code") ||
-    config.mcpServers?.[SERVER_KEY]?.command !== cli ||
-    JSON.stringify(config.mcpServers?.[SERVER_KEY]?.args) !==
-      JSON.stringify(["mcp"]) ||
+    !(await isDirectRegistration(
+      [
+        config.mcpServers?.[SERVER_KEY]?.command,
+        ...(config.mcpServers?.[SERVER_KEY]?.args ?? []),
+      ],
+      cli,
+    )) ||
     (await pathExists(markerPath)) ||
     registration?.state !== "aligned" ||
     registration.config_path !== configPath
@@ -275,9 +310,13 @@ export const assertClientConfig = async (cli, configPath, original) => {
   const config = JSON.parse(await readFile(configPath, "utf8"));
   if (
     config.existing !== true ||
-    config.mcpServers?.[SERVER_KEY]?.command !== cli ||
-    JSON.stringify(config.mcpServers?.[SERVER_KEY]?.args) !==
-      JSON.stringify(["mcp"])
+    !(await isDirectRegistration(
+      [
+        config.mcpServers?.[SERVER_KEY]?.command,
+        ...(config.mcpServers?.[SERVER_KEY]?.args ?? []),
+      ],
+      cli,
+    ))
   )
     throw new Error("packaged client readback failed");
   if (!(await readFile(`${configPath}.rea.backup`)).equals(original))
@@ -302,25 +341,29 @@ const assertOpenCodeConfig = async ({
     (expectedRegistration &&
       (mcp?.[SERVER_KEY]?.type !== "local" ||
         mcp[SERVER_KEY].enabled !== true ||
-        JSON.stringify(mcp[SERVER_KEY].command) !==
-          JSON.stringify([cli, "mcp"]))) ||
+        !(await isDirectRegistration(mcp[SERVER_KEY].command, cli)))) ||
     (!expectedRegistration && mcp?.[SERVER_KEY] !== undefined)
   )
     throw new Error("packaged OpenCode JSONC registration readback failed");
 };
 
-const assertCodexSymlink = async ({
+/** Codex and Cursor configs stay symlinks while setup writes their targets. */
+export const assertCodexSymlink = async ({
   cli,
   codexConfig,
   cursorConfig,
   codexTarget,
 }) => {
   const codex = await readFile(codexTarget, "utf8");
+  const registration = parseToml(codex).mcp_servers?.[SERVER_KEY];
   if (
     !(await lstat(codexConfig)).isSymbolicLink() ||
     !(await lstat(cursorConfig)).isSymbolicLink() ||
     !codex.includes(`[mcp_servers.${SERVER_KEY}]`) ||
-    !codex.includes(`command = "${cli}"`) ||
+    !(await isDirectRegistration(
+      [registration?.command, ...(registration?.args ?? [])],
+      cli,
+    )) ||
     !codex.includes("startup_timeout_sec = 30") ||
     !codex.startsWith(CODEX_ORIGINAL) ||
     (await readFile(`${codexConfig}.rea.backup`, "utf8")) !== CODEX_ORIGINAL
@@ -453,11 +496,15 @@ const verifySetupFailureRecovery = async ({
     environment,
   );
   const recovered = JSON.parse(recoveredExecution.stdout);
+  const registration = JSON.parse(await readFile(cursorConfig, "utf8"))
+    .mcpServers?.[SERVER_KEY];
   if (
     recovered.status !== status ||
     recoveredExecution.status !== (status === "ready" ? 0 : 1) ||
-    JSON.parse(await readFile(cursorConfig, "utf8")).mcpServers?.[SERVER_KEY]
-      ?.command !== cli
+    !(await isDirectRegistration(
+      [registration?.command, ...(registration?.args ?? [])],
+      cli,
+    ))
   )
     throw new Error("packaged setup did not recover");
 };
@@ -564,7 +611,7 @@ export async function verifyPackageSetup({
   hopperSetupSupported,
   root,
 }) {
-  await verifyMcpAdd({ commands, cli, environment, npxLog });
+  await verifyMcpAdd({ commands, cli, environment, npxLog, home });
   const skillPath = join(
     home,
     ".agents/skills/reverse-engineer-anything/SKILL.md",

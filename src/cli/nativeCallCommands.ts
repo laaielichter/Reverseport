@@ -1,8 +1,9 @@
+import { projectCliAnalysisResult } from "./projectCliAnalysisResult.js";
 import { z } from "incur";
 
 import type { DirectAnalysis } from "../composition/directAnalysis.js";
 import { CLI_COMMANDS } from "../cliCommandNames.js";
-import { parseCliJsonInput } from "../cliJsonInput.js";
+import { cliJsonInputArgument, parseCliJsonInput } from "../cliJsonInput.js";
 import { logCliCommand } from "../cliLogging.js";
 import { projectAnalysisError } from "../domain/analysisErrorProjection.js";
 import { analysisInputErrorFromIssues } from "../domain/inputIssueProjection.js";
@@ -24,11 +25,10 @@ export const registerNativeCallCommands = (
       "Launch a Mach-O under LLDB and record entries into selected functions or Objective-C methods",
     args: z.object({
       path: z.string().describe("Mach-O or app path"),
-      inputJson: z
-        .string()
-        .describe(
-          "Inline JSON or a JSON file path: breakpoints, arguments, environment, duration_ms, max_events, argument_registers, backtrace_frames",
-        ),
+      inputJson: cliJsonInputArgument(
+        "Inline JSON or a JSON file path: breakpoints, arguments, environment, duration_ms, max_events, argument_registers, backtrace_frames",
+        nativeCallObservationInputSchema,
+      ),
     }),
     run: ({ args }) =>
       logCliCommand(logger, CLI_COMMANDS.observeNativeCalls, async () => {
@@ -51,7 +51,7 @@ export const registerNativeCallCommands = (
           OPERATION,
           z.record(z.string(), jsonValueSchema).parse(parsed.data),
           logger,
-        );
+        ).then(projectCliAnalysisResult);
       }),
   });
 };

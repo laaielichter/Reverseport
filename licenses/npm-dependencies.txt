@@ -2,7 +2,7 @@ REA npm dependency inventory
 Prepared from the root package-lock.json; refresh this inventory when locked dependencies change.
 License identifiers are upstream lockfile declarations, not a legal assessment.
 Runtime includes transitive and optional platform packages; development includes build, test and website tooling.
-Locked package entries: 956; runtime: 181.
+Locked package entries: 957; runtime: 182.
 Full runtime copyright/license/NOTICE texts: npm-runtime-notices.txt.
 
 @algolia/abtesting@1.25.0 | development | MIT
@@ -2800,6 +2800,11 @@ gopd@1.2.0 | runtime | MIT
   Package: https://www.npmjs.com/package/gopd/v/1.2.0
   Archive: https://registry.npmjs.org/gopd/-/gopd-1.2.0.tgz
   Integrity: sha512-ZUKRh6/kUFoAiTAtTYPZJ3hw9wNxx+BIBOijnlG9PnrJsCcSjs1wyyD6vJpaYtgnzDrKYRSqf3OO6Rfa93xsRg==
+graphql@17.1.0 | runtime | MIT
+  Lockfile path: node_modules/graphql
+  Package: https://www.npmjs.com/package/graphql/v/17.1.0
+  Archive: https://registry.npmjs.org/graphql/-/graphql-17.1.0.tgz
+  Integrity: sha512-JKCOa7rSQNrket/JFhuua86hljUO+IIpyUHfKxlKD6FEfbrLX8jc1FDrA0KPKI+s8OspBCF/5npYccAICHXPpQ==
 handlebars@4.7.10 | development | MIT
   Lockfile path: node_modules/handlebars
   Package: https://www.npmjs.com/package/handlebars/v/4.7.10
@@ -3675,11 +3680,11 @@ pkce-challenge@5.0.1 | runtime | MIT
   Package: https://www.npmjs.com/package/pkce-challenge/v/5.0.1
   Archive: https://registry.npmjs.org/pkce-challenge/-/pkce-challenge-5.0.1.tgz
   Integrity: sha512-wQ0b/W4Fr01qtpHlqSqspcj3EhBvimsdh0KlHhH8HRZnMsEa0ea2fTULOXOS9ccQr3om+GcGRk4e+isrZWV8qQ==
-playwright-core@1.58.2 | runtime | Apache-2.0
+playwright-core@1.64.1 | runtime | Apache-2.0
   Lockfile path: node_modules/playwright-core
-  Package: https://www.npmjs.com/package/playwright-core/v/1.58.2
-  Archive: https://registry.npmjs.org/playwright-core/-/playwright-core-1.58.2.tgz
-  Integrity: sha512-yZkEtftgwS8CsfYo7nm0KE8jsvm6i/PTgVtB8DL726wNf6H2IMsDuxCpJj59KDaxCtSnrWan2AeDqM7JBaultg==
+  Package: https://www.npmjs.com/package/playwright-core/v/1.64.1
+  Archive: https://registry.npmjs.org/playwright-core/-/playwright-core-1.64.1.tgz
+  Integrity: sha512-BC4s8y6SEVA6Q1rSxZTto8hI1KUI3xXlHGZgvGqP4IqPdI/a6FX9H29IDNz7vKo9l21b6LfYosScPL6M3xxyDQ==
 plist@5.0.0 | runtime | MIT
   Lockfile path: node_modules/plist
   Package: https://www.npmjs.com/package/plist/v/5.0.0

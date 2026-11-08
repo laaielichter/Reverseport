@@ -28,7 +28,7 @@ description: Fix ReversePort errors and odd results — unreadable scenes, packs
 | MCP server not visible                             | Client not restarted / Node too old / not registered                     | `reverseport doctor` (it names the Node version it needs), `reverseport setup`, then restart the agent app.                     |
 | Only `re_*`/`port_*` tools are listed              | The deep-analysis engine is not built                                    | From npm: `npx -y reverseport@latest setup`. Git checkout: `npm ci && npm run build`, then restart the agent.                   |
 | Only ReversePort tools listed (Claude Code plugin) | The plugin does not include the engine                                   | Ask the user to turn on the plugin's Deep-analysis engine setting (`/plugin` → reverseport → configure); do not also run setup. |
-| Decompile/xref tools report a missing provider     | Ghidra, Hopper or IDA not configured                                     | `reverseport doctor`, then follow docs/installation.md (provider setup).                                                        |
+| Decompile/xref tools report a missing provider     | Ghidra, Hopper or IDA not configured                                     | `reverseport doctor`, then follow docs/getting-started/installation.md (provider setup).                                        |
 
 Workspace: `~/.reverseport` (plans in `ports/`, extracted files in `extracted/`, reports in `reports/`); set
 `REVERSEPORT_HOME` to move it.

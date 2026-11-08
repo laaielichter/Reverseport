@@ -6,6 +6,7 @@ import { pathToFileURL } from "node:url";
 import { expect, it } from "vitest";
 
 import { createTestTempDirectory } from "../../fixtures/temporaryDirectory.js";
+import { GHIDRA_BRIDGE_SOURCES } from "../../../src/ghidra/GhidraBridgeSources.js";
 
 const execFileAsync = promisify(execFile);
 const packerUrl = pathToFileURL(
@@ -16,16 +17,9 @@ const bridge = "package/bridge/hopper_bridge.py";
 const members = [
   bridge,
   "package/bridge/cutter/rea_bridge.py",
-  "package/bridge/ghidra/ReaGhidraBridge.java",
-  "package/bridge/ghidra/ReaGhidraBundleActivator.java",
-  "package/bridge/ghidra/ReaGhidraExtensions.java",
-  "package/bridge/ghidra/ReaGhidraPrepareCom.java",
-  "package/bridge/ghidra/ReaGhidraPrepareRaw.java",
-  "package/bridge/ghidra/ReaGhidraPrepareDol.java",
-  "package/bridge/ghidra/ReaGhidraApplySeeds.java",
-  "package/bridge/ghidra/ReaGhidraAnalysisOptions.java",
-  "package/bridge/ghidra/ReaGhidraNoReturnFix.java",
-  "package/bridge/ghidra/ReaGhidraMipsSoftFloat.java",
+  ...Object.values(GHIDRA_BRIDGE_SOURCES).map(
+    (name) => `package/bridge/ghidra/${name}`,
+  ),
   "package/scripts/lib/cli-process-environment.mjs",
   "package/scripts/rea.mjs",
   "package/bin/reverseport.mjs",
