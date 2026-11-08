@@ -19,7 +19,11 @@ import type { Logger } from "pino";
 import { cliDomainInput } from "./domainInput.js";
 import { CLI_COMMANDS } from "../cliCommandNames.js";
 import { createElectronFuseService } from "../composition/electronFuses.js";
-import { parseCliJsonInput, resolveCliJsonPaths } from "../cliJsonInput.js";
+import {
+  cliJsonInputArgument,
+  parseCliJsonInput,
+  resolveCliJsonPaths,
+} from "../cliJsonInput.js";
 import {
   electronPageInspectionOptions,
   javascriptApplicationOptions,
@@ -113,11 +117,10 @@ const registerElectronActiveCommand = (
   cli.command(CLI_COMMANDS.captureElectronScenario, {
     description: "Run one owned Electron scenario with cancellable actions",
     args: z.object({
-      inputJson: z
-        .string()
-        .describe(
-          "Inline JSON or a JSON file matching capture_electron_scenario",
-        ),
+      inputJson: cliJsonInputArgument(
+        "Inline JSON or a JSON file matching capture_electron_scenario",
+        electronActiveObservationInputSchema,
+      ),
     }),
     run: ({ args }) =>
       withCommandCancellation((signal) =>

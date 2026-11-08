@@ -3,13 +3,19 @@ import { registerApiContractCommand } from "./apiContractCommand.js";
 import { Cli, z } from "incur";
 
 import { CLI_COMMANDS } from "../cliCommandNames.js";
-import { parseCliJsonInput } from "../cliJsonInput.js";
+import { cliJsonInputArgument, parseCliJsonInput } from "../cliJsonInput.js";
 import { logCliCommand } from "../cliLogging.js";
 import { projectAnalysisError } from "../domain/analysisErrorProjection.js";
 import type { AnalysisError } from "../domain/analysisErrorBase.js";
 import type { JsonValue } from "../domain/jsonValue.js";
 import type { Logger } from "pino";
 import { registerSourceToBundleCommand } from "./sourceToBundleCommand.js";
+import {
+  compareApplicationVersionsRequestSchema,
+  compareJavaScriptExportShapesRequestSchema,
+  traceApplicationFeatureRequestSchema,
+  traceJavaScriptSemanticsRequestSchema,
+} from "../contracts/javascript/applicationWorkflowInputContracts.js";
 import { registerStaticObservedEndpointsCommand } from "./staticObservedEndpointsCommand.js";
 import { analysisInputErrorFromIssues } from "../domain/inputIssueProjection.js";
 import type { EvidenceLookup } from "../application/EvidenceInputResolver.js";
@@ -33,6 +39,7 @@ export const registerApplicationCommands = (
     logger,
     name: CLI_COMMANDS.traceApplicationFeature,
     operation: "trace_application_feature",
+    inputSchema: traceApplicationFeatureRequestSchema,
     description:
       "Trace a typed seed through authenticated application Evidence JSON",
     workflow: async (input, lookup, signal) => {
@@ -47,6 +54,7 @@ export const registerApplicationCommands = (
     logger,
     name: CLI_COMMANDS.traceJavaScriptSemantics,
     operation: "trace_javascript_semantics",
+    inputSchema: traceJavaScriptSemanticsRequestSchema,
     description:
       "Trace bounded static semantic relations through authenticated application Evidence",
     workflow: async (input, lookup, signal) => {
@@ -63,6 +71,7 @@ export const registerApplicationCommands = (
     logger,
     name: CLI_COMMANDS.compareApplicationVersions,
     operation: "compare_application_versions",
+    inputSchema: compareApplicationVersionsRequestSchema,
     description:
       "Compare two authenticated JavaScript Application Graph versions",
     workflow: async (input, lookup, signal) => {
@@ -83,6 +92,7 @@ export const registerApplicationCommands = (
     logger,
     name: CLI_COMMANDS.compareJavaScriptExportShapes,
     operation: "compare_javascript_export_shapes",
+    inputSchema: compareJavaScriptExportShapesRequestSchema,
     description:
       "Compare exact static JavaScript export return shapes without execution",
     workflow: async (input, lookup, signal) => {
@@ -201,7 +211,10 @@ const registerJsonCommand = <Schema extends z.ZodType>({
   cli.command(name, {
     description,
     args: z.object({
-      inputJson: z.string().describe("Inline workflow JSON or JSON file path"),
+      inputJson: cliJsonInputArgument(
+        "Inline workflow JSON or JSON file path",
+        inputSchema,
+      ),
     }),
     run: ({ args }) =>
       logCliCommand(logger, name, async () => {
@@ -236,6 +249,7 @@ const registerEvidenceJsonCommand = ({
   logger,
   name,
   operation,
+  inputSchema,
   description,
   workflow,
 }: {
@@ -243,6 +257,8 @@ const registerEvidenceJsonCommand = ({
   readonly logger: Logger;
   readonly name: string;
   readonly operation: string;
+  /** The request schema the workflow validates; advertised by `--schema`. */
+  readonly inputSchema?: z.ZodType;
   readonly description: string;
   readonly workflow: (
     input: unknown,
@@ -253,7 +269,10 @@ const registerEvidenceJsonCommand = ({
   cli.command(name, {
     description,
     args: z.object({
-      inputJson: z.string().describe("Inline workflow JSON or JSON file path"),
+      inputJson: cliJsonInputArgument(
+        "Inline workflow JSON or JSON file path",
+        inputSchema,
+      ),
     }),
     options: z.object({ evidenceBundle: evidenceBundleOption }),
     run: ({ args, options }) =>

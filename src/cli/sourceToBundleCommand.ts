@@ -2,7 +2,7 @@ import { z } from "incur";
 import type { Logger } from "pino";
 import type { CliInstance } from "./types.js";
 import { CLI_COMMANDS } from "../cliCommandNames.js";
-import { parseCliJsonInput } from "../cliJsonInput.js";
+import { cliJsonInputArgument, parseCliJsonInput } from "../cliJsonInput.js";
 import { logCliCommand } from "../cliLogging.js";
 import { compareSourceToBundleCliInputSchema } from "../contracts/javascript/applicationWorkflowInputContracts.js";
 import { withCommandCancellation } from "./commandCancellation.js";
@@ -21,7 +21,10 @@ export const registerSourceToBundleCommand = (
     description:
       "Compare historical source (inline graph or reference {kind:file,path}) with authenticated application Evidence. Save the complete JSON to query with inspect-analysis-view.",
     args: z.object({
-      inputJson: z.string().describe("Inline workflow JSON or JSON file path"),
+      inputJson: cliJsonInputArgument(
+        "Inline workflow JSON or JSON file path",
+        compareSourceToBundleCliInputSchema,
+      ),
     }),
     options: z.object({ evidenceBundle: evidenceBundleOption }),
     run: ({ args, options }) =>
