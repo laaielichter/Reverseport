@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.18.0](https://github.com/laaielichter/Reverseport/compare/reverseport-1.17.0...reverseport-1.18.0) (2026-11-08)
+
+
+### ⚠ BREAKING CHANGES
+
+* **engine:** `reverseport setup` now registers the absolute Node.js runtime and the entry script it runs from instead of `npx -y reverseport@<version> mcp`, following upstream. Existing npx registrations are still recognised; doctor reports them as stale and the next setup rewrites them with a backup.
+
+### Features
+
+* **engine:** update the deep-analysis engine to REA main 72d5e72e6 ([#127](https://github.com/laaielichter/Reverseport/issues/127)) ([9b28664](https://github.com/laaielichter/Reverseport/commit/9b2866499b79573118782fe6382b3387368dca3e))
+
 ## [1.17.0](https://github.com/laaielichter/Reverseport/compare/reverseport-1.16.0...reverseport-1.17.0) (2026-11-06)
 
 
