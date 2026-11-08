@@ -24,6 +24,8 @@ npx reverseport setup
 
 <sub>A real run on <a href="https://github.com/godotengine/godot-demo-projects/tree/master/2d/platformer">Godot's 2D platformer demo</a>, JSON trimmed to the key fields. <a href="https://github.com/laaielichter/Reverseport/blob/main/docs/assets/demo.mp4">Watch the MP4</a>.</sub>
 
+<sub>Used ReversePort on something? <a href="https://github.com/laaielichter/Reverseport/discussions/124">Show us what you ported</a> · ⭐ Star the repo if it saved you time.</sub>
+
 [Website](https://laaielichter.github.io/Reverseport/) · [Quick start](#quick-start) · [What's new](#whats-new) · [Every agent](#works-with-every-agent) · [Prompts](#prompts-to-try) · [How it compares](#how-it-compares) · [FAQ](#faq) · [Contributing](#contributing) · [Docs](#documentation)
 
 **English** · [Nederlands](https://github.com/laaielichter/Reverseport/blob/main/docs/README.nl.md)
@@ -110,197 +112,51 @@ That's it. The agent picks the tools; you get answers with the evidence behind t
 
 ## What's new
 
-**1.12** — more formats and game libraries, sturdier big results:
+**1.16** — first contributions from the community:
 
-- More formats recognised: Doom WAD, Quake and Half-Life WAD2/WAD3, XNB (XNA/MonoGame) and Valve VPK, next to Quake
-  PAK from 1.10.
-- `re_scan` recognises melonJS, Kontra, Matter.js, Rapier, cannon-es, Planck.js, Howler.js, Tone.js and React Three
-  Fiber.
-- Monorepos: `pnpm-workspace.yaml` globs, `package.json` `#imports` and Deno import maps.
-- Big results always fit the output budget now, also with emoji, file-name keys and very deep results.
-- A [Godot → three.js walkthrough](https://github.com/laaielichter/Reverseport/blob/main/docs/walkthrough-godot-to-threejs.md) where every command was run and the result
-  builds.
+- Workspace names that start with two dots work now. Thanks [@bfs2021](https://github.com/bfs2021) (#112)!
 
-**1.11** — a new engine and a new protocol:
+**1.15** — Unity bundles and one server name everywhere:
 
-- The deep-analysis engine is now [REA](https://github.com/morluto/rea) 6.8.
-- MCP 2026-07-28 next to the classic handshake: long calls (a cold Ghidra import, a big port plan) come back as a task
-  with progress instead of timing out.
-- `run_batch` runs up to 20 calls in one, and big results are saved to disk with a resource link.
-- `re_compare` shows which .NET types and methods changed between two builds, and the next step.
-- The Claude Code plugin has settings instead of environment variables, and an icon.
+- `re_archive` unpacks Unity asset bundles and `.assets` files: textures as PNG, meshes as OBJ, audio, text and the
+  scripts in use.
+- The MCP server is now called `reverseport` in every client, so tools are `mcp__reverseport__*`.
+  **Breaking:** rerun `reverseport setup` (or `reverseport update`) and update permission rules that name `mcp__rea__*`.
+- Sturdier on Windows: CRLF patches, TEMP/TMP and host variables in the isolated verifiers.
+
+**1.14** — ready for the Claude plugin directory, with a slim `claude-directory` branch.
+
+**1.12** — more formats (Doom WAD, WAD2/WAD3, XNB, VPK), more game libraries in `re_scan`, monorepo globs and import
+maps, and a [Godot → three.js walkthrough](https://github.com/laaielichter/Reverseport/blob/main/docs/walkthrough-godot-to-threejs.md).
 
 Every release is in the [changelog](https://github.com/laaielichter/Reverseport/blob/main/CHANGELOG.md).
 
 ## Works with every agent
 
-Any vendor, any framework, any model size — the same tools through the door that fits:
-
-| Door                  | How                                                                                                                                                                                          |
-| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| MCP, set up for you   | `npx -y reverseport@latest setup` for Claude Code, Codex, Cursor, Gemini CLI, GitHub Copilot, OpenCode and more                                                                              |
-| MCP, any other client | `reverseport connect <client>` prints the snippet (Windsurf, Cline, Continue, Zed, Goose, LM Studio, VS Code…)                                                                               |
-| MCP over HTTP         | `reverseport serve` → `http://127.0.0.1:32147/mcp`                                                                                                                                           |
-| Function calling      | `/api/agent/tools?format=openai-strict\|responses\|anthropic\|gemini`, plus OpenAPI 3.1 at `/api/openapi.json` for GPT Actions, LangChain, LlamaIndex, Semantic Kernel, CrewAI, AutoGen, n8n |
-| Shell only            | JSON on stdout, errors as JSON on stderr, `reverseport describe <tool>`                                                                                                                      |
-
-Built for the agent's circumstances too:
-
-- **A short list by default.** About 57 tools are listed instead of more than 200. Every other tool is one call
-  away: `engine_tools` finds it and `engine_call` runs it.
-- **The list fits the agent.** Small or older models use `compact`, large-context agents use `full`, and an agent
-  can switch itself with `set_tool_profile`.
-- **One error shape everywhere**, with a code, whether retrying helps, and the exact next step.
-- **A `next` field wherever there is an obvious next step** (graphs, truncated results, every porting step), with the
-  exact call.
-- **Big results do not flood the context.** Lists are short by default. Answers over 256 KB are saved to
-  `~/.reverseport/tool-output/`; the agent gets a short version with the path and an MCP resource link. Slightly
-  wrong input from smaller models is repaired where it is safe.
-- **Several steps, one call.** `run_batch` runs up to 20 calls and `select` keeps only the fields the agent needs.
-  The same failing call twice gets a plain "do not repeat it" instead of the same error again.
-- **Long work does not time out.** On MCP 2026-07-28 a call still running after a few seconds comes back as a task
-  the client polls, with progress in its status; quick calls answer directly. Older clients keep the classic
-  handshake on the same server.
-- **Agents are heard.** `share_feedback` leaves a note for the maintainers; it stays on the user's machine until
-  they share it.
-
-See [Connect any agent](https://github.com/laaielichter/Reverseport/blob/main/docs/connect-any-agent.md).
+Connect through MCP, HTTP, vendor APIs or the shell. See [Connect any agent](https://github.com/laaielichter/Reverseport/blob/main/docs/connect-any-agent.md) for integration and runtime behaviour.
 
 ## Skills
 
-Setup and the Claude Code plugin install skills that teach the agent the workflows, so it knows which tool comes
-next without being told:
-
-| Skill              | Use it for                                                                                               |
-| ------------------ | -------------------------------------------------------------------------------------------------------- |
-| `reverse-engineer` | "How does this work?" — engine and stack, architecture, dependency graph, classes, scenes, unknown files |
-| `build-inspector`  | Exported builds: engine and version, what is inside the `.pck` or Unity/Unreal build, what changed       |
-| `rebuild`          | No files: find out how a game, app or site is built, then write a measured clean-room rebuild spec       |
-| `port-project`     | Any port, unit by unit in dependency order, with API maps, converted scenes and a verified result        |
-| `godot-port`       | Godot 4 → Unity, Unreal, three.js or Godot C#: signals, node paths, autoloads, physics, input, axes      |
-| `unity-to-godot`   | Unity → Godot 4: MonoBehaviours, prefabs and scenes to `.tscn`, colliders, rigidbodies                   |
-| `port-verify`      | The finish line: fix leftovers and missing functions, then hand over with an honest list of what is left |
-| `proof-case`       | Keep an investigation honest: evidence, claims that cite it, decisions, tests and open unknowns          |
-| `troubleshoot`     | Errors and odd results: unreadable scenes, packs that will not list, refused paths, MCP problems         |
-
-The Claude Code plugin also adds the `port-architect` agent, which runs a whole port from recon to hand-over, and
-[guard hooks](https://github.com/laaielichter/Reverseport/blob/main/docs/proof-and-memory.md) that ask before a tool attaches to a program and stop a "done" while a proof
-case fails its check.
-
-A skill copied into an agent's folder can be older than the installed tool. `reverseport skills` lists the skills of
-the version you have and `reverseport skills get <name>` prints the matching guide.
+Workflow skills teach the agent which tool comes next. See [the skill catalogue and guard hooks](https://github.com/laaielichter/Reverseport/blob/main/docs/agent-skills.md).
 
 ## Prompts to try
 
-| You ask                                                                            | ReversePort does                                                                                                                  |
-| ---------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| _What is this game made with, and how is it built?_                                | `re_scan` → engine + version, languages, entry points, how it starts                                                              |
-| _I only have the exported Godot game, not the project._                            | `re_archive` extracts the .pck, `re_decode` turns .gdc/.scn/.res/project.binary back into an editable project                     |
-| _A Unity IL2CPP game without its C# source._                                       | `re_il2cpp`: classes, methods and literals from global-metadata.dat, plus a C# skeleton                                           |
-| _Get the art, models and audio out of my Unity build._                             | `re_archive` on data.unity3d, .assets or a bundle: PNG, FSB5 audio, text, scripts in use; OBJ and JSON where type trees exist     |
-| _What changed between build 43 and 44?_                                            | `re_compare` folder-to-folder, pack-to-pack and .NET types and methods, biggest changes first                                     |
-| _Keep this investigation honest — I need to show why._                             | `re_case`: evidence → claims that cite it → unknowns → decision → tests → report                                                  |
-| _Map this codebase and write ARCHITECTURE.md._                                     | `re_graph`, `re_symbols`, `re_report`                                                                                             |
-| _How do the packages in this Turborepo/pnpm monorepo depend on each other?_        | `re_scan` finds the workspace and its packages; `re_graph` resolves workspace names and tsconfig paths and shows who uses whom    |
-| _Show me how this button on the website is built._                                 | `capture_web_screenshot` with a `selector`: a cropped image of the element, its HTML and its computed CSS                         |
-| _All I have is data.win / an .rpa / a .pak / a .swf / a sound bank / a web build._ | `re_archive`: names, assets and facts out of GameMaker, Ren'Py, Unreal, Flash, FMOD, Wwise, Unity WebGL and Emscripten containers |
-| _Why are my Unity materials pink and scripts "missing" after a move?_              | `re_refs`: dangling, duplicate and missing GUIDs, with remap suggestions                                                          |
-| _Get every player-facing string out of this game so we can translate it._          | `re_strings`: .pot/.csv with ids and placeholders; `apply` writes a translated copy                                               |
-| _Is this GDScript valid for Godot 4.3, or did the model mix in Godot 3?_           | `re_apicheck`: renamed names with replacements, invented members, too-new classes                                                 |
-| _What is in this save file, is it checksummed, and which field is the gold?_       | `re_save`: layers, fields with roles, verified checksums, diff of two saves, schema + SaveData classes                            |
-| _Upgrade my Godot 3 game to Godot 4._                                              | `port_upgrade`: converted copy (renames, @annotations, await, signals, scenes, project.godot) + what needs a human                |
-| _Decompile the function that saves settings in this app and explain it._           | opens the binary in your Ghidra, Hopper or IDA, finds it, decompiles it, shows the evidence                                       |
-| _How does this Electron app talk to its native side?_                              | maps modules, IPC and Electron boundaries                                                                                         |
-| _What is `<some game>` made with? I don't have the files._                         | `re_lookup` from public sources: engine with confidence, stack, layout, remakes                                                   |
-| _Rebuild the movement of `<game>` as precisely as possible in Godot._              | `re_blueprint`: systems, parameters to measure, parity table, skeleton                                                            |
-| _Port my Unity UI, prefab variants and Animator to Godot._                         | `port_scene`: Control nodes with anchors, inherited scenes, AnimationPlayer + state machine from .anim/.controller                |
-| _Port this Unity shader (or a Shadertoy) to Godot._                                | `port_shader`: uniforms, intrinsics and built-ins mapped, `PORT:` markers and leftovers for the rest                              |
-| _Why does my ported game fall, slide and jump differently?_                        | `port_convert {physics}`: gravity, fixed step, damping, friction/bounce rules, layers → masks, jump velocity recomputed           |
-| _Does the port really behave the same?_                                            | `port_verify` flags tick/delta/seed/order differences; `port_trace` logs both per tick and finds the first divergence             |
-| _Move my RPG Maker MV/MZ game to Godot._                                           | `port_rpgmaker`: maps drawn from the tilesets, events running, database autoload, list of what is left                            |
-| _Port my Godot game to Unity._                                                     | `port_plan` → `port_unit`/`port_write` loop → `port_scene` → `port_verify`                                                        |
-
-```text
-You:    Port my Godot game to Unity.
-Agent:  re_scan → Godot 4.3, 6 scripts, 5 scenes, main scene main.tscn, autoload Global
-        port_plan → 13 units, dependencies first; Unity scene builder + PORT-PLAN.md created
-        port_unit / port_write × 7 → C# MonoBehaviours (signals → events, $Node → [SerializeField])
-        port_scene × 5 → prefab and scene specs, transforms mirrored to Unity's axes
-        port_verify → passed: 13/13 units, 0 leftovers, 0 missing functions
-```
+Start with a question about your project or a port. See [example prompts and a complete porting sequence](https://github.com/laaielichter/Reverseport/blob/main/docs/prompts-to-try.md).
 
 ## What it does
 
-### Understand and go deep
-
-| Target                             | What you get                                                                                                                                                                        | Needs                                                                          |
-| ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
-| Source projects and exported games | Engine + version (Godot, Unity, Unreal, GameMaker, RPG Maker, Ren'Py, LÖVE, Defold, Bevy, MonoGame, web, Electron, Flutter, .NET, Go, Rust…), dependencies, cycles, scenes, symbols | Nothing                                                                        |
-| Packs and archives                 | Godot `.pck` (also embedded in the `.exe`), zip/apk/jar, `.unitypackage`, tar.gz, asar — list and extract; Quake PAK, Doom WAD, XNB, VPK and more recognised                        | Nothing                                                                        |
-| Unity IL2CPP                       | Classes, methods and literals from `global-metadata.dat`, plus a C# skeleton                                                                                                        | Nothing                                                                        |
-| Unity builds and asset bundles     | Every object by class and name, scenes, C# scripts in use; textures → PNG, meshes → OBJ, audio, text, JSON (UnityFS LZ4/LZMA)                                                       | Nothing                                                                        |
-| Native binaries                    | Mach-O, ELF, PE, wasm: functions, pseudocode, strings, xrefs, call paths, layout                                                                                                    | Ghidra, Hopper or IDA for decompilation ([setup](https://github.com/laaielichter/Reverseport/blob/main/docs/installation.md#hopper)) |
-| .NET assemblies                    | Metadata, CIL, native boundaries, type- and method-level build comparisons                                                                                                          | Nothing                                                                        |
-| Android                            | Manifest, classes, decompiled methods, references, resources, devices                                                                                                               | JADX / Apktool / adb ([guide](https://github.com/laaielichter/Reverseport/blob/main/docs/android-analysis.md))                       |
-| JavaScript and Electron            | Modules, imports, source maps, Electron boundaries, runtime observation                                                                                                             | Nothing; a browser for runtime                                                 |
-| Websites                           | Page, network and runtime evidence; one element by CSS selector (cropped image, HTML, computed CSS); stack fingerprint without files                                                | A browser for runtime                                                          |
-| Firmware, EVM, crashes, captures   | Regions and extraction, selectors, recorded crashes, HAR/mitmproxy captures                                                                                                         | See the [guides](https://github.com/laaielichter/Reverseport/blob/main/docs/index.md)                                                |
-
-### Rebuild and port
-
-| From → to             | Code                             | Scenes / prefabs                             | Transforms  | Project skeleton                   |
-| --------------------- | -------------------------------- | -------------------------------------------- | ----------- | ---------------------------------- |
-| Godot → **Unity**     | agent, with API map              | automatic → specs + one-click editor builder | Z-mirror    | scene builder script               |
-| Godot → **Unreal**    | agent (.h/.cpp), with API map    | automatic → specs (cm, Z-up)                 | axes + ×100 | .uproject, module, targets         |
-| Godot → **three.js**  | agent (TypeScript), with API map | automatic → TypeScript builder modules       | unchanged   | Vite + TS + fixed-step loop        |
-| Godot → **Godot C#**  | agent, with API map              | automatic (script paths swapped)             | unchanged   | .csproj, project.godot             |
-| Godot 3 → **4**       | converted copy                   | converted                                    | unchanged   | project.godot                      |
-| Unity → **Godot**     | agent (GDScript), with API map   | automatic → `.tscn`                          | Z-mirror    | project.godot                      |
-| Unity → **Unreal**    | agent, with API map              | —                                            | axes + ×100 | .uproject, module                  |
-| RPG Maker → **Godot** | events run by an interpreter     | maps drawn from the tilesets                 | —           | Godot 4 project, database autoload |
-| any → **language**    | agent                            | —                                            | —           | —                                  |
+Inspect projects and builds, reconstruct behaviour and port between engines. See [supported targets, prerequisites and porting routes](https://github.com/laaielichter/Reverseport/blob/main/docs/capabilities.md).
 
 ## CLI
 
-Everything the agent can do, you can do from the shell. Results are JSON.
+<a id="choosing-a-deep-analysis-provider"></a>
 
-```bash
-reverseport scan ./MyGame                        # engine, languages, entry points
-reverseport lookup "Some Game"                   # no files: engine, stack, structure, remakes
-reverseport binary ./Build/Game.exe              # sections, imports, .NET types, strings, hints
-reverseport archive ./Build/Game.pck --action extract --match "*.gd"
-reverseport diff ./Build-43 ./Build-44           # what changed between builds
-reverseport analyze /Applications/Notes.app      # deep analysis: open and summarize a binary/app
-reverseport decompile /path/to/binary 0x1000      # pseudocode (Ghidra, Hopper or IDA)
-reverseport blueprint --lookup-id <id>           # clean-room rebuild spec + parity.json + skeleton
-reverseport plan ./MyGame --to unity             # start a port
-reverseport case init --question "…" --target ./Build   # proof case: evidence → claims → decision → tests
-reverseport doctor                               # check engines and agent registrations
-reverseport skills get port-project              # the skill guide that matches this version
-reverseport help                                 # overview · reverseport port help · reverseport engine --help
-```
-
-Install the command for regular use with `npm install --global reverseport`, or run any of these through
-`npx reverseport@latest …`. In a checkout, use `./bin/reverseport.mjs`.
+Run the same workflows from your shell and receive JSON results; see [game and porting examples](https://github.com/laaielichter/Reverseport/blob/main/docs/cli.md#game-and-porting-examples) and the [full CLI reference](https://github.com/laaielichter/Reverseport/blob/main/docs/cli.md).
+For engine selection, see [Choose a provider](https://github.com/laaielichter/Reverseport/blob/main/docs/cli.md#choose-a-provider).
 
 ## Tools
 
-One MCP server (`reverseport mcp`) serves every tool:
-
-| ReversePort tools                                                                                                                                |                                                                                                                                                                          |
-| ------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `re_scan` `re_graph` `re_symbols` `re_scene`                                                                                                     | projects and builds: engine, dependencies, symbols, scenes                                                                                                               |
-| `re_binary` `re_archive` `re_probe` `re_extract` `re_compare` `re_refs` `re_strings` `re_apicheck` `re_save` `re_decode` `re_il2cpp` `re_report` | executables, packs (Godot, zip, asar, Ren'Py, GameMaker, FMOD/Wwise, Unreal, SWF), unknown data, diffs, GUID audit, localisation, API check, save files, ARCHITECTURE.md |
-| `re_lookup` `re_blueprint`                                                                                                                       | recon without files, clean-room rebuild specs                                                                                                                            |
-| `port_map` `port_convert` `port_plan` `port_unit` `port_write` `port_scene` `port_copy_assets` `port_status` `port_verify`                       | porting, verified                                                                                                                                                        |
-| `port_upgrade` `port_shader` `port_trace` `port_rpgmaker`                                                                                        | Godot 3 → 4 as a converted copy plus the manual list; shader first drafts; per-tick behaviour traces compared                                                            |
-| `re_case`                                                                                                                                        | proof case: evidence, claims, unknowns, decisions, tests                                                                                                                 |
-
-Next to these come the deep-analysis tools — `open_binary`, `procedure_pseudo_code`, `xrefs`, `search_strings`,
-`analyze_javascript_application`, `inspect_android_package`, `inspect_managed_artifact`, `observe_web_session` and
-many more. `engine_tools` lists them from the running server, and `npm run docs:generate` writes the
-[generated tool catalog](https://github.com/laaielichter/Reverseport/blob/main/docs/mcp-contracts.md#generated-catalog) with every contract. The HTTP API
-(`reverseport serve`) exposes the same tools in every vendor's format; see [Connect any agent](https://github.com/laaielichter/Reverseport/blob/main/docs/connect-any-agent.md).
+One MCP server serves the recon, build, proof and porting tools. See [the tool overview](https://github.com/laaielichter/Reverseport/blob/main/docs/tool-overview.md) and [generated contracts](https://github.com/laaielichter/Reverseport/blob/main/docs/mcp-contracts.md#generated-catalog).
 
 ## How it compares
 
