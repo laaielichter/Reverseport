@@ -41,7 +41,7 @@ Any client config: `reverseport connect <client>`.
 
 - [README](README.md)
 - [Connect any agent](docs/connect-any-agent.md)
-- [Installation](docs/installation.md)
-- [CLI](docs/cli.md)
-- [MCP contracts and tool catalog](docs/mcp-contracts.md)
+- [Installation](docs/getting-started/installation.md)
+- [CLI](docs/getting-started/cli.md)
+- [MCP contracts and tool catalog](docs/reference/mcp-contracts.md)
 - [Porting and rebuilds](.agents/skills/reverse-engineer-anything/references/porting-and-rebuilds.md)

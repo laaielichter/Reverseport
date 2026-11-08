@@ -1,4 +1,4 @@
-import { npxRegistrationCommand } from "../../src/application/ClientRegistrationIdentity.js";
+import { currentClientRegistrationCommand } from "../../src/application/ClientRegistrationIdentity.js";
 import { PRODUCT_IDENTITY } from "../../src/identity.js";
 
 export const codexToolPolicy = {
@@ -25,9 +25,10 @@ export const codexToolPolicy = {
  */
 export const codexToolPolicySource = (
   layout: "tables" | "inline table",
+  registrationCommand: readonly string[] = currentClientRegistrationCommand(),
   serverKey: string = PRODUCT_IDENTITY.mcpServerKey,
 ): string => {
-  const [command, ...args] = npxRegistrationCommand();
+  const [command, ...args] = registrationCommand;
   return layout === "tables"
     ? [
         "# retained root comment",

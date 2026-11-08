@@ -3,12 +3,14 @@ import { nativeDispatchMetadataInputSchema } from "../domain/native/objcSwiftMet
 import { nativeProcedureInputSchema } from "../domain/native/nativeProcedureInput.js";
 import { decompileDirectoryInputSchema } from "./decompileDirectory.js";
 import { nativeValueTraceInputSchema } from "../domain/native/nativeValueTrace.js";
+import { nativeInvestigationTraceLimitsSchema } from "../domain/native/nativeInvestigationGraph.js";
 const traceLiteralInputSchema = z.strictObject({
   query: z.string().min(1),
   case_sensitive: z.boolean().default(false),
 });
 
 export const DEFAULT_CALL_RELATIONSHIP_DIRECTION = "forward";
+export const MAX_ENHANCED_RECORDS = 20_000;
 const callRelationshipDirectionSchema = z
   .enum(["forward", "backward"])
   .default(DEFAULT_CALL_RELATIONSHIP_DIRECTION)
@@ -32,6 +34,7 @@ export const enhancedInputSchemas = {
           .string()
           .describe("A procedure symbol or address, e.g. main or 0x1000"),
       )
+      .max(MAX_ENHANCED_RECORDS)
       .default([]),
   }),
   decompile_all: decompileDirectoryInputSchema,
@@ -77,16 +80,13 @@ export const enhancedInputSchemas = {
       .optional(),
     direction: callRelationshipDirectionSchema,
   }),
-  trace_native_ui_action: z.strictObject({
+  trace_native_ui_action: nativeInvestigationTraceLimitsSchema.extend({
     action: z
       .string()
       .min(1)
       .describe(
         "A unique compiled UI action selector, interface object ID, native symbol or exact function address",
       ),
-    max_depth: z.int().min(0).max(32).default(8),
-    max_nodes: z.int().min(1).max(2_000).default(250),
-    max_edges: z.int().min(1).max(5_000).default(500),
   }),
 } as const;
 

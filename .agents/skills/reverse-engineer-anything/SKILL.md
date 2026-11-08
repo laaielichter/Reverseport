@@ -2,7 +2,7 @@
 name: reverse-engineer-anything
 description: Reverse engineer and port anything with ReversePort — native, managed, Android, Electron/JavaScript, packaged, firmware and browser targets with evidence (decompile, trace, compare versions), game projects and exported builds (engine, scenes, packs), recon from public sources without files, clean-room rebuild specs, agent environments (AgentEnv bundles) of web apps, and ports between Godot, Unity, Unreal, three.js and languages.
 metadata:
-  version: "50"
+  version: "61"
 ---
 
 # ReversePort
@@ -18,6 +18,9 @@ commands for them.
 
 Installing this skill supplies instructions; it does not register the ReversePort MCP
 server, install analysis engines, or add tools to an already-running agent.
+The exception is the ReversePort Claude Code plugin: it bundles this skill
+and registers its own `reverseport` server, outside the state that
+`reverseport setup` and `reverseport doctor` manage.
 
 If ReversePort tools are available and their registration is not known to be stale,
 proceed directly to the target. Do not run diagnostics or setup before every
@@ -38,42 +41,22 @@ repeat or known not to have started. If it may already have changed the
 target, or it fails again, tell the user and ask them to restart the MCP
 client. If ReversePort could not start its connection, retry once, then tell the user
 and ask them to restart the MCP client. Do not retry a startup failure that
-returns the same unchanged result. Run `reverseport doctor` when ReversePort could not start
+returns the same unchanged result. For plugin installs, follow
+[plugin recovery](references/connection-and-recovery.md#reverseport-installed-as-a-client-plugin).
+For setup-owned registrations, run `reverseport doctor` when ReversePort could not start
 or tools stay missing after that restart. For `cleanup_incomplete`, a retryable
 capacity limit, or `configuration_invalid`, follow the recovery guide's ladder
 before asking for a restart. Read that guide before a second repair attempt.
 
-1. Diagnose without changing ReversePort or client configuration. `npx` may download
-   the package and write to npm's cache. For Codex, run
-   `npx -y reverseport@latest doctor --client codex --json`. Substitute the current
-   supported client: `claude_code`, `claude_desktop`, `codex`, `cursor`,
-   `gemini_cli`, `windsurf`, `devin`, `opencode`, `antigravity`, `copilot_cli`,
-   `commandcode`, `vscode`, `grok_build`, `omp`, or `grok_bot`. `grok_bot` has no local
-   file registration: doctor reports the Grok Bot chat step, and setup does not
-   write `mcp.json`. If the client is unknown, use `doctor --json` and
-   inspect its registration results before choosing a setup scope.
-2. Distinguish the reason. Missing, malformed, or stale registration needs a
-   scoped configuration repair. An aligned registration with no tools in the
-   active session needs a restart/reconnection; doctor cannot prove that the
-   current agent has connected. A missing provider affects only tasks requiring
-   that provider: static JavaScript inspection needs neither Hopper nor Ghidra,
-   and Android inspection has separate bring-your-own JADX/Java prerequisites.
-3. For a configuration repair, prepare the read-only plan:
-   `npx -y reverseport@latest setup --client codex --dry-run --json`.
-   Use the current client's ID, show its exact proposed paths, backups, and
-   changes, and obtain approval before setup writes configuration or installs
-   Hopper. Setup normally installs the matching bundled skill too; include that
-   replacement in the reviewed plan. After approval, apply the same scope with
-   `npx -y reverseport@latest setup --client codex --yes`. Add `--install-hopper`
-   only if that separate installation was needed and explicitly approved.
-4. Restart/reconnect the affected agent. Verify that ReversePort tools actually appear
-   in the session, then resume the original investigation. If they remain
-   absent, inspect the client's MCP launch error rather than repeating setup.
+Choose the installation owner before repairing registration. Plugin installs use
+[plugin recovery](references/connection-and-recovery.md#reverseport-installed-as-a-client-plugin);
+only setup-owned registrations use the guide's
+[registration repair plan](references/connection-and-recovery.md#repair-registration-when-needed).
 
 ReversePort setup never installs or upgrades Node.js, npm, Homebrew, Java, Ghidra, IDA,
 JADX, Kuna, Binwalk, or Unblob. Use existing prerequisites; do not install unrelated
 software to repair MCP registration. For an unsupported client, use manual stdio
-registration with a version-pinned `reverseport` package or continue through the CLI.
+registration with an existing installation’s absolute runtime and entry script, or continue through the CLI.
 
 A concrete CLI fallback for an operator-supplied JavaScript tree or ASAR is:
 
@@ -86,8 +69,10 @@ graph, limitations, and unknowns with the same care as an MCP result; the CLI
 returns the Evidence record directly. This fallback does not establish that
 MCP is configured. Native CLI tasks still require their selected engine.
 Prefer an existing `reverseport` CLI. When none is installed and ReversePort package acquisition
-is within the authorized scope, use `npx -y reverseport@latest` in its place.
-Configuration repair starts with a read-only setup plan; show paths, backups and
+is within the authorized scope, use `npx -y reverseport@latest` in its place from a
+trusted directory outside the target project, with absolute target paths. Setup
+registers the installation it runs from; keep it, or restore it before repairing.
+For setup-owned registration, configuration repair starts with a read-only setup plan; show paths, backups and
 skill replacement before applying authorized changes. Preserve existing approval
 and target-execution boundaries.
 
@@ -142,6 +127,8 @@ explicit path or endpoint and do not need it.
   PyInstaller CArchive is the application layer; the bootloader is only the
   native prefix. See the
   [Python packaged applications guide](https://github.com/laaielichter/reverseport/blob/main/docs/python-packaged-applications.md).
+- Bun `--compile` executable: see
+  [Bun standalone executables](references/native-and-artifacts.md#bun-standalone-executables).
 - Apple app plist, Interface Builder, asset catalog, or keyed archive resources:
   `open_bundle_resources`, then the selected resource tool. This does not
   require `CFBundleExecutable` or a deep provider. Resource sessions have no
@@ -157,6 +144,8 @@ explicit path or endpoint and do not need it.
   cleanup effects, and do not require a preliminary static session unless their
   own contract says so.
 - User-owned browser page already open: `list_browser_targets`.
+- Passive traffic capture of a SPA: APIs usually live on another origin; see
+  [SPA capture scope](references/runtime-observation.md#spa-capture-scope).
 - Browser action the agent must perform (click, type, navigate):
   `capture_browser_scenario` with declared actions. See
   [runtime observation](references/runtime-observation.md) for connect/launch
@@ -187,7 +176,14 @@ ask when matches are ambiguous. Never choose an example app on the user's behalf
 Call only tools that are listed or that `engine_tools` returns (call those with
 `engine_call`). When a tool is unavailable or refuses, `binary_session {}` →
 `result.tool_availability` gives the reason and the fix; `tools/list` has the
-canonical schemas.
+canonical schemas. Its default summary keeps each provider candidate's
+availability, code and reason (`omitted_fields` lists the rest); pass
+`{"detail": "complete"}` only for an unavailable provider's remediation,
+diagnostics or capability sets.
+
+For Ghidra edits that must survive a later process, use the
+[Program checkpoint workflow](references/native-and-artifacts.md#continue-editable-ghidra-analysis-across-processes)
+before editing.
 
 For a Ghidra startup timeout on a large native target, follow
 [deadline recovery](references/native-and-artifacts.md#ghidra-startup-deadline-recovery)
@@ -206,9 +202,12 @@ call `analyze_javascript_application` or `inspect_binary_layout` with
 a flag: its default reply is the summary, and the complete dossier stays
 retained under `parent_evidence_id` for facet paging. Pass that ID as a
 `retained-evidence` reference to `compare_functions`, or inside
-`match_native_functions` `left_observations`/`right_observations`; request
-`"detail": "complete"` only when the dossier must travel inline, as
-`build_call_path` requires.
+`match_native_functions` `left_observations`/`right_observations` or
+`build_call_path.functions`; request `"detail": "complete"` only when the
+dossier must travel inline.
+Other advertised Evidence inputs take the same exact references; a summary or
+page has its own ID, so pass `normalized_result.parent_evidence_id` for the
+complete source. See [Evidence composition](references/evidence-workflows.md).
 Page module identities and select the returned `node_id` before requesting an
 item; a single file path can represent several graph roles. Do not repeat an
 identical analysis or rejected call without a changed input or resolved blocker.
@@ -227,7 +226,10 @@ output also streams without a single MCP frame.
 When the retained parent ID is unknown, use `get_evidence_bundle` with
 `detail: "summary"` and exact filters for operation, target SHA-256,
 analysis-profile digest or canonical procedure address. Select its returned
-Evidence ID for the next view instead of requesting the complete bundle.
+Evidence ID for the next view instead of requesting the complete bundle. When
+that record has no supported view (for example an annotation), read it with
+`detail: "records"` and an `evidence_id` filter; `missing_evidence_links`
+names linked sources this session does not retain.
 `retention: "complete-record"` means the whole record is stored; native
 value-flow truncation and unknown metadata remain separate. For an exported
 portable bundle, use `reverseport inspect-evidence-bundle` with JSON containing `path`,
@@ -306,10 +308,16 @@ as complete while required questions remain open.
 - Agent environments (AgentEnv bundles) of a web application, recorded from
   a live instance or a HAR:
   [references/environments.md](references/environments.md)
+- Tasks for a desktop application's exported environment:
+  [references/environments.md](references/environments.md#tasks-for-a-desktop-application-environment)
 
 ## Finish the task
 
 Explain findings in plain language and tie them to returned evidence. When the
 user asks to build something, use normal coding tools and separate observed
 behavior from design choices. Close an opened native session with
-`close_binary` when the investigation is complete.
+`close_binary` when its engine is no longer needed. Evidence references and Unknown
+history remain in memory on the same MCP connection. End the investigation with
+`reset_investigation`; supply `save_path` to checkpoint the complete bundle before
+clearing. Import the saved bundle to restore original references and Unknown
+history in a new process. Retention is bounded and is not automatic persistence.

@@ -2,7 +2,7 @@ name: Claude plugin directory branch
 
 # Keeps the branch claude-directory in step with each release. It holds only the files the Claude Code plugin loads,
 # so the Claude plugin directory (claude.ai/directory/manage) can validate and scan it; the whole repository is more
-# than its validation reads in time. The directory follows this branch. See docs/releasing.md.
+# than its validation reads in time. The directory follows this branch. See docs/development/releasing.md.
 
 on:
   push:

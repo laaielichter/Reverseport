@@ -51,7 +51,7 @@
       "extra-files": [
         {
           "type": "generic",
-          "path": "docs/installation.md"
+          "path": "docs/getting-started/installation.md"
         },
         {
           "type": "generic",

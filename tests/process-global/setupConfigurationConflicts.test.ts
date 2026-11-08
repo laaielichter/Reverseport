@@ -114,7 +114,7 @@ it.each(["before", "after"] as const)(
     ).toMatchObject({ status: "failed", reason: "conflict" });
     expect(Buffer.compare(await readFile(path), changed)).toBe(0);
     expect(await readFile(`${path}.rea.backup`, "utf8")).toBe(original);
-    expect(await readdir(root)).toEqual([
+    expect((await readdir(root)).sort()).toEqual([
       "config.json",
       "config.json.rea.backup",
     ]);
@@ -140,7 +140,7 @@ it("preserves an unrelated concurrent edit when a matching recovery backup alrea
   expect(result).toMatchObject({ status: "failed", reason: "conflict" });
   expect(await readFile(path, "utf8")).toBe(changed);
   expect(await readFile(`${path}.rea.backup`, "utf8")).toBe(original);
-  expect(await readdir(root)).toEqual([
+  expect((await readdir(root)).sort()).toEqual([
     "config.json",
     "config.json.rea.backup",
   ]);

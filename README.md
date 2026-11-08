@@ -12,8 +12,8 @@ between Godot, Unity, Unreal and three.js with parity checks.
 [![npm downloads](https://img.shields.io/npm/dm/reverseport?style=flat-square&color=1e4f91)](https://www.npmjs.com/package/reverseport)
 [![MCP Registry](https://img.shields.io/badge/MCP_Registry-io.github.laaielichter%2Freverseport-5c4ee5?style=flat-square)](https://registry.modelcontextprotocol.io/v0/servers?search=io.github.laaielichter/reverseport)
 [![Claude Code plugin](https://img.shields.io/badge/Claude_Code-plugin-d97757?style=flat-square)](#claude-code-plugin)
-[![MCP tool catalog](https://img.shields.io/badge/MCP-tool_catalog-5c4ee5?style=flat-square)](docs/mcp-contracts.md#generated-catalog)
-[![Node.js](https://img.shields.io/badge/Node.js-22.23.4%2B-339933?style=flat-square&logo=nodedotjs&logoColor=white)](docs/installation.md)
+[![MCP tool catalog](https://img.shields.io/badge/MCP-tool_catalog-5c4ee5?style=flat-square)](docs/reference/mcp-contracts.md#generated-catalog)
+[![Node.js](https://img.shields.io/badge/Node.js-22.23.4%2B-339933?style=flat-square&logo=nodedotjs&logoColor=white)](docs/getting-started/installation.md)
 [![License: MIT](https://img.shields.io/badge/license-MIT-22c55e?style=flat-square)](LICENSE)
 
 ```bash
@@ -74,8 +74,8 @@ npx reverseport setup
 
 Pick your agents, review the changes and approve. Setup registers one MCP server and installs the matching skill,
 with backups of existing configuration. Restart your agent afterwards. Setup supports Claude Code, Codex, Cursor,
-Gemini CLI, GitHub Copilot, OpenCode and [more agents](docs/installation.md#supported-agents); other clients can use
-[manual MCP registration](docs/installation.md#mcp-registry).
+Gemini CLI, GitHub Copilot, OpenCode and [more agents](docs/getting-started/installation.md#supported-agents); other clients can use
+[manual MCP registration](docs/getting-started/installation.md#mcp-registry).
 
 ### Claude Code plugin
 
@@ -151,12 +151,12 @@ Inspect projects and builds, reconstruct behaviour and port between engines. See
 
 <a id="choosing-a-deep-analysis-provider"></a>
 
-Run the same workflows from your shell and receive JSON results; see [game and porting examples](docs/cli.md#game-and-porting-examples) and the [full CLI reference](docs/cli.md).
-For engine selection, see [Choose a provider](docs/cli.md#choose-a-provider).
+Run the same workflows from your shell and receive JSON results; see [game and porting examples](docs/getting-started/cli.md#game-and-porting-examples) and the [full CLI reference](docs/getting-started/cli.md).
+For engine selection, see [Choose a provider](docs/getting-started/cli.md#choose-a-provider).
 
 ## Tools
 
-One MCP server serves the recon, build, proof and porting tools. See [the tool overview](docs/tool-overview.md) and [generated contracts](docs/mcp-contracts.md#generated-catalog).
+One MCP server serves the recon, build, proof and porting tools. See [the tool overview](docs/tool-overview.md) and [generated contracts](docs/reference/mcp-contracts.md#generated-catalog).
 
 ## How it compares
 
@@ -200,7 +200,7 @@ tools on top: game engines and formats, build diffs, proof cases, clean-room blu
 engines, plus setup for every agent and a Claude Code plugin.
 
 **How do I update or remove it?** `reverseport update` updates a global install, and `reverseport uninstall` removes
-the agent registrations and skill files it added. See [Diagnose, update, and remove](docs/installation.md#diagnose-update-and-remove).
+the agent registrations and skill files it added. See [Diagnose, update, and remove](docs/getting-started/installation.md#diagnose-update-and-remove).
 
 **Something broke or is missing.** Open an [issue](https://github.com/laaielichter/reverseport/issues) with the
 command and its JSON error. Every error names the next step, so include that line too. Questions are welcome in
@@ -223,10 +223,10 @@ Read [CONTRIBUTING.md](CONTRIBUTING.md) and [AGENTS.md](AGENTS.md) for the layou
 Two small tools from the same author that work well next to ReversePort. Both are local, open source and have their
 own MCP server, and both install from the ReversePort marketplace:
 
-| Tool                                                       | What it does                                                                                                                                                                                                                                                                                                                                                                                                                     | Claude Code                             |
-| ---------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------- |
-| [**Stashpad**](https://github.com/laaielichter/stashpad)   | Memory for agents that you can read, edit and trust: plain Markdown files with a source and dates, a review queue for agent writes, and a handoff note for the next session. `re_case remember` sends a proof case's findings there ([how](docs/proof-and-memory.md#memory-across-sessions-stashpad-optional)).                                                                                                                  | `/plugin install stashpad@reverseport`  |
-| [**agentdisk**](https://github.com/laaielichter/agentdisk) | The disk report for coding agents: the worktrees, checkpoints, `node_modules`, `.venv` and `.godot/` folders agents leave behind (porting work makes plenty), and a cleanup you can undo. `reverseport port doctor` uses it to show what the workspace would really free ([how](docs/installation.md#disk-use-agentdisk-optional)). Needs the `agentdisk` binary ([install](https://github.com/laaielichter/agentdisk#install)). | `/plugin install agentdisk@reverseport` |
+| Tool                                                       | What it does                                                                                                                                                                                                                                                                                                                                                                                                                                     | Claude Code                             |
+| ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------- |
+| [**Stashpad**](https://github.com/laaielichter/stashpad)   | Memory for agents that you can read, edit and trust: plain Markdown files with a source and dates, a review queue for agent writes, and a handoff note for the next session. `re_case remember` sends a proof case's findings there ([how](docs/proof-and-memory.md#memory-across-sessions-stashpad-optional)).                                                                                                                                  | `/plugin install stashpad@reverseport`  |
+| [**agentdisk**](https://github.com/laaielichter/agentdisk) | The disk report for coding agents: the worktrees, checkpoints, `node_modules`, `.venv` and `.godot/` folders agents leave behind (porting work makes plenty), and a cleanup you can undo. `reverseport port doctor` uses it to show what the workspace would really free ([how](docs/getting-started/installation.md#disk-use-agentdisk-optional)). Needs the `agentdisk` binary ([install](https://github.com/laaielichter/agentdisk#install)). | `/plugin install agentdisk@reverseport` |
 
 Add the marketplace first with `/plugin marketplace add laaielichter/reverseport`. Other agents: see each project's
 README.
@@ -241,9 +241,9 @@ and it never sends your targets anywhere. Commercial tools such as IDA and Hoppe
 ## Documentation
 
 - [Connect any agent](docs/connect-any-agent.md): MCP, HTTP, OpenAI/Anthropic/Gemini formats, OpenAPI, shell; profiles and errors.
-- [Installation and setup](docs/installation.md): agent registration, analysis engines, updates and uninstall.
-- [CLI and Evidence](docs/cli.md): commands, provider selection, snapshots, import/export.
-- [MCP contracts](docs/mcp-contracts.md) and [agent prompts](docs/mcp-prompts.md): tool results, sessions, guided investigations.
+- [Installation and setup](docs/getting-started/installation.md): agent registration, analysis engines, updates and uninstall.
+- [CLI and Evidence](docs/getting-started/cli.md): commands, provider selection, snapshots, import/export.
+- [MCP contracts](docs/reference/mcp-contracts.md) and [agent prompts](docs/getting-started/mcp-prompts.md): tool results, sessions, guided investigations.
 - [Porting and rebuilds](.agents/skills/reverse-engineer-anything/references/porting-and-rebuilds.md): the recon, rebuild and port workflows.
 - [Walkthrough: Godot → three.js](docs/walkthrough-godot-to-threejs.md): a small port, every command run and its output pasted.
 - [Proof cases, guard hooks and memory](docs/proof-and-memory.md): `re_case`, the Claude Code hooks, the optional Stashpad link and context cost.
@@ -257,7 +257,8 @@ and it never sends your targets anywhere. Commercial tools such as IDA and Hoppe
 
 ## Credits
 
-The deep-analysis engine is based on [REA: Reverse Engineer Anything](https://github.com/morluto/rea) 6.8.0 (MIT).
+The deep-analysis engine is based on [REA: Reverse Engineer Anything](https://github.com/morluto/rea) main
+[`72d5e72e6`](https://github.com/morluto/rea/tree/72d5e72e6d7b7997c4ecb11972fc405be8ec67d2), after 6.8.0 (MIT).
 Proof cases are ported from [Digfox](https://github.com/Devaretanmay/digfox) (MIT) and the guard hooks follow
 [rea-jev](https://github.com/juan-viox/rea-jev) (MIT); the challenge self-check uses
 [rea-lab](https://github.com/pablodiazjorge/rea-lab)'s generator and oracle (MIT). Third-party components are listed in
