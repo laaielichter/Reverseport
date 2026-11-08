@@ -8,7 +8,7 @@ abstract: >-
   between Godot, Unity, Unreal, three.js and languages with parity checks.
 authors:
   - name: "ReversePort contributors"
-version: 1.18.0 # x-release-please-version
+version: 1.19.0 # x-release-please-version
 license: MIT
 repository-code: "https://github.com/laaielichter/reverseport"
 url: "https://laaielichter.github.io/Reverseport/"
