@@ -97,7 +97,8 @@ export const analyzeAndAdoptJavaScriptArtifactFiles = async (
   const selectedFileCount =
     fileSet.files.length - (fileSet.source_selection?.unselected_files ?? 0);
   let selectedFileIndex = 0;
-  for (const file of fileSet.files) {
+  const analysisOrder = javaScriptAnalysisOrder(fileSet.files);
+  for (const file of analysisOrder) {
     let analysisStarted = false;
     try {
       await setImmediate();
@@ -308,10 +309,53 @@ export const analyzeAndAdoptJavaScriptArtifactFiles = async (
       );
     }
   }
+  if (analysisOrder !== fileSet.files)
+    restoreInventoryOrder(state, fileSet.files);
   return {
     analysis: finalizeArtifactAnalysis(state, preloadLimitations),
     interruption,
   };
+};
+
+/** Whether a source belongs to an installed dependency tree. */
+const isDependencySource = (file: JavaScriptArtifactFile): boolean =>
+  file.path.split("/").includes("node_modules");
+
+/**
+ * Analyze first-party sources before installed dependencies. The parent result
+ * budget is shared by every file, so inventory order alone would let a large
+ * `node_modules` tree that sorts first exhaust it before the application's own
+ * entry points, windows and preloads are examined. Each group keeps inventory
+ * order, so a selection without dependencies is analyzed exactly as listed.
+ */
+export const javaScriptAnalysisOrder = (
+  files: readonly JavaScriptArtifactFile[],
+): readonly JavaScriptArtifactFile[] => {
+  const firstParty: JavaScriptArtifactFile[] = [];
+  const dependencies: JavaScriptArtifactFile[] = [];
+  for (const file of files)
+    (isDependencySource(file) ? dependencies : firstParty).push(file);
+  return dependencies.length === 0 || firstParty.length === 0
+    ? files
+    : [...firstParty, ...dependencies];
+};
+
+/** Report analyzed and unavailable sources in inventory order, whatever order analyzed them. */
+const restoreInventoryOrder = (
+  state: MutableArtifactAnalysis,
+  files: readonly JavaScriptArtifactFile[],
+): void => {
+  const position = new Map(files.map((file, index) => [file, index]));
+  const ordered = state.files
+    .map((entry, index) => ({ entry, index }))
+    .sort(
+      (left, right) =>
+        (position.get(left.entry.file) ?? files.length) -
+          (position.get(right.entry.file) ?? files.length) ||
+        left.index - right.index,
+    )
+    .map(({ entry }) => entry);
+  state.files.splice(0, state.files.length, ...ordered);
 };
 
 const finalizeArtifactAnalysis = (
