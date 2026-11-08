@@ -27,7 +27,9 @@ On Windows use `"command": "cmd"` and `"args": ["/c", "npx", "-y", "reverseport@
 <!-- x-release-please-end -->
 
 The version is pinned on purpose; `npx -y reverseport@latest connect cline` prints the same block for the newest
-release.
+release. This npx form is the portable default and a current registration. `npx -y reverseport@latest setup`
+configures supported agents for you and instead pins the absolute Node.js runtime and entry script, which starts
+faster; `reverseport doctor` accepts both forms.
 
 ## Check that it works
 

@@ -27,7 +27,7 @@ afterEach(() => {
 });
 
 describe("client registration status", () => {
-  it("discovers a stale legacy Claude Code registration without a marker directory", async () => {
+  it("discovers a current npx Claude Code registration without a marker directory", async () => {
     const home = await createTestTempDirectory("rea-claude-config-only-");
     await writeFile(
       join(home, ".claude.json"),
@@ -47,8 +47,9 @@ describe("client registration status", () => {
       expect.objectContaining({
         client: "claude_code",
         config_path: join(home, ".claude.json"),
-        state: "stale",
-        remediation: expect.stringMatching(/\S/u),
+        state: "aligned",
+        remediation: null,
+        launch_advisory: expect.stringContaining("reverseport setup"),
       }),
     ]);
   });
@@ -215,8 +216,105 @@ describe("client registration environment validation", () => {
   });
 });
 
-describe("client registration launcher identity", () => {
-  it("reports an unversioned npx registration as stale", async () => {
+describe("client registration package-runner launchers", () => {
+  it.each([
+    ["linux", ["npx", "-y", "reverseport", "mcp"]],
+    ["linux", ["npx", "-y", "reverseport@latest", "mcp"]],
+    [
+      "linux",
+      ["npx", "-y", PRODUCT_IDENTITY.registrationPackageSpecifier, "mcp"],
+    ],
+    ["linux", ["bunx", "reverseport", "mcp"]],
+    ["darwin", ["npx", "-y", "reverseport@latest", "mcp"]],
+    ["win32", ["cmd", "/c", "npx", "-y", "reverseport", "mcp"]],
+    [
+      "win32",
+      [
+        "cmd.exe",
+        "/d",
+        "/c",
+        "npx",
+        "-y",
+        PRODUCT_IDENTITY.registrationPackageSpecifier,
+        "mcp",
+      ],
+    ],
+  ] as const)(
+    "reports a package-runner registration on %s (%j) as current with a setup hint",
+    async (platform, command) => {
+      const home = await createTestTempDirectory("rea-package-runner-");
+      await writeFile(
+        join(home, ".claude.json"),
+        JSON.stringify({
+          mcpServers: {
+            reverseport: { command: command[0], args: command.slice(1) },
+          },
+        }),
+      );
+
+      const [status] = await readClientRegistrationStatuses(home, undefined, {
+        platform,
+        environment: {},
+      });
+
+      expect(status).toMatchObject({
+        client: "claude_code",
+        command,
+        state: "aligned",
+        remediation: null,
+        launch_advisory: expect.stringContaining(
+          "absolute Node.js runtime and entry script",
+        ),
+      });
+      expect(status?.launch_advisory).toContain("it is current");
+    },
+  );
+
+  it.each([
+    ["win32", ["npx", "-y", "reverseport", "mcp"], "On Windows"],
+    [
+      "linux",
+      ["cmd", "/c", "npx", "-y", "reverseport", "mcp"],
+      "only on Windows",
+    ],
+    [
+      "linux",
+      ["npx", "-y", `reverseport@v${PRODUCT_IDENTITY.packageVersion}`, "mcp"],
+      "unsupported package spelling",
+    ],
+  ] as const)(
+    "reports a package-runner registration the client cannot start as written on %s (%j) as stale",
+    async (platform, command, reason) => {
+      const home = await createTestTempDirectory("rea-package-runner-stale-");
+      await writeFile(
+        join(home, ".claude.json"),
+        JSON.stringify({
+          mcpServers: {
+            reverseport: { command: command[0], args: command.slice(1) },
+          },
+        }),
+      );
+
+      const [status] = await readClientRegistrationStatuses(home, undefined, {
+        platform,
+        environment: {},
+      });
+
+      expect(status).toMatchObject({
+        client: "claude_code",
+        command,
+        state: "stale",
+        remediation: expect.stringContaining(reason),
+      });
+      expect(status).not.toHaveProperty("launch_advisory");
+      expect(status?.remediation).toContain("reverseport connect");
+      expect(status?.remediation).toContain(
+        "reverseport setup --client claude_code",
+      );
+    },
+  );
+
+  it("still applies client-specific requirements to a package-runner registration", async () => {
     const home = await createTestTempDirectory("rea-registrations-");
     await mkdir(join(home, ".codex"));
     await writeFile(
@@ -226,6 +324,7 @@ describe("client registration launcher identity", () => {
 
     const statuses = await readClientRegistrationStatuses(home);
 
+    // Codex needs explicit startup and tool timeouts whatever the launcher.
     expect(statuses).toEqual([
       expect.objectContaining({
         client: "codex",
@@ -234,27 +333,9 @@ describe("client registration launcher identity", () => {
       }),
     ]);
   });
+});
 
-  it("reports an unpinned bunx registration as stale rather than aligned", async () => {
-    const home = await createTestTempDirectory("rea-bunx-unpinned-");
-    await writeFile(
-      join(home, ".claude.json"),
-      JSON.stringify({
-        mcpServers: {
-          reverseport: { command: "bunx", args: ["reverseport", "mcp"] },
-        },
-      }),
-    );
-
-    const [status] = await readClientRegistrationStatuses(home);
-
-    expect(status).toMatchObject({
-      client: "claude_code",
-      command: ["bunx", "reverseport", "mcp"],
-      state: "stale",
-    });
-  });
-
+describe("client registration launcher identity", () => {
   it("preserves direct command identity as unknown when the current entrypoint is absent", async () => {
     const home = await createTestTempDirectory("rea-registration-unknown-");
     await mkdir(join(home, ".cursor"));
@@ -374,6 +455,7 @@ describe("client registration package version identity", () => {
         expect(status?.remediation).toContain(
           "reverseport setup --client codex",
         );
+        expect(status?.remediation).toContain("reverseport connect");
       } else {
         expect(status?.remediation).not.toContain("current REA CLI package");
         expect(status?.remediation).not.toContain(

@@ -60,6 +60,8 @@ interface ClientRegistrationStatusBase {
   readonly package_reference?: string;
   /** Non-blocking timeout guidance; caller-selected values remain aligned. */
   readonly advisory?: string;
+  /** Non-blocking note on how a current registration starts REA. */
+  readonly launch_advisory?: string;
   /**
    * The server name this status describes, present only when it is a previous
    * REA name rather than PRODUCT_IDENTITY.mcpServerKey.
@@ -449,12 +451,17 @@ const inspectRegistrationEntry = async ({
   const packageVersionDrift =
     packageVersion !== undefined &&
     packageVersion !== PRODUCT_IDENTITY.packageVersion;
+  const platform = options.platform ?? process.platform;
+  const packageLaunchable =
+    commandFacts.package === undefined
+      ? undefined
+      : packageRunnerLaunchable(command, commandFacts.package, platform);
   const alignment = registrationAligned({
     registration,
     client: effectiveClient,
     command,
     commandFacts,
-    platform: options.platform ?? process.platform,
+    platform,
     inputSchemaProfileSelected:
       registrationEnvironment?.ok === true &&
       snapshotEnvironment(
@@ -485,7 +492,9 @@ const inspectRegistrationEntry = async ({
           ? packageVersionRemediation(packageReference ?? "", client)
           : alignment === "unknown"
             ? unknownEntryPointRemediation()
-            : undefined) ??
+            : packageLaunchable === false
+              ? packageRunnerRemediation(command, client, platform)
+              : undefined) ??
         // Only a target whose setup preserves the flag is a manual
         // conflict; a native row (for example ZCode's own storage) is
         // still repaired by its setup run below.
@@ -513,6 +522,9 @@ const inspectRegistrationEntry = async ({
             options.platform,
             serverKey,
           ),
+      packageLaunchable === true && packageReference !== undefined
+        ? packageRunnerLaunchAdvisory(packageReference)
+        : undefined,
     ),
     activation,
     commandIdentity: commandFacts.identity,
@@ -704,12 +716,58 @@ const registrationAligned = ({
       registration.transport !== "stdio")
   )
     return "stale";
-  // Legacy package runners remain owned, but setup migrates them to the selected installation.
-  if (commandFacts.package !== undefined) return "stale";
+  // A package-runner launch (`npx -y reverseport mcp`, `@latest` or an exact
+  // version, which is what `reverseport connect` and the MCP registry print) is
+  // a current registration. Setup still pins the absolute runtime and script.
+  if (commandFacts.package !== undefined)
+    return packageRunnerLaunchable(command, commandFacts.package, platform)
+      ? "aligned"
+      : "stale";
   // Owning the script does not establish how its shebang interpreter resolves
   // in the client. Setup migrates these launchers without losing ownership.
   return commandFacts.launch === "runtime_script" ? "aligned" : "stale";
 };
+
+/** Whether the client can start this package-runner request as written. */
+const packageRunnerLaunchable = (
+  command: readonly string[],
+  packageFacts: NonNullable<ClientRegistrationCommandFacts["package"]>,
+  platform: NodeJS.Platform,
+): boolean => {
+  const { reference, exactVersion } = packageFacts;
+  // Only the package itself, its `latest` tag or a canonical exact version;
+  // other spellings stay stale so setup rewrites them.
+  if (
+    reference !== PRODUCT_IDENTITY.packageName &&
+    reference !== PRODUCT_IDENTITY.packageSpecifier &&
+    exactVersion === undefined
+  )
+    return false;
+  // npx and bunx are .cmd shims on Windows, which clients cannot spawn
+  // directly; elsewhere there is no cmd to wrap them in.
+  return windowsCommandShell(command) === (platform === "win32");
+};
+
+const windowsCommandShell = (command: readonly string[]): boolean => {
+  const executable = command[0]?.toLowerCase();
+  return executable === "cmd" || executable === "cmd.exe";
+};
+
+/** Non-blocking note on a current package-runner registration. */
+const packageRunnerLaunchAdvisory = (packageReference: string): string =>
+  `This registration starts REA with a package runner (${packageReference}), the portable form reverseport connect and the MCP registry print; it is current. The package runner resolves the package each time the client starts the server. reverseport setup instead registers this installation's absolute Node.js runtime and entry script, which starts faster and works offline; either form is fine.`;
+
+/** Why a package-runner registration this client cannot start as written is stale. */
+const packageRunnerRemediation = (
+  command: readonly string[],
+  client: SetupClient,
+  platform: NodeJS.Platform,
+): string =>
+  platform === "win32" && !windowsCommandShell(command)
+    ? `On Windows, clients cannot start the npx or bunx .cmd shim directly. Wrap it as cmd /c npx -y ${PRODUCT_IDENTITY.registrationPackageSpecifier} mcp (what reverseport connect prints), or run reverseport setup --client ${client.name} to register this installation's absolute Node.js runtime and entry script, then restart the client.`
+    : platform !== "win32" && windowsCommandShell(command)
+      ? `This registration starts the package runner through cmd, which exists only on Windows. Use npx -y ${PRODUCT_IDENTITY.registrationPackageSpecifier} mcp (what reverseport connect prints), or run reverseport setup --client ${client.name} to register this installation's absolute Node.js runtime and entry script, then restart the client.`
+      : `This registration requests an unsupported package spelling. Use npx -y ${PRODUCT_IDENTITY.registrationPackageSpecifier} mcp (what reverseport connect prints), or run reverseport setup --client ${client.name} to register this installation's absolute Node.js runtime and entry script, then restart the client.`;
 
 /** A client that rewrites its file from memory must be quit before setup. */
 const remediation = (client: SetupClient): string => {
@@ -730,6 +788,7 @@ const configuredStatus = (
   packageReference?: string,
   advisory?: string,
   providerSettings?: RecordedProviderSettings,
+  launchAdvisory?: string,
 ): ClientRegistrationStatus =>
   state === "aligned"
     ? {
@@ -742,6 +801,9 @@ const configuredStatus = (
         state,
         remediation: null,
         ...(advisory === undefined ? {} : { advisory }),
+        ...(launchAdvisory === undefined
+          ? {}
+          : { launch_advisory: launchAdvisory }),
         ...(providerSettings === undefined
           ? {}
           : { provider_settings: providerSettings }),
@@ -803,7 +865,7 @@ const packageVersionRemediation = (
   packageReference: string,
   client: SetupClient,
 ): string =>
-  `This registration requests ${packageReference}, while the current REA CLI package is ${PRODUCT_IDENTITY.packageVersion}. REA does not resolve package-runner requests during doctor; update the registration with reverseport setup --client ${client.name}, then restart the client.`;
+  `This registration requests ${packageReference}, while the current REA CLI package is ${PRODUCT_IDENTITY.packageVersion}. REA does not resolve package-runner requests during doctor; update the registration with reverseport setup --client ${client.name} (absolute runtime and entry script), or replace it with a fresh reverseport connect snippet (npx -y ${PRODUCT_IDENTITY.registrationPackageSpecifier} mcp), then restart the client.`;
 
 const unavailableStatus = (
   client: SetupClient,

@@ -4,7 +4,6 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 import { recordedProviderSettings } from "../../../src/application/ClientRegistrationEnvironment.js";
 import { readClientRegistrationStatuses } from "../../../src/application/ClientRegistrationStatus.js";
-import { PRODUCT_IDENTITY } from "../../../src/identity.js";
 import { CURRENT_ENTRYPOINT_PATH } from "../../../src/process/CurrentEntrypointPath.js";
 import { clearClientLocationEnvironment } from "../../fixtures/clientEnvironment.js";
 import { createTestTempDirectory } from "../../fixtures/temporaryDirectory.js";
@@ -110,8 +109,9 @@ it("retains the comparison on a stale launcher, which setup can still repair", a
     JSON.stringify({
       mcpServers: {
         reverseport: {
+          // A version pin other than the CLI's own release is drift.
           command: "npx",
-          args: ["-y", PRODUCT_IDENTITY.registrationPackageSpecifier, "mcp"],
+          args: ["-y", "reverseport@0.1.0", "mcp"],
         },
       },
     }),

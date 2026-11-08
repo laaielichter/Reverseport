@@ -993,6 +993,47 @@ describe("doctor registrations under the previous server name", () => {
   });
 });
 
+describe("doctor package-runner registrations", () => {
+  it("keeps a current npx registration healthy and reports the setup hint as informational", async () => {
+    const launchAdvisory =
+      "This registration starts REA with a package runner (reverseport@latest); it is current.";
+    const result = await runDoctor(
+      undefined,
+      host({
+        clientRegistrations: () =>
+          Promise.resolve([
+            {
+              client: "cursor",
+              config_path: "/home/user/.cursor/mcp.json",
+              command: ["npx", "-y", "reverseport@latest", "mcp"],
+              package_reference: "reverseport@latest",
+              state: "aligned",
+              remediation: null,
+              launch_advisory: launchAdvisory,
+            },
+          ]),
+      }),
+      { clients: ["cursor"] },
+    );
+
+    expect(result.scope_checks).toContainEqual(
+      expect.objectContaining({
+        name: "registration:cursor",
+        ok: true,
+        classification: "healthy",
+      }),
+    );
+    expect(result.informational_checks).toContainEqual(
+      expect.objectContaining({
+        name: "registration_launcher:cursor",
+        ok: true,
+        classification: "healthy",
+        detail: launchAdvisory,
+      }),
+    );
+  });
+});
+
 describe("Grok Bot readiness", () => {
   it("does not treat a Grok Bot data directory as an aligned registration", async () => {
     const registrations: readonly ClientRegistrationStatus[] = [

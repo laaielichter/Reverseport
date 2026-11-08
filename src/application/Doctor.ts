@@ -327,28 +327,40 @@ const inspectDoctor = async (
 const registrationAdvisoryChecks = (
   registrations: readonly ClientRegistrationStatus[],
 ): readonly DoctorCheck[] =>
-  registrations.flatMap(({ client, advisory, server_key_advisory }) => [
-    ...(advisory === undefined
-      ? []
-      : [
-          {
-            name: `registration_timeout:${client}`,
-            ok: true,
-            classification: "healthy" as const,
-            detail: advisory,
-          },
-        ]),
-    ...(server_key_advisory === undefined
-      ? []
-      : [
-          {
-            name: `registration_server_key:${client}`,
-            ok: true,
-            classification: "healthy" as const,
-            detail: server_key_advisory,
-          },
-        ]),
-  ]);
+  registrations.flatMap(
+    ({ client, advisory, launch_advisory, server_key_advisory }) => [
+      ...(launch_advisory === undefined
+        ? []
+        : [
+            {
+              name: `registration_launcher:${client}`,
+              ok: true,
+              classification: "healthy" as const,
+              detail: launch_advisory,
+            },
+          ]),
+      ...(advisory === undefined
+        ? []
+        : [
+            {
+              name: `registration_timeout:${client}`,
+              ok: true,
+              classification: "healthy" as const,
+              detail: advisory,
+            },
+          ]),
+      ...(server_key_advisory === undefined
+        ? []
+        : [
+            {
+              name: `registration_server_key:${client}`,
+              ok: true,
+              classification: "healthy" as const,
+              detail: server_key_advisory,
+            },
+          ]),
+    ],
+  );
 
 /** Settings an available provider's checks in this report relied on. */
 interface ProviderSettingSelection {

@@ -32,7 +32,7 @@ import {
   compareWebScreenshotsInputSchema,
 } from "../domain/webScreenshot.js";
 import type { JsonValue } from "../domain/jsonValue.js";
-import { parseCliJsonInput } from "../cliJsonInput.js";
+import { cliJsonInputArgument, parseCliJsonInput } from "../cliJsonInput.js";
 import type { Logger } from "pino";
 import { cliDomainInput } from "./domainInput.js";
 import { cliDecimalField } from "./options.js";
@@ -104,6 +104,12 @@ const registerWebMcp = (
   });
 };
 
+/** One side of compare-web-captures: a passive capture or a recorded browser scenario. */
+const webCaptureSideSchema = z.union([
+  compareWebCapturesInputSchema.shape.before,
+  compareBrowserScenariosInputSchema.shape.before_scenario,
+]);
+
 const registerCaptureDiff = (
   cli: ReturnType<typeof Cli.create>,
   logger: Logger,
@@ -112,20 +118,20 @@ const registerCaptureDiff = (
     description:
       "Compare two normalized passive captures or recorded browser scenarios",
     args: z.object({
-      beforeJson: z
-        .string()
-        .describe("Earlier normalized web capture JSON or JSON file path"),
-      afterJson: z
-        .string()
-        .describe("Later normalized web capture JSON or JSON file path"),
+      beforeJson: cliJsonInputArgument(
+        "Earlier normalized web capture JSON or JSON file path",
+        webCaptureSideSchema,
+      ),
+      afterJson: cliJsonInputArgument(
+        "Later normalized web capture JSON or JSON file path",
+        webCaptureSideSchema,
+      ),
     }),
     options: z.object({
-      normalizationJson: z
-        .string()
-        .default('{"rules":[]}')
-        .describe(
-          "Recorded literal normalization policy JSON or JSON file path for browser scenarios",
-        ),
+      normalizationJson: cliJsonInputArgument(
+        "Recorded literal normalization policy JSON or JSON file path for browser scenarios",
+        compareBrowserScenariosInputSchema.shape.normalization,
+      ).default('{"rules":[]}'),
     }),
     run: ({ args, options }) =>
       logCliCommand(logger, "compare-web-captures", async () => {
@@ -231,12 +237,14 @@ const registerScreenshotDiff = (
   cli.command(CLI_COMMANDS.compareWebScreenshots, {
     description: "Compare two self-verifying PNG artifact JSON values",
     args: z.object({
-      beforeJson: z
-        .string()
-        .describe("Earlier screenshot artifact JSON or JSON file path"),
-      afterJson: z
-        .string()
-        .describe("Later screenshot artifact JSON or JSON file path"),
+      beforeJson: cliJsonInputArgument(
+        "Earlier screenshot artifact JSON or JSON file path",
+        compareWebScreenshotsInputSchema.shape.before,
+      ),
+      afterJson: cliJsonInputArgument(
+        "Later screenshot artifact JSON or JSON file path",
+        compareWebScreenshotsInputSchema.shape.after,
+      ),
     }),
     options: z.object({
       channelThreshold: cliDecimalField(

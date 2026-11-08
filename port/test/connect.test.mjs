@@ -35,3 +35,20 @@ for (const mode of ['npx', 'local']) {
     assert.deepEqual(Object.keys(EXPECTED).filter(k => !CLIENTS[k]), [], 'every expected client still exists');
   });
 }
+
+test('connect: npx stays the portable default and the note describes both registration forms', () => {
+  const { snippet, launch, version } = connect({ client: 'cursor' });
+  const entry = JSON.parse(snippet).mcpServers.reverseport;
+  const args = process.platform === 'win32' ? entry.args.slice(2) : entry.args;
+  assert.equal(process.platform === 'win32' ? entry.args[1] : entry.command, 'npx');
+  assert.deepEqual([args[0], args[2]], ['-y', 'mcp']);
+  assert.match(args[1], /^reverseport@\d+\.\d+\.\d+/);
+  assert.match(version, /pinned on purpose/);
+  for (const text of [launch, connect().launch]) {
+    assert.match(text, /portable default and a current registration/);
+    assert.match(text, /reverseport setup/);
+    assert.match(text, /absolute Node\.js runtime and entry script/);
+    assert.match(text, /reverseport doctor` accepts both forms/);
+  }
+  assert.equal(connect({ client: 'cursor', mode: 'local' }).launch, undefined);
+});

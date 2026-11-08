@@ -7,7 +7,12 @@ import {
 } from "../application/artifacts/ArtifactComparisonEvidence.js";
 import { ArtifactResourceScope } from "../artifacts/ArtifactResourceScope.js";
 import { CLI_COMMANDS } from "../cliCommandNames.js";
-import { parseCliJsonInput, resolveCliJsonPaths } from "../cliJsonInput.js";
+import {
+  cliJsonInputArgument,
+  parseCliJsonInput,
+  resolveCliJsonPaths,
+} from "../cliJsonInput.js";
+import { artifactComparisonInputSchema } from "../contracts/artifactComparisonContracts.js";
 import { logCliCommand } from "../cliLogging.js";
 import { ARTIFACT_COMPARISON_PROVIDER } from "../domain/comparisonEvidenceIdentity.js";
 import { withCommandCancellation } from "./commandCancellation.js";
@@ -26,7 +31,10 @@ export const registerArtifactComparisonCommand = (
     description:
       'Compare two artifact inventories, including FIT and legacy uImage firmware components, named as {left, right}: complete Evidence or {kind:"evidence-file",path,evidence_id?}. A one-shot command retains no session Evidence for retained-evidence references.',
     args: z.object({
-      inputJson: z.string().describe("Inline workflow JSON or JSON file path"),
+      inputJson: cliJsonInputArgument(
+        "Inline workflow JSON or JSON file path",
+        artifactComparisonInputSchema,
+      ),
     }),
     run: ({ args }) =>
       withCommandCancellation((signal) =>

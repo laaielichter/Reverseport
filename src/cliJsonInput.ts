@@ -387,18 +387,30 @@ const readFailureIssue = (path: string, cause: unknown) => {
   };
 };
 
+/** What `--schema` shows for a JSON argument whose command has no typed request schema. */
+export const FREE_FORM_JSON_CONTENT = Object.freeze({
+  description:
+    "Free-form JSON: this command publishes no typed request schema. It validates the payload when it runs and reports invalid fields as input errors.",
+});
+
 /**
  * Positional inline-JSON or JSON-file argument. With the payload schema the
  * command validates, `--schema` advertises that payload as the argument's JSON
- * content instead of a bare string. The payload schema is converted only when
- * a schema is requested, not on every CLI start.
+ * content instead of a bare string; without one, it says the payload is
+ * free-form JSON. The payload schema is converted only when a schema is
+ * requested, not on every CLI start.
  */
 export const cliJsonInputArgument = (
   description: string,
   payload?: z.ZodType,
 ) => {
   const argument = z.string().describe(description);
-  if (payload === undefined) return argument;
+  if (payload === undefined)
+    return argument.meta({
+      description,
+      contentMediaType: "application/json",
+      contentSchema: FREE_FORM_JSON_CONTENT,
+    });
   let contentSchema: Record<string, unknown> | undefined;
   return argument.meta({
     description,

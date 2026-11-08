@@ -11,6 +11,9 @@ const VERSION = JSON.parse(readFileSync(path.join(REPO, 'package.json'), 'utf8')
 /** Hand-written registrations name an exact version, so an agent never runs a release nobody chose. */
 const PACKAGE = `reverseport@${VERSION}`;
 
+/** One description of both registration forms, matching what `setup` writes and `doctor` accepts. */
+export const LAUNCH_NOTE = 'npx is the portable default and a current registration. `reverseport setup` instead registers the absolute Node.js runtime and entry script of the installation that runs it, which starts faster and offline; `reverseport doctor` accepts both forms and only flags an npx version older than the CLI.';
+
 function launch(mode) {
   // On Windows, clients cannot start the npx .cmd shim directly; cmd /c does it.
   if (mode === 'npx') return process.platform === 'win32' ? { command: 'cmd', args: ['/c', 'npx', '-y', PACKAGE, 'mcp'] } : { command: 'npx', args: ['-y', PACKAGE, 'mcp'] };
@@ -50,6 +53,7 @@ export function connect({ client, mode } = {}) {
       clients: Object.fromEntries(Object.entries(CLIENTS).map(([k, v]) => [k, v.file])),
       easiest: 'npx -y reverseport@latest setup   (finds and configures installed agents for you)',
       next: 'reverseport connect <client>   (add --mode local to point at this copy instead of npx)',
+      launch: LAUNCH_NOTE,
     };
   }
   const key = String(client).toLowerCase().replace(/_/g, '-');
@@ -58,5 +62,5 @@ export function connect({ client, mode } = {}) {
     const near = closest(key, Object.keys(CLIENTS), 3);
     throw new RPError('INVALID_ARGUMENT', `Unknown client "${client}".${near ? ` Did you mean "${near}"?` : ''} Clients: ${Object.keys(CLIENTS).join(', ')}.`);
   }
-  return { client: key, where: c.file, snippet: c.snippet(how === 'local' ? launch('local') : l), serverName: 'reverseport — the name both `reverseport setup` and the Claude plugin use, so a snippet and setup write the same entry instead of a second one (in Claude Code pick the plugin or a registration, not both). Older setups registered it as "rea": rerunning `reverseport setup` moves that entry to "reverseport"; for a client setup does not edit, remove the old "rea" entry by hand.', ...(how === 'npx' ? { version: `${PACKAGE} — pinned on purpose; after an update run \`reverseport connect ${key}\` again for the new number` } : {}), tools: 'ReversePort lists its own tools plus the engine core; REVERSEPORT_TOOLS=all lists every engine tool, REVERSEPORT_TOOLS=port only ReversePort\'s.' };
+  return { client: key, where: c.file, snippet: c.snippet(how === 'local' ? launch('local') : l), serverName: 'reverseport — the name both `reverseport setup` and the Claude plugin use, so a snippet and setup write the same entry instead of a second one (in Claude Code pick the plugin or a registration, not both). Older setups registered it as "rea": rerunning `reverseport setup` moves that entry to "reverseport"; for a client setup does not edit, remove the old "rea" entry by hand.', ...(how === 'npx' ? { version: `${PACKAGE} — pinned on purpose; after an update run \`reverseport connect ${key}\` again for the new number`, launch: LAUNCH_NOTE } : {}), tools: 'ReversePort lists its own tools plus the engine core; REVERSEPORT_TOOLS=all lists every engine tool, REVERSEPORT_TOOLS=port only ReversePort\'s.' };
 }
