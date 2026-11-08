@@ -372,7 +372,7 @@ describe("Kimi Code package launchers", () => {
     ["npx", "win32"],
     ["bunx", "win32"],
   ] as const)(
-    "migrates the legacy %s launcher on %s",
+    "keeps the %s launcher on %s current and lets setup pin the installation",
     async (runner, platform) => {
       const { home, client } = await kimiClient();
       const pinned = PRODUCT_IDENTITY.registrationPackageSpecifier;
@@ -392,7 +392,11 @@ describe("Kimi Code package launchers", () => {
             environment: {},
           })
         ).find(({ client: name }) => name === "kimi"),
-      ).toMatchObject({ state: "stale" });
+      ).toMatchObject({
+        state: "aligned",
+        command: legacy,
+        launch_advisory: expect.stringContaining("reverseport setup"),
+      });
       const launcher = currentClientRegistrationCommand({ platform });
       expect(
         (await configureClientConfiguration(client, {}, launcher)).status,

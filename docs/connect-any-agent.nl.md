@@ -16,7 +16,10 @@ die bij je agent past; ze komen allemaal uit bij dezelfde tools.
 | LangChain/LlamaIndex OpenAPI tools, Semantic Kernel, CrewAI, AutoGen, n8n HTTP                                   | OpenAPI 3.1                         | `GET /api/openapi.json`                                          |
 | Agents die alleen opdrachten kunnen uitvoeren                                                                    | CLI met JSON                        | `reverseport describe <tool>`, `reverseport <tool> --args '{…}'` |
 
-`reverseport connect` zonder client toont ze allemaal. Voeg `--mode local` toe om een fragment naar je checkout te laten verwijzen in plaats van `npx`. Zowel setup als `connect` registreren de server onder de naam `reverseport`, dus beide uitvoeren voegt hem
+`reverseport connect` zonder client toont ze allemaal. De fragmenten gebruiken het draagbare
+`npx -y reverseport@<versie> mcp`; voeg `--mode local` toe om een fragment naar je checkout te laten verwijzen in plaats van `npx`.
+`setup` legt juist het absolute pad van runtime en startscript vast van de installatie die setup draait; dat start sneller.
+Beide vormen zijn actueel en `reverseport doctor` accepteert ze allebei; alleen een npx-versie ouder dan de CLI wordt gemeld. Zowel setup als `connect` registreren de server onder de naam `reverseport`, dus beide uitvoeren voegt hem
 nooit twee keer toe. Eerdere versies gebruikten `rea`; zie de [wijziging van de servernaam](getting-started/installation.md#server-name-change).
 Gebruik in Claude Code `setup` of de plugin, niet beide: de plugin bevat zijn eigen kopie van de server, als
 `plugin_reverseport_reverseport`, dus met beide draai je twee servers.

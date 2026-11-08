@@ -24,6 +24,7 @@ import { redirectedWriteBlocker } from "./MsixPackageStorage.js";
 import type { DoctorReport } from "./Doctor.js";
 import { compareUnicodeCodePoints } from "../domain/unicodeCodePointOrder.js";
 import { CURRENT_ENTRYPOINT_PATH } from "../process/CurrentEntrypointPath.js";
+import { PRODUCT_IDENTITY } from "../identity.js";
 import { macosMajorVersion } from "../domain/macosVersion.js";
 
 /**
@@ -445,6 +446,12 @@ const hopperInstallEligibility = (
   };
 };
 
+/** How the pinned launcher compares with the portable package-runner form. */
+const launchDetail = (command: readonly string[]): string =>
+  command.length === 0
+    ? ""
+    : ` This pins the absolute runtime and entry script of this installation, which starts without resolving a package; the portable npx -y ${PRODUCT_IDENTITY.registrationPackageSpecifier} mcp form that reverseport connect prints is also a current registration.`;
+
 const clientConfigurationDetail = (
   client: SetupClient,
   command: readonly string[],
@@ -464,5 +471,5 @@ const clientConfigurationDetail = (
       : " The HOPPER_LAUNCHER_PATH value shown above is the current fallback; if this plan installs Hopper, REA will replace it with the launcher path reported by that installation."
     : "";
   const persistence = registrationPersistenceDetail(client);
-  return `Add the REA MCP registration for ${client.displayName ?? client.name}; preserve unrelated configuration. The backup path reflects the configuration inspected for this plan; if that file changes before execution, setup will select a recovery path for its current contents. Command: ${command.map((part) => JSON.stringify(part)).join(" ")}.${environmentDetail}${hopperDetail}${persistence === undefined ? "" : ` ${persistence}`}`;
+  return `Add the REA MCP registration for ${client.displayName ?? client.name}; preserve unrelated configuration. The backup path reflects the configuration inspected for this plan; if that file changes before execution, setup will select a recovery path for its current contents. Command: ${command.map((part) => JSON.stringify(part)).join(" ")}.${launchDetail(command)}${environmentDetail}${hopperDetail}${persistence === undefined ? "" : ` ${persistence}`}`;
 };

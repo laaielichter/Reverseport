@@ -1898,13 +1898,22 @@ For a client that supports Registry discovery, search for `io.github.laaielichte
 and select the npm package. The published metadata launches the existing stdio
 server through `npx` with the `mcp` command.
 
-For supported clients, prefer `reverseport setup`: it records the absolute JavaScript
-runtime and entry script of the ReversePort installation performing setup. Client starts
-then use that installation directly, keeping the client's working directory
-without running npm or Bun package resolution there. Registry clients control
-their own package acquisition; Registry metadata cannot name local absolute paths.
+Two registration forms are current, and `reverseport doctor` accepts both:
 
-For manual stdio configuration, substitute the absolute paths of an existing
+- **Package runner (portable).** `npx -y reverseport@<version> mcp`, `npx -y reverseport@latest mcp` or
+  `npx -y reverseport mcp` (on Windows wrapped as `cmd /c npx …`). This is what the Registry metadata,
+  `reverseport connect <client>` and [llms-install.md](../../llms-install.md) print. It works anywhere Node.js
+  and npm do; npm resolves the package each time the client starts the server. A version pin older than the
+  CLI that runs doctor is reported as drift: print a fresh snippet with `reverseport connect <client>` or run
+  setup.
+- **Pinned installation (setup).** `reverseport setup` records the absolute JavaScript runtime and entry script
+  of the ReversePort installation performing setup. Client starts then use that installation directly, without
+  npm or Bun package resolution in the client's working directory, so the server starts faster and offline.
+  Doctor adds a non-blocking note to package-runner registrations that setup can pin this path.
+
+Registry clients control their own package acquisition; Registry metadata cannot name local absolute paths.
+
+For manual stdio configuration with a pinned installation, substitute the absolute paths of an existing
 installation (use the command shown in a setup dry-run):
 
 ```json
@@ -1918,8 +1927,9 @@ installation (use the command shown in a setup dry-run):
 }
 ```
 
-Run current setup to migrate recognized older `npx`/`bunx` registrations, with
-backups, then restart the client. Unrelated or unidentified registrations remain
+Setup replaces a recognized `npx`/`bunx` registration with the pinned form, with a
+backup, then the client needs a restart; you only need this when you want the
+pinned form or doctor reports drift. Unrelated or unidentified registrations remain
 untouched. Setup does not prewarm a separate package-runner command.
 
 If setup itself runs from a package-runner cache, the registration depends on
@@ -1954,8 +1964,9 @@ npm exec --yes --package=reverseport@2.4.0 -- reverseport setup
 ```
 
 Setup binds persistent MCP registrations to the installation that performed setup.
-Running current setup later migrates recognized legacy package-runner registrations
-through the normal reviewed setup transaction.
+Running current setup later replaces recognized package-runner registrations with
+that pinned form through the normal reviewed setup transaction; until then they
+remain current registrations.
 
 With Bun, `bunx reverseport setup` (or `bunx reverseport@latest setup`) is the
 equivalent acquisition entry point. Managed registrations use the selected Bun
