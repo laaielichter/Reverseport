@@ -3,7 +3,7 @@ import type { Logger } from "pino";
 import type { Evidence } from "../domain/evidence.js";
 import type { CliInstance } from "./types.js";
 import { CLI_COMMANDS } from "../cliCommandNames.js";
-import { parseCliJsonInput } from "../cliJsonInput.js";
+import { cliJsonInputArgument, parseCliJsonInput } from "../cliJsonInput.js";
 import { logCliCommand } from "../cliLogging.js";
 import { compareStaticObservedEndpointsFactsSchema } from "../contracts/javascript/applicationWorkflowInputContracts.js";
 import { getEvidenceInputContract } from "../domain/evidenceInputContract.js";
@@ -23,6 +23,10 @@ import {
 } from "./analysisEvidenceDelivery.js";
 
 const operation = "compare_static_and_observed_endpoints";
+/** The request the comparison validates and `--schema` advertises. */
+const requestSchema = getEvidenceInputContract(
+  compareStaticObservedEndpointsFactsSchema,
+).frameSchema;
 const deliverySchema = z
   .object({
     detail: analysisEvidenceDeliveryOptions.detail,
@@ -70,13 +74,7 @@ const runComparison = async (
   const raw = await parseCliJsonInput(inputJson, operation, signal);
   if (!raw.ok) return raw.error;
   // The frame validates transport fields without cloning either Evidence before budget admission.
-  const input = parseAnalysisInput(
-    operation,
-    raw.value,
-    getEvidenceInputContract(compareStaticObservedEndpointsFactsSchema)
-      .frameSchema,
-    signal,
-  );
+  const input = parseAnalysisInput(operation, raw.value, requestSchema, signal);
   if (!input.ok) return projectAnalysisError(input.error);
   let sources: readonly Evidence[] = [];
   const result = await runEvidenceInputCommand(
@@ -112,11 +110,10 @@ export const registerStaticObservedEndpointsCommand = (
     description:
       "Compare static JavaScript endpoints and HAR Evidence JSON offline; --detail summary with --evidence_output saves full facts for selected inspect-analysis-view pages",
     args: z.object({
-      inputJson: z
-        .string()
-        .describe(
-          "Inline JSON or file containing application, capture and optional origin",
-        ),
+      inputJson: cliJsonInputArgument(
+        "Inline JSON or file containing application, capture and optional origin",
+        requestSchema,
+      ),
     }),
     options: commandOptions,
     run: ({ args, options }) =>

@@ -11,6 +11,7 @@ import {
   listElectronTargetsInputSchema,
 } from "../domain/javascript/electronObservation.js";
 import { electronActiveObservationInputSchema } from "../domain/javascript/electronActiveObservation.js";
+import { reconcileJavaScriptRuntimeRequestSchema } from "../contracts/javascript/applicationWorkflowInputContracts.js";
 import { AnalysisInputError } from "../domain/analysisErrorCore.js";
 import { projectAnalysisError } from "../domain/analysisErrorProjection.js";
 import { projectInputIssues } from "../domain/inputIssueProjection.js";
@@ -184,11 +185,10 @@ const registerJavaScriptRuntimeReconciliationCommand = (
     description:
       "Reconcile static application and passive runtime Evidence JSON",
     args: z.object({
-      inputJson: z
-        .string()
-        .describe(
-          "Inline JSON or a JSON file path matching reconcile_javascript_runtime",
-        ),
+      inputJson: cliJsonInputArgument(
+        "Inline JSON or a JSON file path matching reconcile_javascript_runtime",
+        reconcileJavaScriptRuntimeRequestSchema,
+      ),
     }),
     options: z.object({ evidenceBundle: evidenceBundleOption }),
     run: ({ args, options }) =>

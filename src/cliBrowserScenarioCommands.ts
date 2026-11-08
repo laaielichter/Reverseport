@@ -10,7 +10,11 @@ import {
   publishCliAnalysisEvidence,
 } from "./cli/analysisEvidenceDelivery.js";
 import { CLI_COMMANDS } from "./cliCommandNames.js";
-import { parseCliJsonInput, resolveCliJsonPaths } from "./cliJsonInput.js";
+import {
+  cliJsonInputArgument,
+  parseCliJsonInput,
+  resolveCliJsonPaths,
+} from "./cliJsonInput.js";
 import { logCliCommand } from "./cliLogging.js";
 import { projectAnalysisError } from "./domain/analysisErrorProjection.js";
 import { analysisInputErrorFromIssues } from "./domain/inputIssueProjection.js";
@@ -40,11 +44,10 @@ export const registerBrowserScenarioCommands = (
     description:
       "Run one bounded Playwright browser scenario and return Evidence",
     args: z.object({
-      inputJson: z
-        .string()
-        .describe(
-          "Inline browser scenario JSON, JSON file path, or '-' for stdin",
-        ),
+      inputJson: cliJsonInputArgument(
+        "Inline browser scenario JSON, JSON file path, or '-' for stdin",
+        browserScenarioSchema,
+      ),
     }),
     options: z.object(analysisEvidenceDeliveryOptions),
     run: ({ args, options: delivery }) =>
@@ -110,11 +113,10 @@ const registerBrowserScenarioValidationCommand = (
     description:
       "Validate one browser scenario without launching or attaching to a browser",
     args: z.object({
-      inputJson: z
-        .string()
-        .describe(
-          "Inline browser scenario JSON, JSON file path, or '-' for stdin",
-        ),
+      inputJson: cliJsonInputArgument(
+        "Inline browser scenario JSON, JSON file path, or '-' for stdin",
+        browserScenarioSchema,
+      ),
     }),
     run: ({ args }) =>
       withCommandCancellation((signal) =>

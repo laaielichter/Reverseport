@@ -2,7 +2,8 @@ import { z } from "incur";
 
 import { projectManagedApplicationGraphEvidence } from "../application/managed/ManagedApplicationGraphService.js";
 import { CLI_COMMANDS } from "../cliCommandNames.js";
-import { parseCliJsonInput } from "../cliJsonInput.js";
+import { cliJsonInputArgument, parseCliJsonInput } from "../cliJsonInput.js";
+import { managedApplicationGraphReferenceInputSchema } from "../domain/managed/managedApplicationGraph.js";
 import { logCliCommand } from "../cliLogging.js";
 import { projectCliAnalysisResult } from "./projectCliAnalysisResult.js";
 import { withCommandCancellation } from "./commandCancellation.js";
@@ -22,9 +23,10 @@ export const registerProjectManagedApplicationGraph = (
     description:
       "Project authenticated managed static Evidence into an application graph",
     args: z.object({
-      inputJson: z
-        .string()
-        .describe("Inline managed application graph JSON or JSON file path"),
+      inputJson: cliJsonInputArgument(
+        "Inline managed application graph JSON or JSON file path",
+        managedApplicationGraphReferenceInputSchema,
+      ),
     }),
     options: z.object({ evidenceBundle: evidenceBundleOption }),
     run: ({ args, options }) =>

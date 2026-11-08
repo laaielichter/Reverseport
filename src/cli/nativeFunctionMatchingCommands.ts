@@ -5,7 +5,7 @@ import { ArtifactResourceScope } from "../artifacts/ArtifactResourceScope.js";
 import { matchNativeFunctionsInputSchema } from "../contracts/native/functionMatchingContracts.js";
 import { FUNCTION_COMPARISON_PROVIDER } from "../domain/comparisonEvidenceIdentity.js";
 import { CLI_COMMANDS } from "../cliCommandNames.js";
-import { parseCliJsonInput } from "../cliJsonInput.js";
+import { cliJsonInputArgument, parseCliJsonInput } from "../cliJsonInput.js";
 import { logCliCommand } from "../cliLogging.js";
 import { analysisInputErrorFromIssues } from "../domain/inputIssueProjection.js";
 import { projectAnalysisError } from "../domain/analysisErrorProjection.js";
@@ -29,11 +29,10 @@ export const registerNativeFunctionMatchingCommands = (
     description:
       "Match two observed native function inventories without executing targets",
     args: z.object({
-      input: z
-        .string()
-        .describe(
-          "JSON or JSON file: left/right inventories, optional observations and detail",
-        ),
+      input: cliJsonInputArgument(
+        "JSON or JSON file: left/right inventories, optional observations and detail",
+        matchNativeFunctionsInputSchema,
+      ),
     }),
     options: z.object({
       source_bundle: z

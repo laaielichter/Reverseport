@@ -17,6 +17,7 @@ import {
   traceJavaScriptSemanticsRequestSchema,
 } from "../contracts/javascript/applicationWorkflowInputContracts.js";
 import { registerStaticObservedEndpointsCommand } from "./staticObservedEndpointsCommand.js";
+import { applicationInventoryProjectionInputSchema } from "../domain/mobileApplicationGraphProjection.js";
 import { analysisInputErrorFromIssues } from "../domain/inputIssueProjection.js";
 import type { EvidenceLookup } from "../application/EvidenceInputResolver.js";
 import type { Evidence } from "../domain/evidence.js";
@@ -111,6 +112,7 @@ export const registerApplicationCommands = (
     logger,
     name: CLI_COMMANDS.projectAndroidApplicationGraph,
     operation: "project_android_application_graph",
+    inputSchema: applicationInventoryProjectionInputSchema,
     description:
       "Project authenticated APK inventory Evidence into an Android application graph",
     workflow: async (input, lookup, signal) => {
@@ -127,6 +129,7 @@ export const registerApplicationCommands = (
     logger,
     name: CLI_COMMANDS.projectAppleApplicationGraph,
     operation: "project_apple_application_graph",
+    inputSchema: applicationInventoryProjectionInputSchema,
     description:
       "Project authenticated IPA or macOS app inventory Evidence into an Apple application graph",
     workflow: async (input, lookup, signal) => {
@@ -141,6 +144,7 @@ export const registerApplicationCommands = (
     logger,
     name: CLI_COMMANDS.projectHarmonyApplicationGraph,
     operation: "project_harmony_application_graph",
+    inputSchema: applicationInventoryProjectionInputSchema,
     description:
       "Project authenticated HarmonyOS HAP, HSP, or App Pack inventory Evidence into an application graph",
     workflow: async (input, lookup, signal) => {
