@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.19.0](https://github.com/laaielichter/Reverseport/compare/reverseport-1.18.0...reverseport-1.19.0) (2026-11-08)
+
+
+### Bug Fixes
+
+* treat npx registrations as current and advertise remaining CLI payload schemas ([#130](https://github.com/laaielichter/Reverseport/issues/130)) ([87d7855](https://github.com/laaielichter/Reverseport/commit/87d785524408ba8f2a71f6062db62bd7243f2726))
+
 ## [1.18.0](https://github.com/laaielichter/Reverseport/compare/reverseport-1.17.0...reverseport-1.18.0) (2026-11-08)
 
 
