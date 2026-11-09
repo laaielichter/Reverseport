@@ -75,7 +75,9 @@ npx reverseport setup
 Pick your agents, review the changes and approve. Setup registers one MCP server and installs the matching skill,
 with backups of existing configuration. Restart your agent afterwards. Setup supports Claude Code, Codex, Cursor,
 Gemini CLI, GitHub Copilot, OpenCode and [more agents](https://github.com/laaielichter/Reverseport/blob/main/docs/getting-started/installation.md#supported-agents); other clients can use
-[manual MCP registration](https://github.com/laaielichter/Reverseport/blob/main/docs/getting-started/installation.md#mcp-registry).
+`reverseport connect <client>`, which prints a portable `npx` snippet, or
+[manual MCP registration](https://github.com/laaielichter/Reverseport/blob/main/docs/getting-started/installation.md#mcp-registry). Setup pins the absolute path of the
+installation for a faster start; both forms are current registrations.
 
 ### Claude Code plugin
 
