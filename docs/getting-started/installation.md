@@ -1879,7 +1879,7 @@ terminal, run the package at this release:
 <!-- x-release-please-start-version -->
 
 ```bash
-npx -y reverseport@1.19.0 doctor --provider ghidra --json
+npx -y reverseport@1.20.0 doctor --provider ghidra --json
 ```
 
 <!-- x-release-please-end -->
