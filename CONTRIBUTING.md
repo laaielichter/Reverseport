@@ -320,20 +320,29 @@ manual VitePress build and does not publish.
 
 ### Translation corrections
 
-README editions and website editions have separate translation sources:
+Translations are plain Markdown files next to the English page — there is no
+translation catalog. The only translated language so far is Dutch (`nl`):
 
-- Find the language's `readme` path in the
-  [language inventory](website/locales/languages.json) and edit that file.
-  Locale codes and README suffixes can differ. Use the
-  [English README](README.md) to check commands, requirements, and analysis claims.
-- Edit `msgstr` values in `website/locales/<language>/messages.po` for website
-  text. Follow the [website translation guide](website/locales/README.md) for
-  the Python environment, catalog validation, and local preview. Preserve source
-  strings, contexts, placeholders, commands, paths, and recorded evidence.
+- [Dutch README](docs/README.nl.md), linked from the
+  [English README](README.md) ("**English** · [Nederlands](docs/README.nl.md)").
+- [Dutch connect-any-agent guide](docs/connect-any-agent.nl.md), linked from
+  [connect-any-agent](docs/connect-any-agent.md).
+- [Dutch proof-and-memory guide](docs/proof-and-memory.nl.md), linked from
+  [proof-and-memory](docs/proof-and-memory.md).
 
-Before submitting a website translation, run the catalog and website checks in
-that guide. Translated HTML in `website/_site/` is generated; edit the PO catalog
-rather than the generated pages.
+To correct a translation, edit the `<code>.md` file directly and check the
+English page for commands, requirements, and analysis claims. To add a new
+language, add `docs/README.<code>.md` and link it from the English README the
+same way, plus `docs/connect-any-agent.<code>.md` and
+`docs/proof-and-memory.<code>.md` if you want them, each linked from its
+English page. Keep commands, paths, tool names, placeholders, and recorded
+evidence untouched. Before submitting, run `npm run test:port`: it checks the
+tables in the guides (`port/test/docs-counts.test.mjs`).
+
+The open task for a new translation is
+[issue #42](https://github.com/laaielichter/Reverseport/issues/42); the open
+task aligning the Dutch README with the English structure is
+[issue #122](https://github.com/laaielichter/Reverseport/issues/122).
 
 ## Development feedback and PR verification
 
