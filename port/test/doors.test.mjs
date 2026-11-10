@@ -66,6 +66,21 @@ test('HTTP API: tools, OpenAI format, call, OpenAPI, localhost only', async () =
   } finally { server.close(); }
 });
 
+test('CLI: help lists every command ALIASES points to', async () => {
+  const { ALIASES, help } = await import('../cli.mjs');
+  const firstWords = help().split('\n').map(l => l.trimStart().split(/\s+/)[0]);
+  const aliasesByTool = new Map();
+  for (const [alias, tool] of Object.entries(ALIASES)) {
+    if (!aliasesByTool.has(tool)) aliasesByTool.set(tool, []);
+    aliasesByTool.get(tool).push(alias);
+  }
+  const missing = [];
+  for (const [tool, aliases] of aliasesByTool) {
+    if (!aliases.some(a => firstWords.includes(a))) missing.push(`${tool} (${aliases.join(', ')})`);
+  }
+  assert.deepEqual(missing, [], 'every aliased tool needs a help line starting with one of its aliases');
+});
+
 test('CLI: aliases, positional arguments and JSON output', () => {
   const run = (...args) => spawnSync(process.execPath, [path.join(ROOT, 'cli.mjs'), ...args], { env, encoding: 'utf8' });
   const scan = run('scan', FIX);
