@@ -72,6 +72,68 @@ test('symbols in other languages and comment stripping', () => {
   assert.equal(stripComments('a // b\n/* c */d', 'csharp'), 'a     \n       d');
 });
 
+test('scan: GameMaker builds on Windows, Linux, macOS and Android point at re_archive', async () => {
+  const { tempDir } = await import('./helpers.mjs');
+  const fs = await import('node:fs/promises');
+  for (const dataFile of ['data.win', 'assets/game.unx', 'game.ios', 'assets/game.droid']) {
+    const root = await tempDir();
+    await fs.mkdir(path.join(root, path.dirname(dataFile)), { recursive: true });
+    await fs.writeFile(path.join(root, dataFile), 'x'.repeat(100));
+    const s = await scanProject({ path: root });
+    assert.ok(s.engines.some(e => e.id === 'gamemaker-build'), `${dataFile}: ${JSON.stringify(s.engines)}`);
+    assert.ok(s.next?.startsWith('re_archive') && s.next.includes(dataFile), `${dataFile}: ${s.next}`);
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+test("scan: Ren'Py, Electron and Unreal builds point at re_archive, never re_binary", async () => {
+  const { tempDir } = await import('./helpers.mjs');
+  const fs = await import('node:fs/promises');
+  const cases = [
+    ['game/archive.rpa', 're_archive', 'game/archive.rpa'],
+    ['resources/app.asar', 're_archive', 'resources/app.asar'],
+    ['Content/Paks/Game-Windows.pak', 're_archive', 'Content/Paks/Game-Windows.pak'],
+  ];
+  for (const [file, tool, named] of cases) {
+    const root = await tempDir();
+    await fs.mkdir(path.join(root, path.dirname(file)), { recursive: true });
+    await fs.writeFile(path.join(root, file), 'x'.repeat(100));
+    const s = await scanProject({ path: root });
+    assert.ok(s.next?.startsWith(tool) && s.next.includes(named), `${file}: ${s.next}`);
+    assert.ok(!(s.nextSteps ?? []).some(n => n.startsWith('re_binary')), `${file}: no re_binary step: ${JSON.stringify(s.nextSteps)}`);
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+test('scan: Linux Godot export points re_binary at the executable, never the pack', async () => {
+  const { tempDir } = await import('./helpers.mjs');
+  const fs = await import('node:fs/promises');
+  const root = await tempDir();
+  await fs.writeFile(path.join(root, 'game.pck'), 'x'.repeat(100));
+  await fs.writeFile(path.join(root, 'game.x86_64'), 'x'.repeat(100));
+  const s = await scanProject({ path: root });
+  assert.ok(s.binaries.some(b => b.file === 'game.x86_64'), `x86_64 is a build binary: ${JSON.stringify(s.binaries)}`);
+  assert.ok(s.nextSteps.some(n => n.startsWith('re_archive') && n.includes('game.pck')), s.nextSteps.join('\n'));
+  const binaryStep = s.nextSteps.find(n => n.startsWith('re_binary'));
+  assert.ok(binaryStep?.includes('game.x86_64'), `re_binary names the executable: ${binaryStep}`);
+  assert.ok(!s.nextSteps.some(n => n.startsWith('re_binary') && n.includes('.pck')), 're_binary never names the pack');
+  await fs.rm(root, { recursive: true, force: true });
+});
+
+test('scan: a Wavefront .obj is a model, not a build binary', async () => {
+  const { tempDir } = await import('./helpers.mjs');
+  const fs = await import('node:fs/promises');
+  const root = await tempDir();
+  await fs.mkdir(path.join(root, 'models'), { recursive: true });
+  await fs.writeFile(path.join(root, 'models/ship.obj'), 'o Ship\nv 0 0 0\n');
+  const s = await scanProject({ path: root });
+  assert.equal(s.categories.model?.files, 1, JSON.stringify(s.categories));
+  assert.deepEqual(s.binaries, []);
+  assert.ok(!(s.nextSteps ?? []).some(n => n.startsWith('re_binary')));
+  assert.equal(s.next, undefined);
+  await fs.rm(root, { recursive: true, force: true });
+});
+
 test('scan: in a monorepo the root app wins over nested packages and Android modules', async () => {
   const { tempDir } = await import('./helpers.mjs');
   const fs = await import('node:fs/promises');
