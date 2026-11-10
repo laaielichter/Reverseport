@@ -144,6 +144,65 @@ async function buildPak(dir) {
   return { file, content1, content2 };
 }
 
+// ---------------------------------------------------------------- Quake PAK / Doom WAD
+async function buildQuakePak(dir, files = { 'progs.dat': Buffer.from('quake-progs-bytes'), 'maps/start.bsp': Buffer.from('bsp-bytes-here') }) {
+  const chunks = [Buffer.alloc(12)];
+  const entries = [];
+  let off = 12;
+  for (const [name, data] of Object.entries(files)) {
+    entries.push({ name, off, size: data.length });
+    chunks.push(data);
+    off += data.length;
+  }
+  const dirOff = off;
+  const dirBuf = Buffer.concat(entries.map(e => {
+    const name = Buffer.alloc(56);
+    name.write(e.name, 0, 'latin1');
+    return Buffer.concat([name, u32(e.off), u32(e.size)]);
+  }));
+  chunks.push(dirBuf);
+  const buf = Buffer.concat(chunks);
+  buf.write('PACK', 0, 'latin1');
+  buf.writeUInt32LE(dirOff, 4);
+  buf.writeUInt32LE(dirBuf.length, 8);
+  const file = path.join(dir, 'pak0.pak');
+  await fs.writeFile(file, buf);
+  return { file, files };
+}
+
+async function buildDoomWad(dir, lumps = [
+  ['E1M1', Buffer.alloc(0)],
+  ['THINGS', Buffer.from('e1m1-things')],
+  ['LINEDEFS', Buffer.from('e1m1-linedefs')],
+  ['MAP01', Buffer.alloc(0)],
+  ['THINGS', Buffer.from('map01-things')],
+  ['PLAYPAL', Buffer.from('palette-one')],
+  ['PLAYPAL', Buffer.from('palette-two')],
+]) {
+  const chunks = [Buffer.alloc(12)];
+  const entries = [];
+  let off = 12;
+  for (const [name, data] of lumps) {
+    entries.push({ name, off, size: data.length });
+    chunks.push(data);
+    off += data.length;
+  }
+  const dirOff = off;
+  const dirBuf = Buffer.concat(entries.map(e => {
+    const name = Buffer.alloc(8);
+    name.write(e.name, 0, 'latin1');
+    return Buffer.concat([u32(e.off), u32(e.size), name]);
+  }));
+  chunks.push(dirBuf);
+  const buf = Buffer.concat(chunks);
+  buf.write('IWAD', 0, 'latin1');
+  buf.writeUInt32LE(lumps.length, 4);
+  buf.writeUInt32LE(dirOff, 8);
+  const file = path.join(dir, 'doom.wad');
+  await fs.writeFile(file, buf);
+  return { file, lumps };
+}
+
 // ---------------------------------------------------------------- SWF (FWS) with a JPEG, a sound, DoABC and SymbolClass
 function swfBody() {
   const rect = Buffer.from([0x78, 0x00, 0x05, 0x5f, 0x00, 0x00, 0x0f, 0xa0, 0x00]); // 15 bits: 0..11000, 0..8000 twips (550x400)
@@ -240,6 +299,50 @@ test('Unreal pak v8: footer, index, stored and zlib entries extract; Oodle/encry
   assert.equal(ex.extracted, 2);
   assert.deepEqual(await fs.readFile(path.join(dir, 'out', 'Game', 'Content', 'Thing.uasset')), content1);
   assert.deepEqual(await fs.readFile(path.join(dir, 'out', 'Game', 'Maps', 'Level.umap')), content2);
+  await fs.rm(dir, { recursive: true, force: true });
+});
+
+test('Quake .pak: list and extract, subfolder entry; escaping entry refused; bad directory rejected', async () => {
+  const dir = await tempDir();
+  const { file, files } = await buildQuakePak(dir);
+  const list = await archiveTool({ file });
+  assert.equal(list.format, 'quake-pak');
+  assert.deepEqual(list.entries.map(e => e.path), ['progs.dat', 'maps/start.bsp']);
+  assert.deepEqual(list.entries.map(e => [e.offset, e.size]), [[12, files['progs.dat'].length], [12 + files['progs.dat'].length, files['maps/start.bsp'].length]]);
+  const ex = await archiveTool({ file, action: 'extract', out: path.join(dir, 'out') });
+  assert.equal(ex.extracted, 2);
+  for (const [name, data] of Object.entries(files)) assert.deepEqual(await fs.readFile(path.join(dir, 'out', name)), data);
+  // An entry that escapes the output folder is refused, and nothing is written outside it.
+  const evil = await buildQuakePak(dir, { 'good.txt': Buffer.from('ok'), '../evil.txt': Buffer.from('x') });
+  await assert.rejects(archiveTool({ file: evil.file, action: 'extract', out: path.join(dir, 'evil-out') }), /unsafe path/i);
+  await assert.rejects(fs.readFile(path.join(dir, 'evil.txt')));
+  // A directory that points outside the file is BAD_FORMAT, not a silent empty listing.
+  const bad = Buffer.from(await fs.readFile(file));
+  bad.writeUInt32LE(bad.length + 100, 4);
+  const badFile = path.join(dir, 'bad.pak');
+  await fs.writeFile(badFile, bad);
+  await assert.rejects(archiveTool({ file: badFile }), e => e.code === 'BAD_FORMAT');
+  await fs.rm(dir, { recursive: true, force: true });
+});
+
+test('Doom .wad: list and extract, map lumps in map folders, repeated names suffixed; bad directory rejected', async () => {
+  const dir = await tempDir();
+  const { file, lumps } = await buildDoomWad(dir);
+  const list = await archiveTool({ file });
+  assert.equal(list.format, 'doom-wad');
+  assert.equal(list.wadType, 'IWAD');
+  assert.deepEqual(list.entries.map(e => e.path), ['E1M1/THINGS', 'E1M1/LINEDEFS', 'MAP01/THINGS', 'PLAYPAL', 'PLAYPAL~2']);
+  const ex = await archiveTool({ file, action: 'extract', out: path.join(dir, 'out') });
+  assert.equal(ex.extracted, 5);
+  assert.deepEqual(await fs.readFile(path.join(dir, 'out', 'E1M1', 'THINGS')), lumps[1][1]);
+  assert.deepEqual(await fs.readFile(path.join(dir, 'out', 'MAP01', 'THINGS')), lumps[4][1]);
+  assert.deepEqual(await fs.readFile(path.join(dir, 'out', 'PLAYPAL')), lumps[5][1]);
+  assert.deepEqual(await fs.readFile(path.join(dir, 'out', 'PLAYPAL~2')), lumps[6][1]);
+  const bad = Buffer.from(await fs.readFile(file));
+  bad.writeUInt32LE(bad.length + 100, 8);
+  const badFile = path.join(dir, 'bad.wad');
+  await fs.writeFile(badFile, bad);
+  await assert.rejects(archiveTool({ file: badFile }), e => e.code === 'BAD_FORMAT');
   await fs.rm(dir, { recursive: true, force: true });
 });
 
