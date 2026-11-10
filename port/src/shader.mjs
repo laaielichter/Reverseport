@@ -9,6 +9,18 @@ import path from 'node:path';
 import { RPError, requireFile } from './util.mjs';
 import { workspaceDir } from './workspace.mjs';
 
+// Built-in UnityCG.cginc input structs. A shader that uses one of these declares no
+// input struct of its own, so the fields have to come from here.
+const UNITY_INPUT_STRUCTS = {
+  appdata_base: { vertex: 'POSITION', normal: 'NORMAL', texcoord: 'TEXCOORD0' },
+  appdata_tan: { vertex: 'POSITION', tangent: 'TANGENT', normal: 'NORMAL', texcoord: 'TEXCOORD0' },
+  appdata_full: {
+    vertex: 'POSITION', tangent: 'TANGENT', normal: 'NORMAL', texcoord: 'TEXCOORD0',
+    texcoord1: 'TEXCOORD1', texcoord2: 'TEXCOORD2', texcoord3: 'TEXCOORD3', color: 'COLOR',
+  },
+  appdata_img: { vertex: 'POSITION', texcoord: 'TEXCOORD0' },
+};
+
 // ------------------------------------------------------------------------------------------------ detection
 export function detectShader(text, file = '') {
   const ext = path.extname(file).toLowerCase();
@@ -151,11 +163,19 @@ export function shaderLabToGodot(text) {
     const varyings = [];
     const semanticMap = { POSITION: 'VERTEX', SV_POSITION: 'POSITION', NORMAL: 'NORMAL', TANGENT: 'TANGENT', COLOR: 'COLOR', TEXCOORD0: 'UV', TEXCOORD1: 'UV2' };
     let code2 = body.replace(/struct\s+\w+\s*\{[\s\S]*?\};/g, '');
-    const vIn = structs.find(s => /appdata|Attributes|VertexInput/i.test(s.name)) ?? structs[0], vOut = structs.find(s => /v2f|Varyings|VertexOutput/i.test(s.name)) ?? structs[1];
-    if (vOut) for (const fld of vOut.fields) if (!/SV_POSITION|POSITION/.test(fld.semantic)) varyings.push(`varying ${fld.type} v_${fld.name};`);
     const asMatch = fn => { if (!fn) return null; const pm = fn.params.match(/(\w+)\s+(\w+)/); return pm ? [null, pm[1], pm[2], fn.body] : [null, '', '', fn.body]; };
     const vert = sl.vertexFn ? asMatch(findFunction(code2, sl.vertexFn)) : null;
     const frag = sl.fragmentFn ? asMatch(findFunction(code2, sl.fragmentFn)) : null;
+    // A declared input struct wins; otherwise the vertex function's parameter names a
+    // built-in UnityCG.cginc struct. Never mistake the output struct for the input.
+    const declaredIn = structs.find(s => /appdata|Attributes|VertexInput/i.test(s.name));
+    const builtInName = vert && Object.keys(UNITY_INPUT_STRUCTS).find(n => new RegExp(`\\b${n}\\b`).test(vert[1]));
+    const builtInIn = builtInName
+      ? { name: builtInName, fields: Object.entries(UNITY_INPUT_STRUCTS[builtInName]).map(([name, semantic]) => ({ type: 'float4', name, semantic })) }
+      : null;
+    const vOut = structs.find(s => /v2f|Varyings|VertexOutput/i.test(s.name)) ?? structs[1];
+    const vIn = declaredIn ?? builtInIn ?? structs.find(s => s !== vOut) ?? structs[0];
+    if (vOut) for (const fld of vOut.fields) if (!/SV_POSITION|POSITION/.test(fld.semantic)) varyings.push(`varying ${fld.type} v_${fld.name};`);
     let vbody = '', fbody = '';
     if (vert) {
       const inVar = vert[2];
