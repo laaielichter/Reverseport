@@ -53,7 +53,7 @@ export async function carve({ file, offset, length, name } = {}) {
     else throw new RPError('INVALID_ARGUMENT', `Give length: the size of a ${kind.name} at this offset is not stored in its header.`);
   }
   len = Math.min(len, size - offset);
-  const ext = { png: 'png', jpeg: 'jpg', gif: 'gif', webp: 'webp', wav: 'wav', ogg: 'ogg', flac: 'flac', mp4: 'mp4', glb: 'glb', zip: 'zip', 'godot-pck': 'pck', pe: 'exe', elf: 'elf', dds: 'dds', fbx: 'fbx', sqlite: 'sqlite', pdf: 'pdf', otf: 'otf', woff: 'woff', woff2: 'woff2', midi: 'mid', 'godot-ctex': 'ctex', 'godot-resource': 'res', unityfs: 'bundle', wasm: 'wasm' }[kind.id] ?? 'bin';
+  const ext = { png: 'png', jpeg: 'jpg', gif: 'gif', webp: 'webp', wav: 'wav', ogg: 'ogg', flac: 'flac', mp4: 'mp4', glb: 'glb', zip: 'zip', 'godot-pck': 'pck', pe: 'exe', elf: 'elf', dds: 'dds', fbx: 'fbx', sqlite: 'sqlite', pdf: 'pdf', otf: 'otf', woff: 'woff', woff2: 'woff2', midi: 'mid', 'godot-ctex': 'ctex', 'godot-resource': 'res', unityfs: 'bundle', wasm: 'wasm', spirv: 'spv', dxbc: 'dxbc', ttc: 'ttc' }[kind.id] ?? 'bin';
   const dir = await workspaceDir('extracted', 'carved');
   const base = (name ? String(name).replace(/[^A-Za-z0-9._-]+/g, '_').slice(0, 80) : `${path.basename(abs).replace(/[^A-Za-z0-9._-]+/g, '_')}@${offset.toString(16)}`) + (name && path.extname(name) ? '' : `.${ext}`);
   const dest = path.join(dir, base);
