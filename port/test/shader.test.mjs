@@ -73,6 +73,61 @@ const VERTFRAG = `Shader "Unlit/Wave"
     }
 }`;
 
+const APPDATA_BASE = `Shader "Custom/Tint"
+{
+    Properties { _MainTex ("Tex", 2D) = "white" {} _Color ("Color", Color) = (1,1,1,1) }
+    SubShader
+    {
+        Pass
+        {
+            CGPROGRAM
+            #pragma vertex vert
+            #pragma fragment frag
+            #include "UnityCG.cginc"
+            sampler2D _MainTex; float4 _Color;
+            struct v2f { float4 pos : SV_POSITION; float2 uv : TEXCOORD0; };
+            v2f vert (appdata_base v)
+            {
+                v2f o;
+                o.pos = UnityObjectToClipPos(v.vertex);
+                o.uv = v.texcoord;
+                return o;
+            }
+            fixed4 frag (v2f i) : SV_Target { return tex2D(_MainTex, i.uv) * _Color; }
+            ENDCG
+        }
+    }
+}`;
+
+const APPDATA_FULL = `Shader "Custom/Full"
+{
+    Properties { _MainTex ("Tex", 2D) = "white" {} }
+    SubShader
+    {
+        Pass
+        {
+            CGPROGRAM
+            #pragma vertex vert
+            #pragma fragment frag
+            #include "UnityCG.cginc"
+            sampler2D _MainTex;
+            struct v2f { float4 pos : SV_POSITION; float2 uv : TEXCOORD0; float4 col : COLOR; };
+            v2f vert (appdata_full v)
+            {
+                v2f o;
+                o.pos = UnityObjectToClipPos(v.vertex);
+                o.uv = v.texcoord.xy;
+                o.col = v.color;
+                float3 t = v.tangent.xyz + v.normal + v.texcoord1.xyz + v.texcoord2.xyz;
+                o.uv += t.xy * 0.0;
+                return o;
+            }
+            fixed4 frag (v2f i) : SV_Target { return tex2D(_MainTex, i.uv) * i.col; }
+            ENDCG
+        }
+    }
+}`;
+
 const TOY = `void mainImage( out vec4 fragColor, in vec2 fragCoord )
 {
     vec2 uv = fragCoord/iResolution.xy;
@@ -136,6 +191,22 @@ test('ShaderLab vertex/fragment shader → Godot vertex()/fragment() with varyin
   assert.ok(r.text.includes('v_wp = (MODEL_MATRIX * p).xyz;'));
   assert.ok(r.text.includes('void fragment() {') && r.text.includes('vec4 col = texture(_MainTex, v_uv);') && r.text.includes('ALBEDO = (col).rgb;'));
   assert.deepEqual(r.leftovers, []);
+});
+
+test('Built-in appdata_base input struct is mapped like a declared one', () => {
+  const r = shaderLabToGodot(APPDATA_BASE);
+  assert.ok(!r.text.includes('v.vertex') && !r.text.includes('v.texcoord'), r.text);
+  assert.ok(r.text.includes('v_uv = UV;'), r.text);
+  assert.deepEqual(r.leftovers, []);
+});
+
+test('Built-in appdata_full fields are mapped or marked as leftovers', () => {
+  const r = shaderLabToGodot(APPDATA_FULL);
+  assert.ok(!r.text.includes('v.vertex') && !r.text.includes('v.color') && !r.text.includes('v.tangent'), r.text);
+  assert.ok(r.text.includes('v_col = COLOR;'), r.text);
+  assert.ok(r.text.includes('TANGENT.xyz + NORMAL + UV2.xyz'), r.text);
+  assert.ok(r.text.includes('/* PORT: TEXCOORD2 */ texcoord2.xyz'), r.text);
+  assert.deepEqual(r.leftovers, ['TEXCOORD2']);
 });
 
 test('Shadertoy → Godot canvas_item and three.js; Godot → three.js and Unity', async () => {
