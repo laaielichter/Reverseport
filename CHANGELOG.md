@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.21.0](https://github.com/laaielichter/Reverseport/compare/reverseport-1.20.0...reverseport-1.21.0) (2026-11-10)
+
+
+### Bug Fixes
+
+* **shader:** map built-in UnityCG input structs in port_shader ([#143](https://github.com/laaielichter/Reverseport/issues/143)) ([67eba5a](https://github.com/laaielichter/Reverseport/commit/67eba5af1c105dcb88793182674bcc9e9902a0bb))
+
 ## [1.20.0](https://github.com/laaielichter/Reverseport/compare/reverseport-1.19.0...reverseport-1.20.0) (2026-11-09)
 
 
