@@ -131,6 +131,7 @@ test('re_lookup by name: Steam + PCGamingWiki + Wikidata + open-source search', 
   assert.ok(d.identity.genres.includes('Roguelike'));
   assert.deepEqual(d.openSource.map(o => [o.repo, o.kind]), [['fans/ember-run-remake', 'remake / clone'], ['tools/ember-run-save-editor', 'modding / tools']]);
   assert.equal(d.references.videos[0], 'https://cdn.example/trailer.mp4');
+  assert.equal(d.sources.find(s => s.source === 'github').found, true);
   assert.match(d.lookupId, /^ember-run-[0-9a-f]{6}$/);
   assert.ok(d.next.startsWith('re_blueprint'));
   assert.deepEqual(d.nextCall, { tool: 're_blueprint', arguments: { lookupId: d.lookupId } });
@@ -213,4 +214,35 @@ test('a failing source is reported, the rest still answers', async () => {
   } finally { steamDown = false; }
   await assert.rejects(callTool('re_lookup', {}), /Give a name/);
   await assert.rejects(callTool('re_lookup', { query: 'x', sources: ['myspace'] }), /must be one of/);
+});
+
+test('Steam near matches only: candidates.steam and the rerun call', async () => {
+  const d = await callTool('re_lookup', { query: 'Ember', sources: ['steam'] });
+  assert.deepEqual(d.candidates, { steam: [{ id: 999001, name: 'Ember Run: Soundtrack' }, { id: 424242, name: 'Ember Run™' }] });
+  assert.ok(d.notes.some(n => n.includes('re_lookup {steamAppId:"999001"}')));
+  assert.equal(d.sources.find(s => s.source === 'steam').found, false);
+  assert.ok(!d.notes.some(n => n.startsWith('None of the sources that ran found')));
+});
+
+test('every source answered but found nothing: names the sources, suggests other inputs', async () => {
+  const d = await callTool('re_lookup', { query: 'Zzxq', sources: ['wikidata'] });
+  assert.deepEqual(d.candidates, {});
+  assert.ok(d.notes.some(n => n === 'None of the sources that ran found "Zzxq" (wikidata). Try a url, a steamAppId or a github repo instead.'));
+});
+
+test('no source could run: says what each chosen source needs', async () => {
+  const d = await callTool('re_lookup', { query: 'Celeste', sources: ['web'] });
+  assert.deepEqual(d.sources, []);
+  assert.deepEqual(d.candidates, {});
+  assert.ok(d.notes.some(n => n === 'No source could run for this input: web needs a url.'));
+});
+
+test('every source failing is explained in a note', async () => {
+  steamDown = true;
+  try {
+    const d = await callTool('re_lookup', { query: 'Ember Run', kind: 'game', fresh: true, sources: ['steam'] });
+    assert.equal(d.sources.length, 1);
+    assert.equal(d.sources[0].ok, false);
+    assert.ok(d.notes.some(n => n.startsWith('Every source failed')));
+  } finally { steamDown = false; }
 });
