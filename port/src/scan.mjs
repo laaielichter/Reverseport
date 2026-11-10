@@ -11,7 +11,7 @@ const CATEGORY_BY_EXT = {};
 const cat = (name, exts) => exts.split(' ').forEach(e => { CATEGORY_BY_EXT[`.${e}`] = name; });
 cat('scene', 'tscn scn unity prefab umap');
 cat('resource', 'tres res asset mat anim controller overrideController uasset physicmaterial mask playable lighting');
-cat('image', 'png jpg jpeg tga bmp gif webp psd exr hdr dds ktx ktx2 svg tif tiff ico basis');
+cat('image', 'png jpg jpeg tga bmp gif webp psd exr hdr dds ktx ktx2 pvr astc qoi svg tif tiff ico basis');
 cat('audio', 'wav ogg mp3 flac aif aiff opus wem bnk bank fsb xm it mod s3m mid midi');
 cat('model', 'fbx obj gltf glb blend dae 3ds max ma mb ply stl usd usda usdc usdz vox');
 cat('font', 'ttf otf woff woff2 fnt');
