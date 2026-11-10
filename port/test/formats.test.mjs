@@ -24,6 +24,7 @@ test('identifies formats by content', () => {
   assert.equal(identify(Buffer.from('%YAML 1.1\n%TAG !u! tag:unity3d.com,2011:\n')).id, 'unity-yaml');
   assert.equal(identify(Buffer.from('PACK')).id, 'pak');
   assert.notEqual(identify(Buffer.from('PAK!')).id, 'pak');
+  assert.equal(identify(Buffer.from('FSB5')).id, 'fsb5');
 });
 
 test('finds, sizes and carves files embedded in a blob', async () => {
