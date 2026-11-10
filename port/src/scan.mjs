@@ -17,7 +17,7 @@ cat('model', 'fbx obj gltf glb blend dae 3ds max ma mb ply stl usd usda usdc usd
 cat('font', 'ttf otf woff woff2 fnt');
 cat('video', 'mp4 webm ogv mov avi mkv bik bk2 usm');
 cat('config', 'json yaml yml toml ini cfg xml plist properties godot import meta csproj sln vcxproj uproject uplugin gradle cmake lock editorconfig gitignore gitattributes');
-cat('build-binary', 'exe dll so dylib pck pak ucas utoc bundle assets ress resource apk aab ipa jar class dex wasm pdb lib a o obj node');
+cat('build-binary', 'exe dll so dylib pck pak mpq cpk bsa ba2 ucas utoc bundle assets ress resource apk aab ipa jar class dex wasm pdb lib a o obj node');
 cat('docs', 'md txt rst pdf html htm');
 
 // npm dependency → framework name, for "what is this built with" in JS/TS projects.
