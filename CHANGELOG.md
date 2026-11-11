@@ -1,5 +1,28 @@
 # Changelog
 
+## [1.22.0](https://github.com/laaielichter/Reverseport/compare/reverseport-1.21.0...reverseport-1.22.0) (2026-11-11)
+
+
+### Features
+
+* **probe:** recognize MPQ, CPK, BSA/BA2 and .utoc archives ([#108](https://github.com/laaielichter/Reverseport/issues/108)) ([#151](https://github.com/laaielichter/Reverseport/issues/151)) ([f7f2b5a](https://github.com/laaielichter/Reverseport/commit/f7f2b5a3b8e991ce4315ddeb419427e55c37f8db))
+
+
+### Bug Fixes
+
+* **lookup:** explain empty results and keep Steam near matches ([#104](https://github.com/laaielichter/Reverseport/issues/104)) ([#157](https://github.com/laaielichter/Reverseport/issues/157)) ([dd8a93d](https://github.com/laaielichter/Reverseport/commit/dd8a93dd247563ebc9317cbf9e2d4533fc90be9d))
+
+
+### Documentation
+
+* fix 4 broken links ([#138](https://github.com/laaielichter/Reverseport/issues/138)) ([#155](https://github.com/laaielichter/Reverseport/issues/155)) ([de8f941](https://github.com/laaielichter/Reverseport/commit/de8f941d1e0a138004d23d066c8889f7a30a772e))
+* **help:** list all commands in reverseport help ([#82](https://github.com/laaielichter/Reverseport/issues/82)) ([#153](https://github.com/laaielichter/Reverseport/issues/153)) ([05cf4c6](https://github.com/laaielichter/Reverseport/commit/05cf4c6a87f6abad9b9cfa63e6a0a37e43455ba8))
+
+
+### Tests
+
+* fix load-dependent Electron MCP and update maintenance flakes ([#159](https://github.com/laaielichter/Reverseport/issues/159)) ([aea9a17](https://github.com/laaielichter/Reverseport/commit/aea9a17a3847d97ed273a31b39252f1a61c3e09e))
+
 ## [1.21.0](https://github.com/laaielichter/Reverseport/compare/reverseport-1.20.0...reverseport-1.21.0) (2026-11-10)
 
 
