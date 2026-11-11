@@ -17,7 +17,7 @@ import { isMainModule } from './src/main-module.mjs';
 import { errorPayload, formatTools, FORMATS, closest, readFeedback } from './src/agent.mjs';
 import { RPError } from './src/util.mjs';
 
-const ALIASES = {
+export const ALIASES = {
   scan: 're_scan', graph: 're_graph', symbols: 're_symbols', scene: 're_scene', binary: 're_binary', bin: 're_binary', archive: 're_archive', pck: 're_archive',
   probe: 're_probe', extract: 're_extract', carve: 're_extract', compare: 're_compare', diff: 're_compare', 'compare-builds': 're_compare', refs: 're_refs', guids: 're_refs', strings: 're_strings', i18n: 're_strings', l10n: 're_strings', apicheck: 're_apicheck', decode: 're_decode', il2cpp: 're_il2cpp', gdc: 're_decode', api: 're_apicheck', upgrade: 'port_upgrade', 'godot3to4': 'port_upgrade', save: 're_save', savefile: 're_save', shader: 'port_shader', trace: 'port_trace', rpgmaker: 'port_rpgmaker', rpgm: 'port_rpgmaker', report: 're_report',
   lookup: 're_lookup', recon: 're_lookup', web: 're_lookup', blueprint: 're_blueprint', rebuild: 're_blueprint',
@@ -81,7 +81,7 @@ export async function doctor() {
   return { ok: nodeOk && writable, version: VERSION, node: process.versions.node, nodeOk, nodeRequired: '22.23.4+ (22.x), 24.22.1+ (24.x) or 26.12.1+ (Node 23 and 25 are not supported)', workspace: ws, workspaceWritable: writable, workspaceBytes: disk.bytes, workspaceFolders: disk.folders.slice(0, 12), agentdisk: disk.agentdisk, tools: tools.length, platform: `${os.platform()} ${os.arch()}` };
 }
 
-function help() {
+export function help() {
   return `ReversePort ${VERSION} — reverse engineer anything, port it anywhere.
 
 Usage: reverseport <command> [positional] [--key value] [--json '{…}'] [--request args.json]
@@ -96,6 +96,12 @@ Reverse engineering
   probe <file>               hex, entropy map, embedded files, record strides (--offset 4096)
   extract <file> --offset N  carve bytes out (--length N)
   diff <a> <b>               diff two folders, packs, binaries or files (builds)
+  refs <path>                Unity GUID audit: dangling references, duplicate/missing .meta files
+  strings <path>             extract user-facing text for translation, apply it back
+  apicheck <path>            check GDScript/C# against the real Godot API for its target version
+  decode <path>              Godot export back to editable files: .gdc → .gd, binary scenes → text
+  il2cpp <file>              Unity IL2CPP metadata: classes, methods, strings, C# skeleton
+  save <file> [compare]      analyse a save file: fields, roles, checksums, diff two saves
   report <folder>            write ARCHITECTURE.md
 
 Recon without files and rebuilds
@@ -112,6 +118,10 @@ Porting
   copy-assets <planId>       copy all asset units
   status [planId]            progress (no id: all plans)
   verify <planId>            parity, leftovers, markers
+  upgrade <path>             Godot 3 → Godot 4: converted copy of a whole project
+  shader <file> <to>         port a shader to another engine (first draft, PORT: markers)
+  trace <action> <engine>    per-tick trace logger + comparer to prove behaviour parity
+  rpgmaker <path> [out]      RPG Maker MV/MZ project → runnable Godot 4 project
 
 Proof (evidence ledger)
   case init --question "…" --target <what>       open a case (returns caseId)
