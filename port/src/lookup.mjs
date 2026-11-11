@@ -17,6 +17,16 @@ const USER_AGENT = 'ReversePort (+https://github.com/laaielichter/reverseport)';
 const DAY = 24 * 60 * 60 * 1000;
 export const SOURCES = ['steam', 'pcgamingwiki', 'wikidata', 'github', 'appstore', 'web'];
 
+/** What input each source needs before it can run (named in the note when no source could run for the input). */
+const SOURCE_NEEDS = {
+  steam: 'a name (query) or a steamAppId, with kind "game" or "auto"',
+  pcgamingwiki: 'a name (query) or a steamAppId, with kind "game" or "auto"',
+  wikidata: 'a name (query) or a steamAppId',
+  appstore: 'an appStoreId, or a name (query) with kind "app" or "auto"',
+  web: 'a url',
+  github: 'a github repo (owner/repo), or a name (query) for the open-source search',
+};
+
 // ------------------------------------------------------------------ http
 
 /** Refuse anything that is not a public http(s) address (the HTTP door must not become a proxy into the LAN). */
@@ -534,7 +544,8 @@ export async function lookupTool({ query, url, steamAppId, appStoreId, github, k
   const log = [];
   const run = async (name, fn) => {
     if (!use.has(name)) return null;
-    try { const r = await fn(); log.push({ source: name, ok: true, found: !!r?.found }); return r; }
+    // githubSearchSource returns an array of repos, not a { found } result: a non-empty array found something.
+    try { const r = await fn(); log.push({ source: name, ok: true, found: Array.isArray(r) ? r.length > 0 : !!r?.found }); return r; }
     catch (e) { log.push({ source: name, ok: false, error: e.message }); return { found: false, error: e.message }; }
   };
   const r = {};
@@ -567,6 +578,17 @@ export async function lookupTool({ query, url, steamAppId, appStoreId, github, k
   const footprints = fpKeys.map(k => ({ key: k, ...FOOTPRINTS[k] })).map(({ match, ...f }) => f);
   const genres = uniq([...(r.steam?.genres ?? []), ...(r.wikidata?.genres ?? []), ...(r.appstore?.genres ?? []), ...Object.values(r.pcgamingwiki?.taxonomy ?? {}).flat()]);
   const graphicsApi = uniq([...(r.steam?.graphicsApi ?? []), ...Object.entries(r.pcgamingwiki?.api ?? {}).filter(([k]) => /versions/i.test(k)).map(([k, v]) => `${k.replace(/ versions/i, '')} ${v}`)]);
+  // What the empty result means, so the dossier never comes back as bare nulls and []:
+  // Steam's near matches are a lead (not a find), the open-source search counts as a find when it returned repos.
+  const steamCandidates = r.steam?.candidates ?? [];
+  const foundAnything = [r.steam, r.pcgamingwiki, r.wikidata, r.appstore, r.web, r.github].some(x => x?.found)
+    || steamCandidates.length > 0 || (Array.isArray(openSource) && openSource.length > 0);
+  const answered = log.filter(l => l.ok);
+  const ranSources = uniq(answered.map(l => l.source));
+  const skippedSources = [...use].filter(s => !log.some(l => l.source === s));
+  const orList = a => a.length > 1 ? `${a.slice(0, -1).join(', ')} or ${a.at(-1)}` : a[0] ?? '';
+  const untriedInputs = [...(!t.url ? ['a url'] : []), ...(!t.steamAppId ? ['a steamAppId'] : []), ...(!t.github ? ['a github repo'] : [])];
+
   const dossier = {
     input: { query: query ?? null, url: url ?? null, steamAppId: steamAppId ?? null, appStoreId: appStoreId ?? null, github: github ?? null, kind },
     kind: theKind, name,
@@ -601,11 +623,16 @@ export async function lookupTool({ query, url, steamAppId, appStoreId, github, k
         r.github?.found && { title: 'GitHub', url: r.github.url }, r.web?.found && { title: 'Web page', url: r.web.url }].filter(Boolean),
     },
     openSource: Array.isArray(openSource) ? openSource : [],
+    candidates: steamCandidates.length ? { steam: steamCandidates } : {},
     sources: log,
     notes: [
       'Public information only. Engine names come from community wikis and page fingerprints: confidence "high" means two independent sources agree or project files prove it.',
       ...(t.playId ? ['Google Play has no public API: open the store page for details, or attach the .apk and run re_archive.'] : []),
       ...(engines.length ? [] : ['No engine found in public sources. Owning a copy? re_scan on the install folder identifies it from the files.']),
+      ...(steamCandidates.length ? [`No exact name match on Steam: rerun re_lookup with a steamAppId from candidates.steam, for example re_lookup {steamAppId:"${steamCandidates[0].id}"}.`] : []),
+      ...(log.length && answered.length === log.length && !foundAnything
+        ? [`None of the sources that ran found "${t.name ?? name}" (${ranSources.join(', ')}). ${untriedInputs.length ? `Try ${orList(untriedInputs)} instead.` : 'Check the spelling of the name.'}`] : []),
+      ...(log.length === 0 ? [`No source could run for this input: ${skippedSources.map(s => `${s} needs ${SOURCE_NEEDS[s]}`).join('; ')}.`] : []),
       ...(log.length && log.every(l => !l.ok) ? ['Every source failed: this machine cannot reach the public web from Node. Behind a proxy, set NODE_USE_ENV_PROXY=1 (Node 22.21+/24). Otherwise gather the facts with your own web search and pass them to re_blueprint (name, genres, tags, description, engine).'] : []),
     ],
   };

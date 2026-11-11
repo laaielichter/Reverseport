@@ -28,7 +28,7 @@ re_lookup {steamAppId} | {appStoreId} | {github:"owner/repo", mirror:true}
 Read: `tech.engines` (confidence high = two sources or project files agree), `material.footprints` (where the files of
 that engine live and how they are structured), `material.saves/config`, `tech.middleware`, `tech.web`,
 `references` (screenshots, trailers, pages to observe), `openSource` (reimplementations, remakes, tools), `sources`
-(what failed). If Steam returns `candidates` instead of a match, rerun with the right `steamAppId`.
+(what failed). If Steam returns `candidates.steam` instead of a match, rerun with the right `steamAppId`.
 
 If the network is blocked for re_lookup (every source `ok:false` with NETWORK), gather the same facts with your own
 web search/fetch tools and pass them to re_blueprint as `name`, `genres`, `tags`, `description` and `engine`.

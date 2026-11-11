@@ -30,6 +30,7 @@ export const FORMATS = [
   { id: 'unity-web', name: 'Unity web/raw bundle', category: 'engine', test: (b, o) => str(b, o, 'UnityWeb\0') || str(b, o, 'UnityRaw\0') || str(b, o, 'UnityArchive') },
   { id: 'il2cpp-metadata', name: 'Unity IL2CPP global-metadata', category: 'engine', test: (b, o) => u32le(b, o) === 0xfab11baf },
   { id: 'unreal-asset', name: 'Unreal package (.uasset/.umap)', category: 'engine', test: (b, o) => u32le(b, o) === 0x9e2a83c1 },
+  { id: 'unreal-utoc', name: 'Unreal IoStore table of contents (.utoc)', category: 'engine', test: (b, o) => str(b, o, '-==--==--==--==-') },
   { id: 'gamemaker-data', name: 'GameMaker data (FORM/GEN8)', category: 'engine', test: (b, o) => str(b, o, 'FORM') && str(b, o + 8, 'GEN8') },
   { id: 'swf', name: 'Flash SWF', category: 'engine', offsetZeroOnly: true, test: (b, o) => o === 0 && ['FWS', 'CWS', 'ZWS'].includes(b.toString('latin1', o, o + 3)) && b[o + 3] >= 1 && b[o + 3] <= 60 },
   // Git packfiles also start with PACK, followed by a big-endian version 2 or 3; a Quake PAK has a directory
@@ -41,6 +42,13 @@ export const FORMATS = [
   // XNB: platform letter (w Windows, x Xbox 360, m Windows Phone, plus MonoGame's), then format version 3-5.
   { id: 'xnb', name: 'XNA/MonoGame content (XNB)', category: 'archive', test: (b, o) => str(b, o, 'XNB') && b.length > o + 4 && 'wmxiadXWnMrP5OSGb'.includes(String.fromCharCode(b[o + 3])) && [3, 4, 5].includes(b[o + 4]) },
   { id: 'vpk', name: 'Valve VPK archive', category: 'archive', test: (b, o) => at(b, o, [0x34, 0x12, 0xaa, 0x55]) && [1, 2].includes(u32le(b, o + 4)) },
+  // MPQ: header size (u32 LE) is at least 32. MPQ\x1B is a user-data block in front of the header
+  // (StarCraft II maps and replays); its MPQ header size sits at offset 12 and is also at least 32.
+  { id: 'mpq', name: 'Blizzard MPQ archive', category: 'archive', test: (b, o) => (str(b, o, 'MPQ\x1a') && u32le(b, o + 4) >= 32) || (str(b, o, 'MPQ\x1b') && u32le(b, o + 12) >= 32) },
+  // CPK: most files have '@UTF' at offset 16, but some games mask that table, so do not require it.
+  { id: 'cpk', name: 'CRI CPK archive', category: 'archive', test: (b, o) => str(b, o, 'CPK ') },
+  { id: 'bsa', name: 'Bethesda BSA archive', category: 'archive', test: (b, o) => str(b, o, 'BSA\0') && [103, 104, 105].includes(u32le(b, o + 4)) && u32le(b, o + 8) === 36 },
+  { id: 'ba2', name: 'Bethesda BA2 archive', category: 'archive', test: (b, o) => str(b, o, 'BTDX') && ['GNRL', 'DX10', 'GNMF'].includes(b.toString('latin1', o + 8, o + 12)) },
   { id: 'renpy-rpa', name: "Ren'Py archive (RPA)", category: 'archive', test: (b, o) => str(b, o, 'RPA-3.0 ') || str(b, o, 'RPA-2.0 ') },
   { id: 'asar', name: 'Electron archive (asar)', category: 'archive', offsetZeroOnly: true, test: (b, o) => o === 0 && u32le(b, 0) === 4 && str(b, 16, '{"files"') },
   { id: 'zip', name: 'ZIP archive (also apk/jar/ipa/docx/nupkg)', category: 'archive', test: (b, o) => at(b, o, [0x50, 0x4b, 3, 4]) || at(b, o, [0x50, 0x4b, 5, 6]) },
