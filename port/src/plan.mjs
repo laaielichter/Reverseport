@@ -17,6 +17,7 @@ import { convertTree } from './convert.mjs';
 import { writeTscn, unitySpec, threeModule, unrealSpec, scaffold, sceneFunctionName } from './porters.mjs';
 import { dormantFindings, resumePack } from './dormant.mjs';
 import { parityFindings } from './trace.mjs';
+import { draftFile, draftSummary, draftTool, DRAFT_TARGETS } from './draft.mjs';
 import { readUnityAnimation, clipToTres, controllerToGd, snake as animSnake } from './unity-anim.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -346,9 +347,83 @@ export async function portUnit({ planId, unit, full = false } = {}) {
   result.usedBy = plan.units.filter(x => x.dependsOn.includes(u.id)).map(x => x.source).slice(0, 20);
   result.naming = namingFor(u, plan);
   const writeCall = call('port_write', { planId, unit: u.id, files: [{ path: u.target, content: '<ported code>' }, ...(u.extraTargets ? [{ path: u.extraTargets[0], content: '<ported code>' }] : [])] });
-  result.next = `${callText(writeCall)}  (write the ported file, then send it)`;
-  result.nextCall = writeCall;
+  if (u.draft) {
+    result.draft = { file: path.join(plan.output, u.target), portMarkers: u.portMarkers ?? 0, note: 'A mechanical draft of this unit is already in the output. Review it against sourceText, resolve its PORT: lines, then send the finished file.' };
+    result.next = `${callText(writeCall)}  (send the reviewed draft)`;
+    result.nextCall = writeCall;
+  } else if (canDraft(plan, u)) {
+    const draftCall = call('port_draft', { planId, unit: u.id });
+    result.next = `${callText(draftCall)}  (writes a mechanical first draft with PORT: markers to review; or write the file yourself: ${callText(writeCall)})`;
+    result.nextCall = draftCall;
+  } else {
+    result.next = `${callText(writeCall)}  (write the ported file, then send it)`;
+    result.nextCall = writeCall;
+  }
   return result;
+}
+
+/** Units port_draft can translate mechanically: GDScript sources going to C#. */
+const canDraft = (plan, u) => u.kind === 'script' && plan.from === 'godot' && DRAFT_TARGETS.includes(plan.to) && /\.gd$/i.test(u.source) && /\.cs$/i.test(u.target);
+
+/**
+ * Mechanical first draft of GDScript in C#. With a plan it writes the unit's target file and marks the unit
+ * partial: a draft is never "done" until an agent has reviewed it and sent it with port_write.
+ */
+export async function portDraft({ planId, unit, all, file, to, out, name } = {}) {
+  if (!planId) return draftTool({ file, to, out, name });
+  const plan = await loadPlan(planId);
+  if (!DRAFT_TARGETS.includes(plan.to) || plan.from !== 'godot') throw new RPError('NO_DRAFT', `port_draft translates GDScript to C# (targets: ${DRAFT_TARGETS.join(', ')}); plan ${plan.id} goes from ${plan.from} to ${plan.to}. Port its units with port_unit and port_write.`);
+  const draftOne = async u => {
+    const r = await draftFile(path.join(plan.source, u.source), { to: plan.to, className: namingFor(u, plan).className, source: u.source });
+    const written = await writeFiles(plan, u, [{ path: u.target, content: r.content }]);
+    const check = checkTarget(plan, u, [r.content]);
+    u.status = 'partial';
+    u.draft = true;
+    u.written = [...new Set([...(u.written ?? []), ...written])];
+    u.finished = new Date().toISOString();
+    u.notes = `Mechanical draft (port_draft): ${r.markers.length} PORT marker(s). Not reviewed yet.`;
+    if (check.sym) u.targetSymbols = { classes: check.sym.classes.map(c => c.name).filter(Boolean).slice(0, 50), functions: check.sym.functions.map(fn => fn.name).slice(0, 200) };
+    u.portMarkers = check.todo;
+    u.leftovers = check.left.reduce((s, l) => s + l.count, 0);
+    plan.log.push({ at: u.finished, event: 'draft', unit: u.id, files: written, status: 'partial' });
+    return { r, check, written };
+  };
+  if (all) {
+    const open = plan.units.filter(u => canDraft(plan, u) && ['pending', 'in_progress'].includes(u.status));
+    const units = [], failed = [];
+    for (const u of open) {
+      try { const { r } = await draftOne(u); units.push({ unit: u.id, source: u.source, file: path.join(plan.output, u.target), translatedCleanly: draftSummary(r, plan.to).translatedCleanly, portMarkers: r.markers.length }); }
+      catch (e) { if (!(e instanceof RPError)) throw e; failed.push({ unit: u.id, source: u.source, error: e.message }); }
+    }
+    if (plan.log.length > 500) plan.log = plan.log.slice(-500);
+    await savePlan(plan);
+    const first = units[0];
+    const reviewCall = first ? call('port_unit', { planId, unit: first.unit }) : null;
+    return {
+      planId, drafted: units.length, portMarkers: units.reduce((s, x) => s + x.portMarkers, 0), units: units.slice(0, 200), ...(failed.length ? { failed } : {}),
+      progress: progress(plan),
+      note: 'Drafts are marked partial: each one still needs a review against its source. port_unit {planId, unit} gives the source and API hints, the draft is in the file listed here.',
+      next: first ? `${callText(reviewCall)}  (review each draft, resolve its PORT: lines, then port_write the finished file)` : nextCall(plan),
+      nextCall: reviewCall ?? nextCallObj(plan),
+    };
+  }
+  const u = unit ? findUnit(plan, unit) : plan.units.find(x => canDraft(plan, x) && ['pending', 'in_progress'].includes(x.status));
+  if (!u) return withNext(plan, { planId, drafted: 0, message: 'No GDScript unit is waiting for a draft.' });
+  if (!canDraft(plan, u)) throw new RPError('NO_DRAFT', `port_draft translates GDScript scripts to C#; unit ${u.id} (${u.source} → ${u.target}) is not one. Use port_unit {planId, unit} and write it yourself.`);
+  if (u.status === 'done') throw new RPError('ALREADY_PORTED', `Unit ${u.id} is done; a draft would overwrite ${u.target}. To redo it, send a new file with port_write.`);
+  const { r, check } = await draftOne(u);
+  if (plan.log.length > 500) plan.log = plan.log.slice(-500);
+  await savePlan(plan);
+  const writeCall = call('port_write', { planId, unit: u.id, files: [{ path: u.target, content: '<reviewed file>' }] });
+  const big = r.content.length > 100 * 1024;
+  return {
+    planId, unit: u.id, source: u.source, status: 'partial', written: [path.join(plan.output, u.target)], ...draftSummary(r, plan.to),
+    ...(check.left.length ? { leftovers: check.left } : {}),
+    ...(big ? { draftNote: `The draft is ${r.content.length} characters; read it from the written file.` } : { draft: r.content }),
+    progress: progress(plan),
+    next: `Compare the draft with the source, resolve every PORT: line, then ${callText(writeCall)}`,
+    nextCall: writeCall,
+  };
 }
 
 function namingFor(u, plan) {

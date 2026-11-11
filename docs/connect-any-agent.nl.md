@@ -110,7 +110,7 @@ Elke agent kan elke tool bereiken. Wat verandert, is hoeveel er vooraf wordt wee
 | Profiel              | Toont                                                                                          | Tools                          | Voor                                                                   |
 | -------------------- | ---------------------------------------------------------------------------------------------- | ------------------------------ | ---------------------------------------------------------------------- |
 | `compact`            | 9 ReversePort-tools voor verkennen en porten + 6 essentiële engine-tools, korte beschrijvingen | 19 tools (11 zonder de engine) | kleine of oudere modellen, kleine contextvensters                      |
-| `standard` (default) | alle 33 ReversePort-tools + 20 kern-engine-tools                                               | 57 tools (35 zonder de engine) | de meeste agents                                                       |
+| `standard` (default) | alle 34 ReversePort-tools + 20 kern-engine-tools                                               | 58 tools (36 zonder de engine) | de meeste agents                                                       |
 | `full`               | elke tool                                                                                      | meer dan 200 tools             | agents met grote contextvensters waarvan de client dit aantal toestaat |
 
 De aantallen tellen `set_tool_profile` en `run_batch` mee, en met de engine ook `engine_tools` en `engine_call`.

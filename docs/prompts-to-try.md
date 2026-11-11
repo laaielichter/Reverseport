@@ -23,10 +23,11 @@
 | _Rebuild the movement of `<game>` as precisely as possible in Godot._              | `re_blueprint`: systems, parameters to measure, parity table, skeleton                                                            |
 | _Port my Unity UI, prefab variants and Animator to Godot._                         | `port_scene`: Control nodes with anchors, inherited scenes, AnimationPlayer + state machine from .anim/.controller                |
 | _Port this Unity shader (or a Shadertoy) to Godot._                                | `port_shader`: uniforms, intrinsics and built-ins mapped, `PORT:` markers and leftovers for the rest                              |
+| _Translate my GDScript to C# so I only have to review it._                         | `port_draft`: parsed, typed from your scenes, every open line marked `PORT:`; review, then build                                  |
 | _Why does my ported game fall, slide and jump differently?_                        | `port_convert {physics}`: gravity, fixed step, damping, friction/bounce rules, layers → masks, jump velocity recomputed           |
 | _Does the port really behave the same?_                                            | `port_verify` flags tick/delta/seed/order differences; `port_trace` logs both per tick and finds the first divergence             |
 | _Move my RPG Maker MV/MZ game to Godot._                                           | `port_rpgmaker`: maps drawn from the tilesets, events running, database autoload, list of what is left                            |
-| _Port my Godot game to Unity._                                                     | `port_plan` → `port_unit`/`port_write` loop → `port_scene` → `port_verify`                                                        |
+| _Port my Godot game to Unity._                                                     | `port_plan` → `port_unit`/`port_draft`/`port_write` loop → `port_scene` → `port_verify`                                           |
 
 ```text
 You:    Port my Godot game to Unity.
