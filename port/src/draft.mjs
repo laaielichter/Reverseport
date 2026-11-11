@@ -423,10 +423,13 @@ export async function projectFacts(file) {
 }
 
 // ------------------------------------------------------------------------------------------------ expressions → C#
+/** Body of a '…' literal as the body of a "…" literal: an escaped ' loses its backslash, a bare " gains one. */
+const fromSingleQuoted = body => body.replace(/\\([\s\S])|"/g, (m, ch) => (m === '"' ? '\\"' : ch === "'" ? "'" : m));
+
 function csString(tok) {
   let b = tok.body;
   if (tok.raw) return `@"${b.replace(/"/g, '""')}"`;
-  if (tok.quote === "'") b = b.replace(/\\'/g, "'").replace(/(^|[^\\])((?:\\\\)*)"/g, '$1$2\\"');
+  if (tok.quote === "'") b = fromSingleQuoted(b);
   b = b.replace(/\\\n/g, '').replace(/\r?\n/g, '\\n');
   if (tok.triple) b = b.replace(/(^|[^\\])((?:\\\\)*)"/g, '$1$2\\"');
   return `"${b}"`;
@@ -446,7 +449,7 @@ function interpolate(tok, args, ctx) {
   if (tok.raw || tok.triple) return null;
   const parts = [];
   let i = 0, n = 0, m;
-  const body = tok.quote === "'" ? tok.body.replace(/\\'/g, "'").replace(/"/g, '\\"') : tok.body;
+  const body = tok.quote === "'" ? fromSingleQuoted(tok.body) : tok.body;
   const re = /%(-?)(0?)(\d*)(?:\.(\d+))?([sdfcx%])/g;
   const lit = s => s.replace(/\{/g, '{{').replace(/\}/g, '}}');
   while ((m = re.exec(body))) {

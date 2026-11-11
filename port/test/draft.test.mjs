@@ -319,3 +319,9 @@ test('scripted and instanced nodes get the class of their script', async () => {
   assert.match(r.content, /GetNode<PathFollow2D>\("Path\/Follow"\)\.ProgressRatio = 0\.5f;/);
   assert.equal(r.markers.length, 0, JSON.stringify(r.markers));
 });
+
+test('single-quoted strings: escaped quotes and backslashes survive, also inside a format string', () => {
+  const { content: c } = gd("extends Node\n\nfunc f(n: int) -> String:\n\tvar a := 'say \\\"hi\\\" it\\'s \"x\" \\\\'\n\treturn 'n=\"%d\" \\\"q\\\"' % n\n");
+  assert.ok(c.includes(String.raw`var a = "say \"hi\" it's \"x\" \\";`), c);
+  assert.ok(c.includes(String.raw`return $"n=\"{n}\" \"q\"";`), c);
+});
