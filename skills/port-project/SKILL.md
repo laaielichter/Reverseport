@@ -36,7 +36,9 @@ port_copy_assets {planId}                       → textures, audio, models, fon
 port_unit {planId}                              → next unit: source, symbols, apiHints (line numbers), conventions,
                                                    naming rules, dependencies with their ported symbols, checklist
   scenes:  port_scene {planId, unit}            → converted automatically; read its notes
-  code:    write the port yourself, then
+  code:    GDScript → Godot C# or Unity: port_draft {planId, unit} (all:true for every script)
+           → a parsed first draft, unit marked partial; review it, resolve each PORT: line
+           other routes: write the port yourself. Either way finish with
            port_write {planId, unit, files:[{path, content}], notes?}
            → fix every leftover and missingFromSource it reports before moving on
 port_status {planId}                            → progress

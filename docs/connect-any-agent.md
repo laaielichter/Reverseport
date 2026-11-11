@@ -112,7 +112,7 @@ Every agent can reach every tool. What changes is how much is listed up front:
 | Profile              | Lists                                                                                  | Tools                            | For                                                |
 | -------------------- | -------------------------------------------------------------------------------------- | -------------------------------- | -------------------------------------------------- |
 | `compact`            | 9 ReversePort tools for recon and porting + 6 engine essentials, one-line descriptions | 19 tools (11 without the engine) | small or older models, small context windows       |
-| `standard` (default) | all 33 ReversePort tools + 20 core engine tools                                        | 57 tools (35 without the engine) | most agents                                        |
+| `standard` (default) | all 34 ReversePort tools + 20 core engine tools                                        | 58 tools (36 without the engine) | most agents                                        |
 | `full`               | every tool                                                                             | over 200 tools                   | large-context agents whose client allows that many |
 
 The counts include `set_tool_profile` and `run_batch`, and with the engine `engine_tools` and `engine_call`.

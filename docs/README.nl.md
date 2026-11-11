@@ -73,8 +73,9 @@ Alles staat in de [changelog](https://github.com/laaielichter/reverseport/blob/m
 - **Precies nabouwen** — `re_blueprint` maakt daar een clean-room bouwspecificatie van: systemen, wat je aan het
   origineel meet, een `parity.json` en een projectskelet met elke waarde als instelbare parameter.
 - **Porten** — Godot ⇄ Unity, Godot → Unreal, Godot → three.js, GDScript → Godot C#, of van taal naar taal. Scènes en
-  transformaties gaan automatisch; de agent port de code per bestand (`port_unit`, `port_write`) en `port_verify`
-  controleert dat er niets ontbreekt.
+  transformaties gaan automatisch; GDScript krijgt een eerste C#-versie (`port_draft`, elke open regel gemarkeerd met
+  `PORT:`), de agent maakt de code per bestand af (`port_unit`, `port_write`) en `port_verify` controleert dat er
+  niets ontbreekt.
 - **Bewijs bijhouden** — `re_case` houdt per onderzoek of port een dossier bij: bewijs met een vingerafdruk (SHA-256),
   claims die dat bewijs noemen, open vragen, beslissingen met de afgewezen opties en echte tests. Pas als alle
   poorten groen zijn, is het klaar. Met [Stashpad](https://github.com/laaielichter/stashpad) erbij onthoudt het wat

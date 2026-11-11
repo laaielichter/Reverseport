@@ -57,8 +57,9 @@ ReversePort gives agents one consistent way to do all of that:
 - 🧩 **Rebuild precisely** — no files? A name, a store page or a website is enough for a clean-room rebuild spec:
   every system, the parameters to measure, a parity table and a project skeleton.
 - 🚚 **Port for real** — Godot ⇄ Unity, Godot → Unreal, Godot → three.js, GDScript → C#, Godot 3 → 4, RPG Maker →
-  Godot, or language to language. Scenes and transforms convert automatically; code is ported by your agent with API
-  maps; `port_verify` and `port_trace` prove nothing was left behind and behaviour matches.
+  Godot, or language to language. Scenes and transforms convert automatically; GDScript gets a parsed C# first draft
+  (`port_draft`) that your agent finishes with API maps; `port_verify` and `port_trace` prove nothing was left behind
+  and behaviour matches.
 - 🔒 **Local** — runs on your machine. Targets are only read; output goes to new folders. Nothing is uploaded to an
   analysis service, there is no telemetry and no extra API bill.
 
@@ -113,6 +114,14 @@ What is ./MyGame made with? Show me the evidence, then plan a port to Unity.
 That's it. The agent picks the tools; you get answers with the evidence behind them.
 
 ## What's new
+
+**1.23** — code gets a first draft:
+
+- `port_draft` translates GDScript to C# for Godot C# or Unity. It parses the script instead of replacing patterns,
+  reads node types from your scenes and autoloads from `project.godot`, and marks every line it could not carry
+  over with `PORT:`. On Godot's 461 demo scripts, 95% of the statements reach Godot C# without a marker; the draft
+  is unbuilt code, so compile it before you trust it.
+- `port_unit` now points at the draft first; a drafted unit stays partial until your agent has reviewed it.
 
 **1.16** — first contributions from the community:
 
@@ -169,10 +178,10 @@ One MCP server serves the recon, build, proof and porting tools. See [the tool o
 | Source projects and builds | Engine, version, scenes, packs, diffs, no build needed            | Binaries only                             | Read files yourself         |
 | Game formats               | Godot packs, Unity IL2CPP, GameMaker, Ren'Py, Unreal, sound banks | Not part of the job                       | One tool per format         |
 | Native binaries            | Through the Ghidra, Hopper or IDA that you have installed         | Deepest inside their own tool             | The tool's own UI           |
-| Porting                    | Plan, API maps, scene and asset conversion, `port_verify`         | Not part of the job                       | Rewrite and check by hand   |
+| Porting                    | Plan, API maps, code drafts, scene and asset conversion, verify   | Not part of the job                       | Rewrite and check by hand   |
 | Proof                      | Proof cases and guard hooks                                       | Up to the agent                           | Your notes                  |
 | Runs                       | Locally, target read-only                                         | Usually locally                           | Locally                     |
-| Does not                   | Crack DRM or anti-cheat, or write ported code without your agent  | Port or compare builds                    | Scale                       |
+| Does not                   | Crack DRM or anti-cheat, or finish a code port without an agent   | Port or compare builds                    | Scale                       |
 
 If you live inside IDA or Ghidra all day, a dedicated server for that tool goes deepest there. ReversePort's
 deep-analysis engine is [REA](https://github.com/morluto/rea); if you want broad reverse engineering without the game
@@ -189,10 +198,12 @@ There is no telemetry; [PRIVACY.md](PRIVACY.md) lists the few times it uses the 
 **Where do I get it?** Only from npm as [`reverseport`](https://www.npmjs.com/package/reverseport), the MCP Registry
 as `io.github.laaielichter/reverseport`, or this repository. Copies under other names are not ours.
 
-**Does it port my code automatically?** Scenes, transforms and assets convert automatically. Code is written by your
-agent, one unit at a time, with an API map for the engine pair; `port_verify` then checks for leftovers, missing
-functions and dormant logic (stub bodies, functions nothing calls, silenced warnings), so a port that "compiles" but
-does nothing is not reported as done.
+**Does it port my code automatically?** Scenes, transforms and assets convert automatically. GDScript going to Godot
+C# or Unity gets a mechanical first draft from `port_draft`: the logic, types, signals and node paths are translated,
+and every line that needs a decision carries a `PORT:` comment. Your agent reviews and finishes each unit with the API
+map for the engine pair; other routes are written by the agent directly. `port_verify` then checks for leftovers,
+missing functions and dormant logic (stub bodies, functions nothing calls, silenced warnings), so a port that
+"compiles" but does nothing is not reported as done.
 
 **Do I need Ghidra?** Only for decompiling native binaries. ReversePort finds Ghidra, Hopper or IDA but never installs
 them. Scanning, packs, IL2CPP metadata, build diffs, lookup, blueprints and porting need nothing extra.
