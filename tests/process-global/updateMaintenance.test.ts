@@ -559,7 +559,7 @@ describe("maintenance of a registration under the previous server name", () => {
         return result.ok ? result : err(result.error.detail);
       },
     );
-    expect(result).toMatchObject({
+    expect(result, JSON.stringify(result)).toMatchObject({
       status: "planned",
       scope: { clients: ["cursor"] },
       plannedActions: [
@@ -641,7 +641,7 @@ describe("updated executable maintenance planning", () => {
         return result.ok ? result : err(result.error.detail);
       },
     );
-    expect(result).toMatchObject({
+    expect(result, JSON.stringify(result)).toMatchObject({
       status: "planned",
       scope: {
         clients: ["codex"],
@@ -1055,9 +1055,15 @@ describe("Bun global installation update", () => {
   );
 });
 
+// These probes cold-start the real CLI (`setup --dry-run`), which takes about
+// two seconds on an idle host but more than the production 10 s probe deadline
+// on a loaded runner, e.g. the Windows lane running its curated files in
+// parallel. The deadline itself is covered in updateOutput.test.ts; here it
+// only has to stay inside the 30 s test timeout.
+const REAL_CLI_PROBE_TIMEOUT_MS = 20_000;
 let updateCommands: UpdateCommandRunner;
 beforeEach(() => {
-  updateCommands = new UpdateCommandRunner();
+  updateCommands = new UpdateCommandRunner(REAL_CLI_PROBE_TIMEOUT_MS);
 });
 afterEach(async () => {
   await updateCommands.close();
