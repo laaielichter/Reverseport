@@ -72,6 +72,60 @@ test('symbols in other languages and comment stripping', () => {
   assert.equal(stripComments('a // b\n/* c */d', 'csharp'), 'a     \n       d');
 });
 
+test('scan detects Cocos Creator 2.x, 3.x, GDevelop and Haxe projects', async () => {
+  const { tempDir } = await import('./helpers.mjs');
+  const fs = await import('node:fs/promises');
+  const root = await tempDir();
+  const put = async (rel, content) => { await fs.mkdir(path.join(root, path.dirname(rel)), { recursive: true }); await fs.writeFile(path.join(root, rel), content); };
+  // The three samples from #136, plus the Cocos 3.x marker (package.json creator key).
+  await put('cocos2/project.json', '{"engine":"cocos-creator-js","version":"2.4.13"}');
+  await put('cocos3/package.json', JSON.stringify({ name: 'x', creator: { version: '3.8.0' } }));
+  await put('gdevelop/game.json', '{"gdVersion":{"major":5},"properties":{"name":"x"}}');
+  await put('haxe-flixel/build.hxml', '-main Main\n-lib flixel\n');
+  await put('haxe-flixel/Main.hx', 'class Main { static function main() {} }');
+  await put('haxe-openfl/project.xml', '<?xml version="1.0"?>\n<project>\n<meta title="x"/>\n<haxelib name="openfl"/>\n</project>\n');
+  await put('haxe-heaps/build.hxml', '-main Main\n-lib heaps\n');
+  const s = await scanProject({ path: root });
+  const byId = (id, sub) => s.engines.filter(e => e.id === id && (!sub || e.root === sub));
+  const cocos2 = byId('cocos-creator', 'cocos2')[0];
+  assert.equal(cocos2.name, 'Cocos Creator 2.4.13');
+  assert.equal(cocos2.version, '2.4.13');
+  assert.deepEqual(cocos2.evidence, ['cocos2/project.json']);
+  const cocos3 = byId('cocos-creator', 'cocos3')[0];
+  assert.equal(cocos3.name, 'Cocos Creator 3.8.0');
+  assert.equal(cocos3.version, '3.8.0');
+  assert.deepEqual(cocos3.evidence, ['cocos3/package.json']);
+  const gd = byId('gdevelop', 'gdevelop')[0];
+  assert.equal(gd.name, 'GDevelop 5');
+  assert.equal(gd.version, '5');
+  assert.deepEqual(gd.evidence, ['gdevelop/game.json']);
+  const flixel = byId('haxe', 'haxe-flixel')[0];
+  assert.equal(flixel.name, 'Haxe (HaxeFlixel)');
+  assert.equal(flixel.details.framework, 'HaxeFlixel');
+  assert.deepEqual(flixel.evidence, ['haxe-flixel/build.hxml']);
+  const openfl = byId('haxe', 'haxe-openfl')[0];
+  assert.equal(openfl.name, 'Haxe (OpenFL)');
+  assert.equal(openfl.details.framework, 'OpenFL');
+  assert.deepEqual(openfl.evidence, ['haxe-openfl/project.xml']);
+  const heaps = byId('haxe', 'haxe-heaps')[0];
+  assert.equal(heaps.name, 'Haxe (Heaps)');
+  assert.equal(s.languages.haxe.files, 1, '.hx counts as Haxe code');
+});
+
+test('scan does not report non-engine project.json, game.json or project.xml as engines', async () => {
+  const { tempDir } = await import('./helpers.mjs');
+  const fs = await import('node:fs/promises');
+  const root = await tempDir();
+  const put = async (rel, content) => { await fs.mkdir(path.join(root, path.dirname(rel)), { recursive: true }); await fs.writeFile(path.join(root, rel), content); };
+  await put('plain/project.json', '{"name":"x","version":"1.0.0"}');
+  await put('other-engine/project.json', '{"engine":"cocos2d-x","version":"3.17"}');
+  await put('plain/game.json', '{"name":"x","properties":{}}');
+  await put('plain/package.json', JSON.stringify({ name: 'x', version: '1.0.0' }));
+  await put('plain/project.xml', '<?xml version="1.0"?>\n<project><name>x</name></project>\n');
+  const s = await scanProject({ path: root });
+  assert.deepEqual(s.engines.filter(e => ['cocos-creator', 'gdevelop', 'haxe'].includes(e.id)), []);
+});
+
 test('scan: in a monorepo the root app wins over nested packages and Android modules', async () => {
   const { tempDir } = await import('./helpers.mjs');
   const fs = await import('node:fs/promises');

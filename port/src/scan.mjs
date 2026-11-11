@@ -129,6 +129,50 @@ export async function detectEngines(root, files) {
   if (has('main.lua') && has('build.settings')) add({ id: 'solar2d', name: 'Solar2D (Corona)', kind: 'project', evidence: ['main.lua', 'build.settings'] });
   if (has('game.project')) add({ id: 'defold', name: 'Defold', kind: 'project', evidence: ['game.project'] });
   if (find(/\.c3proj$/i).length) add({ id: 'construct', name: 'Construct 3', kind: 'project', evidence: find(/\.c3proj$/i).map(f => f.rel) });
+  // Cocos Creator 2.x: project.json carries the engine id ("cocos-creator-js") and version.
+  // A project.json without that engine key is not a Cocos project.
+  for (const f of find(/(^|\/)project\.json$/).slice(0, 5)) {
+    let json = {};
+    try { json = JSON.parse(await readText(f.abs)); } catch { continue; }
+    if (typeof json.engine !== 'string' || !json.engine.startsWith('cocos-creator')) continue;
+    const version = typeof json.version === 'string' ? json.version : null;
+    add({ id: 'cocos-creator', name: `Cocos Creator${version ? ` ${version}` : ''}`, kind: 'project', root: path.posix.dirname(f.rel) === '.' ? '' : path.posix.dirname(f.rel), version, evidence: [f.rel], details: { engine: json.engine } });
+  }
+  // GDevelop: game.json carries a gdVersion key. A game.json without it is not a GDevelop project.
+  for (const f of find(/(^|\/)game\.json$/).slice(0, 5)) {
+    let json = {};
+    try { json = JSON.parse(await readText(f.abs)); } catch { continue; }
+    const gd = json.gdVersion;
+    if (!gd || typeof gd !== 'object') continue;
+    const version = typeof gd.major === 'number' ? `${gd.major}${typeof gd.minor === 'number' ? `.${gd.minor}` : ''}` : null;
+    add({ id: 'gdevelop', name: `GDevelop${version ? ` ${version}` : ''}`, kind: 'project', root: path.posix.dirname(f.rel) === '.' ? '' : path.posix.dirname(f.rel), version, evidence: [f.rel], details: { gdVersion: gd } });
+  }
+  // Haxe: a *.hxml build file, or a Lime/OpenFL project.xml (the NMML format, which
+  // declares its libraries with <haxelib name="...">). One entry per project folder.
+  const HAXE_FRAMEWORKS = { flixel: 'HaxeFlixel', heaps: 'Heaps', openfl: 'OpenFL', ceramic: 'Ceramic' };
+  const haxeDirs = new Map();
+  const haxeHit = (dir, file, frameworks) => {
+    const hit = haxeDirs.get(dir) ?? { evidence: [], frameworks: [] };
+    hit.evidence.push(file);
+    for (const fw of frameworks) if (fw && !hit.frameworks.includes(fw)) hit.frameworks.push(fw);
+    haxeDirs.set(dir, hit);
+  };
+  for (const f of find(/\.hxml$/i)) {
+    const libs = [...(await readText(f.abs)).matchAll(/^\s*-lib\s+(\S+)/gm)].map(m => m[1].toLowerCase());
+    haxeHit(path.posix.dirname(f.rel) === '.' ? '' : path.posix.dirname(f.rel), f.rel, libs.map(l => HAXE_FRAMEWORKS[l]));
+  }
+  for (const f of find(/(^|\/)project\.xml$/)) {
+    const t = await readText(f.abs);
+    const libs = [...t.matchAll(/<haxelib\s+name\s*=\s*["']([^"']+)["']/gi)].map(m => m[1].toLowerCase());
+    // A <haxelib> tag only appears in Lime/OpenFL project files; a bare <project> root
+    // needs a Lime/OpenFL mention to count, so unrelated project.xml files stay out.
+    if (!libs.length && !(/<project[\s>]/.test(t) && /\b(lime|openfl)\b/i.test(t))) continue;
+    haxeHit(path.posix.dirname(f.rel) === '.' ? '' : path.posix.dirname(f.rel), f.rel, libs.map(l => HAXE_FRAMEWORKS[l]));
+  }
+  for (const [dir, hit] of haxeDirs) {
+    const framework = hit.frameworks[0] ?? null;
+    add({ id: 'haxe', name: `Haxe${framework ? ` (${framework})` : ''}`, kind: 'project', root: dir, evidence: hit.evidence.slice(0, 5), details: { ...(framework ? { framework } : {}) } });
+  }
   for (const f of find(/(^|\/)Cargo\.toml$/).slice(0, 5)) {
     const t = await readText(f.abs);
     if (/^\s*bevy\s*=/m.test(t)) add({ id: 'bevy', name: 'Bevy (Rust)', kind: 'project', evidence: [f.rel] });
@@ -148,6 +192,10 @@ export async function detectEngines(root, files) {
     const deps = { ...pkg.dependencies, ...pkg.devDependencies };
     const found = JS_FRAMEWORKS.filter(([d]) => deps[d]).map(([, n]) => n);
     const pkgDir = path.posix.dirname(f.rel) === '.' ? '' : path.posix.dirname(f.rel);
+    // Cocos Creator 3.x: package.json carries a creator key holding the engine version.
+    if (pkg.creator && typeof pkg.creator === 'object' && typeof pkg.creator.version === 'string' && !engines.some(e => e.id === 'cocos-creator' && e.root === pkgDir)) {
+      add({ id: 'cocos-creator', name: `Cocos Creator ${pkg.creator.version}`, kind: 'project', root: pkgDir, version: pkg.creator.version, evidence: [f.rel], details: { engine: 'cocos-creator' } });
+    }
     const starts = [...(typeof pkg.bin === 'string' ? [pkg.bin] : Object.values(pkg.bin ?? {})), ...['start', 'dev', 'serve'].map(k => scriptEntry(pkg.scripts?.[k])).filter(Boolean)];
     // `bun run --cwd packages/cli src/index.ts` at the root starts a file in another package.
     for (let i = 0; i < starts.length; i++) if (typeof starts[i] === 'string' && starts[i].startsWith('\0')) starts[i] = path.posix.relative(pkgDir || '.', starts[i].slice(1)) || starts[i].slice(1);
