@@ -1,5 +1,5 @@
 // Test helpers: build small but real binary fixtures in memory (Godot packs v1/v2/v3, embedded packs,
-// a .NET assembly, ZIP, asar) so the tests need no downloads and no external tools.
+// a .NET assembly, IL2CPP metadata, ZIP, asar) so the tests need no downloads and no external tools.
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -90,6 +90,48 @@ export function buildDotNetDll({ module = 'Game.dll', ns = 'MiniHeli', types = {
   const sec = opt + 224;
   headers.write('.text', sec, 'latin1'); headers.writeUInt32LE(section.length, sec + 8); headers.writeUInt32LE(textRva, sec + 12); headers.writeUInt32LE(rawSize, sec + 16); headers.writeUInt32LE(0x200, sec + 20); headers.writeUInt32LE(0x60000020, sec + 36);
   return Buffer.concat([headers, section, Buffer.alloc(rawSize - section.length)]);
+}
+
+const DEFAULT_IL2CPP_TYPES = [
+  ['mscorlib.dll', 'System', 'Object', ['ToString', 'GetHashCode']],
+  ['Assembly-CSharp.dll', '', 'Player', ['Awake', 'Update', 'Jump', 'TakeDamage']],
+  ['Assembly-CSharp.dll', 'Game.UI', 'HealthBar', ['SetValue']],
+  ['Assembly-CSharp.dll', 'Game', 'SaveSystem', ['Save', 'Load']],
+];
+
+/** Version-29 global-metadata.dat. types: [assembly, namespace, name, methods]. */
+export function buildIl2cppMetadata({ types = DEFAULT_IL2CPP_TYPES, literals = ['Game Over', 'Press start'] } = {}) {
+  const ids = []; const idOf = new Map();
+  const id = s => { if (!idOf.has(s)) { idOf.set(s, ids.reduce((n, x) => n + Buffer.byteLength(x) + 1, 0)); ids.push(s); } return idOf.get(s); };
+  const i32 = n => { const b = Buffer.alloc(4); b.writeInt32LE(n); return b; };
+  const groups = [];
+  for (const t of types) {
+    const last = groups.at(-1);
+    if (!last || last[0] !== t[0]) groups.push([t[0], [t]]);
+    else last[1].push(t);
+  }
+  const flat = groups.flatMap(([, list]) => list);
+  const images = [];
+  let start = 0;
+  for (const [asm, list] of groups) { images.push([asm, start, list.length]); start += list.length; }
+  const methodRecs = [], typeRecs = [];
+  flat.forEach(([, ns, name, ms], ti) => {
+    const r = Buffer.alloc(88); r.writeInt32LE(id(name), 0); r.writeInt32LE(id(ns), 4); typeRecs.push(r);
+    for (const m of ms) { const mr = Buffer.alloc(32); mr.writeInt32LE(id(m), 0); mr.writeInt32LE(ti, 4); methodRecs.push(mr); }
+  });
+  const imageRecs = images.map(([n, st, count]) => { const r = Buffer.alloc(40); r.writeInt32LE(id(n), 0); r.writeInt32LE(st, 8); r.writeUInt32LE(count, 12); return r; });
+  const strings = Buffer.concat(ids.map(s => Buffer.from(s + '\0')));
+  // shortcut: a literal table whose size is a method record (24, 28, 32, 36, 40) is parsed as methods; repeat the first literal until the size is safe. Set diff hides the copies.
+  const recs = [24, 28, 32, 36, 40];
+  const lits = [...literals];
+  if (lits.length) while (recs.some(r => (lits.length * 8) % r === 0)) lits.push(lits[0]);
+  let at = 0; const litParts = [], litPairs = [];
+  for (const s of lits) { const len = Buffer.byteLength(s); litParts.push(Buffer.from(s)); litPairs.push(i32(len), i32(at)); at += len; }
+  const sections = [Buffer.concat(litPairs), Buffer.concat(litParts), strings, Buffer.alloc(0), Buffer.alloc(0), Buffer.concat(methodRecs), ...Array(13).fill(Buffer.alloc(0)), Buffer.concat(typeRecs), Buffer.concat(imageRecs)];
+  const headerSize = 8 + sections.length * 8;
+  let off = headerSize; const hdr = [Buffer.from([0xaf, 0x1b, 0xb1, 0xfa]), i32(29)];
+  for (const s of sections) { hdr.push(i32(off), i32(s.length)); off += s.length; }
+  return Buffer.concat([...hdr, ...sections]);
 }
 
 /** ZIP with deflated entries (no external tools). */

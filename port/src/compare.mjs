@@ -7,6 +7,7 @@ import { pipeline } from 'node:stream/promises';
 import crypto from 'node:crypto';
 import { RPError, readAt, requireFile, statOrNull, walk, MiB, sha256File, limit, pascalCase } from './util.mjs';
 import { identify, findSignatures, entropyProfile, strideGuess } from './formats.mjs';
+import { parseMetadata, SYSTEM_ASM, typeName } from './il2cpp.mjs';
 import { inspectBinary } from './binary.mjs';
 import { openArchive } from './archive.mjs';
 import { workspaceDir } from './workspace.mjs';
@@ -69,6 +70,144 @@ async function quickHash(file, size) {
   return `sampled:${h.digest('hex')}`;
 }
 
+function usableType(t) {
+  return t.name && t.name !== '<Module>' && !t.name.startsWith('<');
+}
+
+function methodCounts(methods) {
+  const m = new Map();
+  for (const name of methods) m.set(name, (m.get(name) ?? 0) + 1);
+  return m;
+}
+
+function byKey(types) {
+  const m = new Map();
+  for (const t of types) {
+    const key = `${t.assembly}|${typeName(t)}`;
+    if (!m.has(key)) m.set(key, []);
+    m.get(key).push(t);
+  }
+  return m;
+}
+
+function diffMethodPair(a, b, label, out, touched) {
+  const before = out.methodsAdded.length + out.methodsRemoved.length + out.overloadsChanged.length;
+  const ca = methodCounts(a.methods), cb = methodCounts(b.methods);
+  for (const [name, n] of cb) {
+    const prev = ca.get(name) ?? 0;
+    if (!prev) out.methodsAdded.push(`${label}::${name}`);
+    else if (n !== prev) out.overloadsChanged.push({ method: `${label}::${name}`, before: prev, after: n });
+  }
+  for (const name of ca.keys()) if (!cb.has(name)) out.methodsRemoved.push(`${label}::${name}`);
+  if (out.methodsAdded.length + out.methodsRemoved.length + out.overloadsChanged.length !== before) touched.add(a.assembly);
+}
+
+function systemDelta(aTypes, bTypes) {
+  const group = list => {
+    const m = new Map();
+    for (const t of list) {
+      const n = typeName(t);
+      if (!m.has(n)) m.set(n, []);
+      m.get(n).push(t);
+    }
+    return m;
+  };
+  const ga = group(aTypes), gb = group(bTypes);
+  let typesAdded = 0, typesRemoved = 0, methodsAdded = 0, methodsRemoved = 0;
+  for (const n of new Set([...ga.keys(), ...gb.keys()])) {
+    const la = ga.get(n) ?? [], lb = gb.get(n) ?? [];
+    // shortcut: a repeated name is not paired, only the two counts are, until the parser reads the declaring type
+    if (la.length > 1 || lb.length > 1) {
+      typesAdded += Math.max(0, lb.length - la.length);
+      typesRemoved += Math.max(0, la.length - lb.length);
+      const na = la.reduce((s, t) => s + t.methods.length, 0), nb = lb.reduce((s, t) => s + t.methods.length, 0);
+      methodsAdded += Math.max(0, nb - na);
+      methodsRemoved += Math.max(0, na - nb);
+      continue;
+    }
+    if (!la.length) { typesAdded++; methodsAdded += lb[0].methods.length; continue; }
+    if (!lb.length) { typesRemoved++; methodsRemoved += la[0].methods.length; continue; }
+    const ca = methodCounts(la[0].methods), cb = methodCounts(lb[0].methods);
+    for (const [name, nB] of cb) { const nA = ca.get(name) ?? 0; if (nB > nA) methodsAdded += nB - nA; }
+    for (const [name, nA] of ca) { const nB = cb.get(name) ?? 0; if (nA > nB) methodsRemoved += nA - nB; }
+  }
+  return { typesAdded, typesRemoved, methodsAdded, methodsRemoved };
+}
+
+function diffMetadata(ma, mb, cap) {
+  const game = meta => meta.types.filter(t => usableType(t) && !SYSTEM_ASM.test(t.assembly ?? ''));
+  const ga = game(ma), gb = game(mb);
+  const ka = byKey(ga), kb = byKey(gb);
+  const namesOf = list => {
+    const m = new Map();
+    for (const t of list) {
+      const n = typeName(t);
+      if (!m.has(n)) m.set(n, []);
+      m.get(n).push(t);
+    }
+    return m;
+  };
+  const na = namesOf(ga), nb = namesOf(gb);
+  const out = { methodsAdded: [], methodsRemoved: [], overloadsChanged: [] };
+  const touched = new Set(), skip = new Set(), movedAssembly = [];
+  for (const [n, la] of na) {
+    const lb = nb.get(n);
+    if (!lb || la.length !== 1 || lb.length !== 1 || la[0].assembly === lb[0].assembly) continue;
+    movedAssembly.push({ type: n, from: la[0].assembly, to: lb[0].assembly });
+    skip.add(`${la[0].assembly}|${n}`);
+    skip.add(`${lb[0].assembly}|${n}`);
+    diffMethodPair(la[0], lb[0], n, out, touched);
+  }
+  const typesAdded = [], typesRemoved = [];
+  for (const [key, lb] of kb) {
+    if (skip.has(key)) continue;
+    const la = ka.get(key) ?? [];
+    if (la.length === 1 && lb.length === 1) diffMethodPair(la[0], lb[0], typeName(lb[0]), out, touched);
+    else if (!la.length && lb.length === 1) typesAdded.push(typeName(lb[0]));
+  }
+  for (const [key, la] of ka) {
+    if (skip.has(key) || kb.has(key) || la.length !== 1) continue;
+    typesRemoved.push(typeName(la[0]));
+  }
+  const countAsm = list => {
+    const m = new Map();
+    for (const t of list) m.set(t.assembly, (m.get(t.assembly) ?? 0) + 1);
+    return m;
+  };
+  const ca = countAsm(ga), cb = countAsm(gb);
+  const assembliesAdded = [...cb.keys()].filter(n => !ca.has(n));
+  const assembliesRemoved = [...ca.keys()].filter(n => !cb.has(n));
+  const assembliesChanged = [...ca.keys()].filter(n => cb.has(n) && (ca.get(n) !== cb.get(n) || touched.has(n))).map(n => ({ name: n, typesA: ca.get(n), typesB: cb.get(n) }));
+  const sys = meta => {
+    const m = new Map();
+    for (const t of meta.types) {
+      if (!usableType(t) || !SYSTEM_ASM.test(t.assembly ?? '')) continue;
+      if (!m.has(t.assembly)) m.set(t.assembly, []);
+      m.get(t.assembly).push(t);
+    }
+    return m;
+  };
+  const sa = sys(ma), sb = sys(mb);
+  const system = [];
+  for (const asm of new Set([...sa.keys(), ...sb.keys()])) {
+    const d = systemDelta(sa.get(asm) ?? [], sb.get(asm) ?? []);
+    if (d.typesAdded || d.typesRemoved || d.methodsAdded || d.methodsRemoved) system.push({ assembly: asm, ...d });
+  }
+  // shortcut: duplicate literals compare as a set, a count change needs a multiset
+  const litA = new Set(ma.literals), litB = new Set(mb.literals);
+  const literalsAdded = [...litB].filter(s => !litA.has(s)), literalsRemoved = [...litA].filter(s => !litB.has(s));
+  const cut = list => list.slice(0, cap);
+  const identical = ![assembliesAdded, assembliesRemoved, assembliesChanged, typesAdded, typesRemoved, out.methodsAdded, out.methodsRemoved, out.overloadsChanged, movedAssembly, literalsAdded, literalsRemoved, system].some(list => list.length);
+  return {
+    kind: 'il2cpp-metadata', metadataVersion: [ma.version, mb.version], identical,
+    assemblies: { added: cut(assembliesAdded), removed: cut(assembliesRemoved), changed: cut(assembliesChanged) },
+    typesAdded: cut(typesAdded), typesRemoved: cut(typesRemoved), methodsAdded: cut(out.methodsAdded), methodsRemoved: cut(out.methodsRemoved), overloadsChanged: cut(out.overloadsChanged), movedAssembly: cut(movedAssembly),
+    stringLiterals: { added: cut(literalsAdded), removed: cut(literalsRemoved) }, system: cut(system),
+    counts: { assembliesAdded: assembliesAdded.length, assembliesRemoved: assembliesRemoved.length, assembliesChanged: assembliesChanged.length, typesAdded: typesAdded.length, typesRemoved: typesRemoved.length, methodsAdded: out.methodsAdded.length, methodsRemoved: out.methodsRemoved.length, overloadsChanged: out.overloadsChanged.length, movedAssembly: movedAssembly.length, literalsAdded: literalsAdded.length, literalsRemoved: literalsRemoved.length, system: system.length },
+    ...(identical ? {} : { next: 'Method bodies are not in the metadata. Read the native code (GameAssembly.dll / libil2cpp.so / .wasm) with re_binary.' }),
+  };
+}
+
 export async function compare({ a, b, limit: max = 300 } = {}) {
   const sa = await statOrNull(path.resolve(a ?? '')), sb = await statOrNull(path.resolve(b ?? ''));
   if (!sa || !sb) throw new RPError('NOT_FOUND', 'Both a and b must exist.');
@@ -87,10 +226,22 @@ export async function compare({ a, b, limit: max = 300 } = {}) {
       else if (fa.size && (await quickHash(fa.abs, fa.size)) !== (await quickHash(fb.abs, fb.size))) changed.push({ file: rel, sizeA: fa.size, sizeB: fb.size, delta: 0 });
     }
     changed.sort((x, y) => Math.abs(y.delta) - Math.abs(x.delta));
-    return { kind: 'folders', a: A, b: Bp, summary: { added: added.length, removed: removed.length, changed: changed.length, unchanged: ma.size - removed.length - changed.length }, added: limit(added, cap), removed: limit(removed, cap), changed: limit(changed, cap) };
+    const metaFile = changed.find(c => c.file.endsWith('global-metadata.dat'));
+    const next = metaFile ? `re_compare {a:"${ma.get(metaFile.file).abs}", b:"${mb.get(metaFile.file).abs}"}` : undefined;
+    return { kind: 'folders', a: A, b: Bp, summary: { added: added.length, removed: removed.length, changed: changed.length, unchanged: ma.size - removed.length - changed.length }, added: limit(added, cap), removed: limit(removed, cap), changed: limit(changed, cap), ...(next ? { next } : {}) };
   }
   if (!sa.isFile() || !sb.isFile()) throw new RPError('INVALID_ARGUMENT', 'Compare two folders or two files.');
   const ka = identify(await readAt(A, 0, 4096)), kb = identify(await readAt(Bp, 0, 4096));
+  let metadataNote;
+  if (ka.id === 'il2cpp-metadata' && kb.id === 'il2cpp-metadata') {
+    try {
+      const [bufA, bufB] = await Promise.all([fs.readFile(A), fs.readFile(Bp)]);
+      return { a: A, b: Bp, ...diffMetadata(parseMetadata(bufA), parseMetadata(bufB), cap) };
+    } catch (e) {
+      if (e?.code !== 'BAD_FORMAT') throw e;
+      metadataNote = e.message;
+    }
+  }
   // Archives / packs
   const arcA = await openArchive(A).catch(() => null), arcB = arcA ? await openArchive(Bp).catch(() => null) : null;
   if (arcA?.entries?.length && arcB?.entries) {
@@ -146,7 +297,7 @@ export async function compare({ a, b, limit: max = 300 } = {}) {
       }
     }
   } finally { await fa.close(); await fb.close(); }
-  return { kind: 'bytes', a: A, b: Bp, formats: [ka.name, kb.name], size: [sizeA, sizeB], identical: blocks === 0 && sizeA === sizeB, firstDifference: first, differingBlocks4K: blocks, regions: regions.map(r => ({ start: r.start, end: r.end, length: r.end - r.start })), scannedBytes: scan, hint: first !== null ? `re_probe {file, offset:${first}} on each file shows the bytes around the first difference.` : undefined };
+  return { kind: 'bytes', a: A, b: Bp, formats: [ka.name, kb.name], size: [sizeA, sizeB], identical: blocks === 0 && sizeA === sizeB, firstDifference: first, differingBlocks4K: blocks, regions: regions.map(r => ({ start: r.start, end: r.end, length: r.end - r.start })), scannedBytes: scan, ...(metadataNote ? { note: metadataNote } : {}), hint: first !== null ? `re_probe {file, offset:${first}} on each file shows the bytes around the first difference.` : undefined };
 }
 
 export async function report({ path: dir, out } = {}) {
