@@ -76,6 +76,7 @@ export const FORMATS = [
   { id: 'ico', name: 'Windows icon', category: 'image', offsetZeroOnly: true, test: (b, o) => o === 0 && at(b, 0, [0, 0, 1, 0]) && b.length > 6 && b.readUInt16LE(4) > 0 && b.readUInt16LE(4) < 64 },
   { id: 'wav', name: 'WAVE audio', category: 'audio', test: (b, o) => str(b, o, 'RIFF') && str(b, o + 8, 'WAVE') },
   { id: 'fmod-bank', name: 'FMOD Studio bank', category: 'audio', test: (b, o) => str(b, o, 'RIFF') && str(b, o + 8, 'FEV ') },
+  { id: 'fsb5', name: 'FMOD sound bank (FSB5)', category: 'audio', test: (b, o) => str(b, o, 'FSB5') },
   { id: 'avi', name: 'AVI video', category: 'video', test: (b, o) => str(b, o, 'RIFF') && str(b, o + 8, 'AVI ') },
   { id: 'ogg', name: 'Ogg (Vorbis/Opus/Theora)', category: 'audio', test: (b, o) => str(b, o, 'OggS') && b[o + 4] === 0 },
   { id: 'flac', name: 'FLAC audio', category: 'audio', test: (b, o) => str(b, o, 'fLaC') },
