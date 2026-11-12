@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.24.0](https://github.com/laaielichter/Reverseport/compare/reverseport-1.23.0...reverseport-1.24.0) (2026-11-12)
+
+
+### Features
+
+* **archive:** open standalone FMOD .fsb sound banks ([#74](https://github.com/laaielichter/Reverseport/issues/74)) ([#147](https://github.com/laaielichter/Reverseport/issues/147)) ([6743a3c](https://github.com/laaielichter/Reverseport/commit/6743a3c800b138914e3b424ef8dde7793d53fc65))
+* **probe:** recognize KTX2, PVR, ASTC and QOI textures ([#73](https://github.com/laaielichter/Reverseport/issues/73)) ([#149](https://github.com/laaielichter/Reverseport/issues/149)) ([4c7daf4](https://github.com/laaielichter/Reverseport/commit/4c7daf47606791a2b42355eb7af5c07f85a74378))
+
+
+### Bug Fixes
+
+* **scan:** point next steps at the right tool per build type ([#103](https://github.com/laaielichter/Reverseport/issues/103)) ([0c56256](https://github.com/laaielichter/Reverseport/commit/0c562566e95725873745f8104503b9e9e86855ee))
+
 ## [1.23.0](https://github.com/laaielichter/Reverseport/compare/reverseport-1.22.0...reverseport-1.23.0) (2026-11-11)
 
 
