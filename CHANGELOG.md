@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.23.0](https://github.com/laaielichter/Reverseport/compare/reverseport-1.22.0...reverseport-1.23.0) (2026-11-11)
+
+
+### Features
+
+* **port:** add port_draft, a parsed GDScript to C# first draft for Godot C# and Unity ([#161](https://github.com/laaielichter/Reverseport/issues/161)) ([4bce2dc](https://github.com/laaielichter/Reverseport/commit/4bce2dcee0d821948e9897f4e00cc3f2788fca70))
+
 ## [1.22.0](https://github.com/laaielichter/Reverseport/compare/reverseport-1.21.0...reverseport-1.22.0) (2026-11-11)
 
 
