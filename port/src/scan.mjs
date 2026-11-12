@@ -11,13 +11,13 @@ const CATEGORY_BY_EXT = {};
 const cat = (name, exts) => exts.split(' ').forEach(e => { CATEGORY_BY_EXT[`.${e}`] = name; });
 cat('scene', 'tscn scn unity prefab umap');
 cat('resource', 'tres res asset mat anim controller overrideController uasset physicmaterial mask playable lighting');
-cat('image', 'png jpg jpeg tga bmp gif webp psd exr hdr dds ktx ktx2 svg tif tiff ico basis');
+cat('image', 'png jpg jpeg tga bmp gif webp psd exr hdr dds ktx ktx2 pvr astc qoi svg tif tiff ico basis');
 cat('audio', 'wav ogg mp3 flac aif aiff opus wem bnk bank fsb xm it mod s3m mid midi');
 cat('model', 'fbx obj gltf glb blend dae 3ds max ma mb ply stl usd usda usdc usdz vox');
 cat('font', 'ttf otf woff woff2 fnt');
 cat('video', 'mp4 webm ogv mov avi mkv bik bk2 usm');
 cat('config', 'json yaml yml toml ini cfg xml plist properties godot import meta csproj sln vcxproj uproject uplugin gradle cmake lock editorconfig gitignore gitattributes');
-cat('build-binary', 'exe dll so dylib pck pak mpq cpk bsa ba2 ucas utoc bundle assets ress resource apk aab ipa jar class dex wasm pdb lib a o obj node');
+cat('build-binary', 'exe dll so dylib pck pak mpq cpk bsa ba2 ucas utoc bundle assets ress resource apk aab ipa jar class dex wasm pdb lib a o x86_64 x86_32 arm64 node');
 cat('docs', 'md txt rst pdf html htm');
 
 // npm dependency → framework name, for "what is this built with" in JS/TS projects.
@@ -121,7 +121,10 @@ export async function detectEngines(root, files) {
   if (paks.length) add({ id: 'unreal-build', name: 'Unreal Engine game build', kind: 'build', evidence: paks.slice(0, 5).map(f => f.rel), details: { paks: paks.map(f => f.rel), ioStore: rels.some(r => /\.utoc$/i.test(r)) } });
   // Other engines and frameworks
   if (find(/\.yyp$/i).length) add({ id: 'gamemaker', name: 'GameMaker project', kind: 'project', evidence: find(/\.yyp$/i).map(f => f.rel) });
-  if (find(/(^|\/)data\.win$/i).length) add({ id: 'gamemaker-build', name: 'GameMaker game build', kind: 'build', evidence: find(/(^|\/)data\.win$/i).map(f => f.rel) });
+  // GameMaker data files share the FORM format on every platform: data.win (Windows),
+  // game.unx (Linux), game.ios (macOS) and game.droid (Android) — re_archive reads them all.
+  const gmData = find(/(^|\/)(data\.win|game\.unx|game\.ios|game\.droid)$/i);
+  if (gmData.length) add({ id: 'gamemaker-build', name: 'GameMaker game build', kind: 'build', evidence: gmData.map(f => f.rel) });
   const rpg = find(/(^|\/)js\/(rpg_core|rmmz_core)\.js$/);
   if (rpg.length) add({ id: 'rpgmaker', name: rpg[0].rel.includes('rmmz') ? 'RPG Maker MZ' : 'RPG Maker MV', kind: 'project', evidence: rpg.map(f => f.rel) });
   if (find(/\.rpy$/).length || find(/\.rpa$/).length) add({ id: 'renpy', name: "Ren'Py", kind: find(/\.rpy$/).length ? 'project' : 'build', evidence: [...find(/\.rpy$/), ...find(/\.rpa$/)].slice(0, 5).map(f => f.rel) });
@@ -256,8 +259,19 @@ function nextSteps(engines, binaries, root) {
     if (unityBuild.details.assetBundles?.length) steps.push(`re_archive ${j({ file: `${root}/${unityBuild.details.assetBundles[0]}` })} unpacks an asset bundle the same way`);
     if (unityBuild.details.scriptingBackend !== 'IL2CPP') steps.push(`re_binary ${j({ file: `${root}/<Game>_Data/Managed/Assembly-CSharp.dll` })} lists the game classes (Mono builds)`);
   }
+  const gmBuild = engines.find(e => e.id === 'gamemaker-build');
+  if (gmBuild?.evidence?.length) steps.push(`re_archive ${j({ file: `${root}/${gmBuild.evidence[0]}` })} to list the packed game data`);
+  const renpy = engines.find(e => e.id === 'renpy');
+  const rpa = renpy?.evidence?.find(f => /\.rpa$/i.test(f));
+  if (rpa) steps.push(`re_archive ${j({ file: `${root}/${rpa}` })} to list the archive's scripts, images and audio`);
+  const electronBuild = engines.find(e => e.id === 'electron-build');
+  if (electronBuild?.evidence?.length) steps.push(`re_archive ${j({ file: `${root}/${electronBuild.evidence[0]}` })} to list the app's packed files`);
+  const unrealBuild = engines.find(e => e.id === 'unreal-build');
+  if (unrealBuild?.details?.paks?.length) steps.push(`re_archive ${j({ file: `${root}/${unrealBuild.details.paks[0]}` })} to list the pak's cooked assets`);
   // Unity serialized files are read by re_archive (above), not re_binary.
-  const exe = binaries.filter(b => !(unityBuild && /(\.(assets|resS|resource)|\/level\d+|globalgamemanagers|data\.unity3d)$/.test(b.file ?? b.rel ?? b)));
+  // Packs and archives are read by re_archive too: re_binary never names one.
+  const PACK_EXT = /\.(pck|pak|utoc|ucas|bundle|assets|ress|resource)$/i;
+  const exe = binaries.filter(b => { const f = b.file ?? b.rel ?? b; return !PACK_EXT.test(f) && !(unityBuild && /(\/level\d+|globalgamemanagers|data\.unity3d)$/.test(f)); });
   if (exe.length) { const b = exe[0]; steps.push(`re_binary ${j({ file: `${root}/${b.file ?? b.rel ?? b}` })} for executables and libraries`); }
   return steps;
 }
