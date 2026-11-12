@@ -17,13 +17,13 @@ import { isMainModule } from './src/main-module.mjs';
 import { errorPayload, formatTools, FORMATS, closest, readFeedback } from './src/agent.mjs';
 import { RPError } from './src/util.mjs';
 
-const ALIASES = {
+export const ALIASES = {
   scan: 're_scan', graph: 're_graph', symbols: 're_symbols', scene: 're_scene', binary: 're_binary', bin: 're_binary', archive: 're_archive', pck: 're_archive',
   probe: 're_probe', extract: 're_extract', carve: 're_extract', compare: 're_compare', diff: 're_compare', 'compare-builds': 're_compare', refs: 're_refs', guids: 're_refs', strings: 're_strings', i18n: 're_strings', l10n: 're_strings', apicheck: 're_apicheck', decode: 're_decode', il2cpp: 're_il2cpp', gdc: 're_decode', api: 're_apicheck', upgrade: 'port_upgrade', 'godot3to4': 'port_upgrade', save: 're_save', savefile: 're_save', shader: 'port_shader', trace: 'port_trace', rpgmaker: 'port_rpgmaker', rpgm: 'port_rpgmaker', report: 're_report',
   lookup: 're_lookup', recon: 're_lookup', web: 're_lookup', blueprint: 're_blueprint', rebuild: 're_blueprint',
-  map: 'port_map', convert: 'port_convert', plan: 'port_plan', unit: 'port_unit', write: 'port_write', 'port-scene': 'port_scene', 'copy-assets': 'port_copy_assets', status: 'port_status', verify: 'port_verify', case: 're_case', proof: 're_case',
+  map: 'port_map', convert: 'port_convert', plan: 'port_plan', unit: 'port_unit', write: 'port_write', draft: 'port_draft', 'port-scene': 'port_scene', 'copy-assets': 'port_copy_assets', status: 'port_status', verify: 'port_verify', case: 're_case', proof: 're_case',
 };
-const POSITIONAL = { re_scan: ['path'], re_graph: ['path'], re_symbols: ['path'], re_scene: ['file'], re_binary: ['file'], re_archive: ['file'], re_probe: ['file'], re_extract: ['file'], re_compare: ['a', 'b'], re_refs: ['path'], re_strings: ['path'], re_apicheck: ['path'], re_decode: ['path'], re_il2cpp: ['file'], port_upgrade: ['path'], re_save: ['file', 'compare'], port_shader: ['file', 'to'], port_trace: ['action', 'engine'], port_rpgmaker: ['path', 'out'], re_report: ['path'], re_lookup: ['query'], re_blueprint: ['name'], port_map: ['from', 'to'], port_convert: ['from', 'to'], port_plan: ['source'], port_unit: ['planId', 'unit'], port_write: ['planId', 'unit'], port_scene: ['planId', 'unit'], port_copy_assets: ['planId'], port_status: ['planId'], port_verify: ['planId'], re_case: ['action', 'caseId'] };
+const POSITIONAL = { re_scan: ['path'], re_graph: ['path'], re_symbols: ['path'], re_scene: ['file'], re_binary: ['file'], re_archive: ['file'], re_probe: ['file'], re_extract: ['file'], re_compare: ['a', 'b'], re_refs: ['path'], re_strings: ['path'], re_apicheck: ['path'], re_decode: ['path'], re_il2cpp: ['file'], port_upgrade: ['path'], re_save: ['file', 'compare'], port_shader: ['file', 'to'], port_trace: ['action', 'engine'], port_rpgmaker: ['path', 'out'], re_report: ['path'], re_lookup: ['query'], re_blueprint: ['name'], port_map: ['from', 'to'], port_convert: ['from', 'to'], port_plan: ['source'], port_unit: ['planId', 'unit'], port_write: ['planId', 'unit'], port_draft: ['planId', 'unit'], port_scene: ['planId', 'unit'], port_copy_assets: ['planId'], port_status: ['planId'], port_verify: ['planId'], re_case: ['action', 'caseId'] };
 
 /** List arguments whose items can contain commas, so a plain value stays one item. */
 const KEEP_COMMAS = new Set(['insteadOf']);
@@ -81,7 +81,7 @@ export async function doctor() {
   return { ok: nodeOk && writable, version: VERSION, node: process.versions.node, nodeOk, nodeRequired: '22.23.4+ (22.x), 24.22.1+ (24.x) or 26.12.1+ (Node 23 and 25 are not supported)', workspace: ws, workspaceWritable: writable, workspaceBytes: disk.bytes, workspaceFolders: disk.folders.slice(0, 12), agentdisk: disk.agentdisk, tools: tools.length, platform: `${os.platform()} ${os.arch()}` };
 }
 
-function help() {
+export function help() {
   return `ReversePort ${VERSION} — reverse engineer anything, port it anywhere.
 
 Usage: reverseport <command> [positional] [--key value] [--json '{…}'] [--request args.json]
@@ -96,6 +96,12 @@ Reverse engineering
   probe <file>               hex, entropy map, embedded files, record strides (--offset 4096)
   extract <file> --offset N  carve bytes out (--length N)
   diff <a> <b>               diff two folders, packs, binaries or files (builds)
+  refs <path>                Unity GUID audit: dangling references, duplicate/missing .meta files
+  strings <path>             extract user-facing text for translation, apply it back
+  apicheck <path>            check GDScript/C# against the real Godot API for its target version
+  decode <path>              Godot export back to editable files: .gdc → .gd, binary scenes → text
+  il2cpp <file>              Unity IL2CPP metadata: classes, methods, strings, C# skeleton
+  save <file> [compare]      analyse a save file: fields, roles, checksums, diff two saves
   report <folder>            write ARCHITECTURE.md
 
 Recon without files and rebuilds
@@ -108,10 +114,15 @@ Porting
   plan <source> --to unity   plan a port and scaffold the output project
   unit <planId>              next unit with source, API hints, conventions
   write <planId> <unit> --content "…" | --copy | --request write.json
+  draft <planId> [unit]      GDScript → C# first draft of a unit (--all: every waiting script; or --file x.gd --to unity)
   port-scene <planId> <unit> convert a scene/prefab
   copy-assets <planId>       copy all asset units
   status [planId]            progress (no id: all plans)
   verify <planId>            parity, leftovers, markers
+  upgrade <path>             Godot 3 → Godot 4: converted copy of a whole project
+  shader <file> <to>         port a shader to another engine (first draft, PORT: markers)
+  trace <action> <engine>    per-tick trace logger + comparer to prove behaviour parity
+  rpgmaker <path> [out]      RPG Maker MV/MZ project → runnable Godot 4 project
 
 Proof (evidence ledger)
   case init --question "…" --target <what>       open a case (returns caseId)

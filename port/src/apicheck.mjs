@@ -16,7 +16,7 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'k
 const cache = new Map();
 export const GODOT_VERSIONS = fs.readdirSync(ROOT).filter(f => /^godot-\d+(?:\.\d+)*\.json$/.test(f)).map(f => f.replace(/^godot-|\.json$/g, '')).sort();
 
-function snapshot(version) {
+export function snapshot(version) {
   const key = `godot-${version}`;
   if (!cache.has(key)) {
     const file = path.join(ROOT, `${key}.json`);
@@ -63,7 +63,7 @@ export function resolveVersion(v) {
 }
 
 /** All members of a class including inherited ones. */
-function members(api, cls) {
+export function members(api, cls) {
   if (api.memberCache.has(cls)) return api.memberCache.get(cls);
   const out = { methods: new Set(), properties: new Set(), signals: new Set(), constants: new Set() };
   let c = cls;

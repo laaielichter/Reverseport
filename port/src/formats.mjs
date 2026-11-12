@@ -30,6 +30,7 @@ export const FORMATS = [
   { id: 'unity-web', name: 'Unity web/raw bundle', category: 'engine', test: (b, o) => str(b, o, 'UnityWeb\0') || str(b, o, 'UnityRaw\0') || str(b, o, 'UnityArchive') },
   { id: 'il2cpp-metadata', name: 'Unity IL2CPP global-metadata', category: 'engine', test: (b, o) => u32le(b, o) === 0xfab11baf },
   { id: 'unreal-asset', name: 'Unreal package (.uasset/.umap)', category: 'engine', test: (b, o) => u32le(b, o) === 0x9e2a83c1 },
+  { id: 'unreal-utoc', name: 'Unreal IoStore table of contents (.utoc)', category: 'engine', test: (b, o) => str(b, o, '-==--==--==--==-') },
   { id: 'gamemaker-data', name: 'GameMaker data (FORM/GEN8)', category: 'engine', test: (b, o) => str(b, o, 'FORM') && str(b, o + 8, 'GEN8') },
   { id: 'swf', name: 'Flash SWF', category: 'engine', offsetZeroOnly: true, test: (b, o) => o === 0 && ['FWS', 'CWS', 'ZWS'].includes(b.toString('latin1', o, o + 3)) && b[o + 3] >= 1 && b[o + 3] <= 60 },
   // Git packfiles also start with PACK, followed by a big-endian version 2 or 3; a Quake PAK has a directory
@@ -41,6 +42,13 @@ export const FORMATS = [
   // XNB: platform letter (w Windows, x Xbox 360, m Windows Phone, plus MonoGame's), then format version 3-5.
   { id: 'xnb', name: 'XNA/MonoGame content (XNB)', category: 'archive', test: (b, o) => str(b, o, 'XNB') && b.length > o + 4 && 'wmxiadXWnMrP5OSGb'.includes(String.fromCharCode(b[o + 3])) && [3, 4, 5].includes(b[o + 4]) },
   { id: 'vpk', name: 'Valve VPK archive', category: 'archive', test: (b, o) => at(b, o, [0x34, 0x12, 0xaa, 0x55]) && [1, 2].includes(u32le(b, o + 4)) },
+  // MPQ: header size (u32 LE) is at least 32. MPQ\x1B is a user-data block in front of the header
+  // (StarCraft II maps and replays); its MPQ header size sits at offset 12 and is also at least 32.
+  { id: 'mpq', name: 'Blizzard MPQ archive', category: 'archive', test: (b, o) => (str(b, o, 'MPQ\x1a') && u32le(b, o + 4) >= 32) || (str(b, o, 'MPQ\x1b') && u32le(b, o + 12) >= 32) },
+  // CPK: most files have '@UTF' at offset 16, but some games mask that table, so do not require it.
+  { id: 'cpk', name: 'CRI CPK archive', category: 'archive', test: (b, o) => str(b, o, 'CPK ') },
+  { id: 'bsa', name: 'Bethesda BSA archive', category: 'archive', test: (b, o) => str(b, o, 'BSA\0') && [103, 104, 105].includes(u32le(b, o + 4)) && u32le(b, o + 8) === 36 },
+  { id: 'ba2', name: 'Bethesda BA2 archive', category: 'archive', test: (b, o) => str(b, o, 'BTDX') && ['GNRL', 'DX10', 'GNMF'].includes(b.toString('latin1', o + 8, o + 12)) },
   { id: 'renpy-rpa', name: "Ren'Py archive (RPA)", category: 'archive', test: (b, o) => str(b, o, 'RPA-3.0 ') || str(b, o, 'RPA-2.0 ') },
   { id: 'asar', name: 'Electron archive (asar)', category: 'archive', offsetZeroOnly: true, test: (b, o) => o === 0 && u32le(b, 0) === 4 && str(b, 16, '{"files"') },
   { id: 'zip', name: 'ZIP archive (also apk/jar/ipa/docx/nupkg)', category: 'archive', test: (b, o) => at(b, o, [0x50, 0x4b, 3, 4]) || at(b, o, [0x50, 0x4b, 5, 6]) },
@@ -61,13 +69,18 @@ export const FORMATS = [
   { id: 'webp', name: 'WebP image', category: 'image', test: (b, o) => str(b, o, 'RIFF') && str(b, o + 8, 'WEBP') },
   { id: 'psd', name: 'Photoshop document', category: 'image', test: (b, o) => str(b, o, '8BPS') && b.length > o + 5 && b.readUInt16BE(o + 4) <= 2 },
   { id: 'dds', name: 'DirectDraw Surface texture', category: 'image', test: (b, o) => str(b, o, 'DDS ') && u32le(b, o + 4) === 124 },
-  { id: 'ktx', name: 'KTX texture', category: 'image', test: (b, o) => at(b, o, [0xab, 0x4b, 0x54, 0x58, 0x20]) },
+  { id: 'ktx2', name: 'KTX 2 texture', category: 'image', test: (b, o) => at(b, o, [0xab, 0x4b, 0x54, 0x58, 0x20, 0x32, 0x30, 0xbb, 0x0d, 0x0a, 0x1a, 0x0a]) },
+  { id: 'ktx', name: 'KTX texture', category: 'image', test: (b, o) => at(b, o, [0xab, 0x4b, 0x54, 0x58, 0x20, 0x31, 0x31, 0xbb]) },
+  { id: 'pvr', name: 'PowerVR texture (PVR v3)', category: 'image', test: (b, o) => at(b, o, [0x50, 0x56, 0x52, 0x03]) },
+  { id: 'astc', name: 'ASTC texture', category: 'image', test: (b, o) => at(b, o, [0x13, 0xab, 0xa1, 0x5c]) },
+  { id: 'qoi', name: 'QOI image', category: 'image', test: (b, o) => str(b, o, 'qoif') && u32be(b, o + 4) > 0 && u32be(b, o + 8) > 0 && [3, 4].includes(b[o + 12]) },
   { id: 'exr', name: 'OpenEXR image', category: 'image', test: (b, o) => at(b, o, [0x76, 0x2f, 0x31, 0x01]) },
   { id: 'hdr', name: 'Radiance HDR image', category: 'image', test: (b, o) => str(b, o, '#?RADIANCE') || str(b, o, '#?RGBE') },
   { id: 'bmp', name: 'BMP image', category: 'image', offsetZeroOnly: true, test: (b, o) => o === 0 && str(b, 0, 'BM') && u32le(b, 14) >= 12 && u32le(b, 14) <= 124 },
   { id: 'ico', name: 'Windows icon', category: 'image', offsetZeroOnly: true, test: (b, o) => o === 0 && at(b, 0, [0, 0, 1, 0]) && b.length > 6 && b.readUInt16LE(4) > 0 && b.readUInt16LE(4) < 64 },
   { id: 'wav', name: 'WAVE audio', category: 'audio', test: (b, o) => str(b, o, 'RIFF') && str(b, o + 8, 'WAVE') },
   { id: 'fmod-bank', name: 'FMOD Studio bank', category: 'audio', test: (b, o) => str(b, o, 'RIFF') && str(b, o + 8, 'FEV ') },
+  { id: 'fsb5', name: 'FMOD sound bank (FSB5)', category: 'audio', test: (b, o) => str(b, o, 'FSB5') },
   { id: 'avi', name: 'AVI video', category: 'video', test: (b, o) => str(b, o, 'RIFF') && str(b, o + 8, 'AVI ') },
   { id: 'ogg', name: 'Ogg (Vorbis/Opus/Theora)', category: 'audio', test: (b, o) => str(b, o, 'OggS') && b[o + 4] === 0 },
   { id: 'flac', name: 'FLAC audio', category: 'audio', test: (b, o) => str(b, o, 'fLaC') },

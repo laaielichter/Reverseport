@@ -93,6 +93,10 @@ Unity → Unreal, or any language.
    Scenes, uGUI, prefab variants, `.anim` and `.controller`: `port_scene {planId, unit}`. Code: write the port, then
    `port_write {planId, unit, files}` and fix every leftover and
    missing function it reports before moving on.
+   GDScript to Godot C# or Unity: `port_draft {planId, unit}` (or `all: true`)
+   writes a parsed first draft and marks the unit partial. Review it against
+   the source, resolve each `PORT:` line, then `port_write` the finished file.
+   A draft is unbuilt code: never report it as done or as compiling.
    Shaders: `port_shader {file, to}` gives a marked first draft (uniforms,
    intrinsics, built-ins); resolve its leftovers and `PORT:` markers, then
    `port_write` it as the unit's file.

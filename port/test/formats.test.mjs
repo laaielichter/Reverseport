@@ -7,6 +7,7 @@ import { tempDir, buildPng, buildPck, buildDotNetDll } from './helpers.mjs';
 const dir = await tempDir();
 process.env.REVERSEPORT_HOME = path.join(dir, 'home');
 const { identify, findSignatures, strideGuess } = await import('../src/formats.mjs');
+const { categoryOf } = await import('../src/scan.mjs');
 const { probe, carve, compare } = await import('../src/compare.mjs');
 
 function wav(seconds = 0.01) {
@@ -24,6 +25,28 @@ test('identifies formats by content', () => {
   assert.equal(identify(Buffer.from('%YAML 1.1\n%TAG !u! tag:unity3d.com,2011:\n')).id, 'unity-yaml');
   assert.equal(identify(Buffer.from('PACK')).id, 'pak');
   assert.notEqual(identify(Buffer.from('PAK!')).id, 'pak');
+  assert.equal(identify(Buffer.from('FSB5')).id, 'fsb5');
+});
+
+test('identifies GPU texture formats (KTX2, PVR, ASTC, QOI) and sorts them as images (#73)', () => {
+  const qoi = (w, h, channels) => { const b = Buffer.alloc(14); b.write('qoif', 0); b.writeUInt32BE(w, 4); b.writeUInt32BE(h, 8); b[12] = channels; return b; };
+  const ktx2 = Buffer.from([0xab, 0x4b, 0x54, 0x58, 0x20, 0x32, 0x30, 0xbb, 0x0d, 0x0a, 0x1a, 0x0a]);
+  const ktx1 = Buffer.from([0xab, 0x4b, 0x54, 0x58, 0x20, 0x31, 0x31, 0xbb, 0x0d, 0x0a, 0x1a, 0x0a]);
+  for (const [buf, id] of [[ktx2, 'ktx2'], [ktx1, 'ktx'], [Buffer.from([0x50, 0x56, 0x52, 0x03, 0, 0, 0, 0]), 'pvr'], [Buffer.from([0x13, 0xab, 0xa1, 0x5c, 4, 4, 1, 0, 0, 0]), 'astc'], [qoi(64, 64, 3), 'qoi'], [qoi(1, 1, 4), 'qoi']]) {
+    const r = identify(buf);
+    assert.equal(r.id, id);
+    assert.equal(r.category, 'image');
+  }
+  // KTX 2 is no longer reported as plain KTX 1.
+  assert.notEqual(identify(ktx2).id, 'ktx');
+  // Look-alikes
+  assert.notEqual(identify(qoi(64, 64, 5)).id, 'qoi', 'QOI channels must be 3 or 4');
+  assert.notEqual(identify(qoi(0, 64, 4)).id, 'qoi', 'QOI width must be nonzero');
+  assert.notEqual(identify(Buffer.from('qoif')).id, 'qoi', 'truncated QOI header');
+  assert.notEqual(identify(Buffer.from([0x50, 0x56, 0x52, 0x02, 0, 0, 0, 0])).id, 'pvr', 'PVR v2 is not v3');
+  assert.notEqual(identify(Buffer.from([0x13, 0xab, 0xa1, 0x5d])).id, 'astc', 'wrong ASTC magic');
+  // re_scan sorts the texture extensions into the image category.
+  for (const ext of ['.ktx2', '.pvr', '.astc', '.qoi']) assert.equal(categoryOf({ ext, rel: `tex${ext}` }), 'image');
 });
 
 test('finds, sizes and carves files embedded in a blob', async () => {
@@ -85,6 +108,7 @@ test('compares two .NET builds by type and method, and says how to go deeper', a
 
 test('game archives: Doom WAD, Quake WAD2/3, XNB, VPK; Git packs are not Quake PAKs', () => {
   const head = (magic, ...u32) => { const b = Buffer.alloc(magic.length + u32.length * 4); b.write(magic, 0, 'latin1'); u32.forEach((n, i) => b.writeUInt32LE(n, magic.length + i * 4)); return b; };
+  const ba2 = type => { const b = Buffer.alloc(12); b.write('BTDX', 0, 'latin1'); b.writeUInt32LE(1, 4); b.write(type, 8, 'latin1'); return b; };
   assert.equal(identify(head('IWAD', 2, 12)).id, 'wad');
   assert.equal(identify(head('PWAD', 1, 64)).id, 'wad');
   assert.equal(identify(head('WAD3', 3, 1024)).id, 'wad-quake');
@@ -94,10 +118,29 @@ test('game archives: Doom WAD, Quake WAD2/3, XNB, VPK; Git packs are not Quake P
   assert.equal(identify(head('PACK', 12, 128)).id, 'pak');
   const git = Buffer.from('PACK\0\0\0\x02\0\0\0\x07', 'latin1');
   assert.equal(identify(git).id, 'git-pack');
+  assert.equal(identify(head('MPQ\x1a', 32)).id, 'mpq', 'MPQ header, version 1');
+  assert.equal(identify(head('MPQ\x1a', 68)).id, 'mpq', 'MPQ header, version 3');
+  assert.equal(identify(head('MPQ\x1b', 512, 512, 32)).id, 'mpq', 'MPQ user-data block (StarCraft II map/replay)');
+  assert.equal(identify(Buffer.from('CPK @UTF', 'latin1')).id, 'cpk');
+  assert.equal(identify(Buffer.from('CPK \0\0\0\0', 'latin1')).id, 'cpk', 'CPK with masked @UTF table');
+  assert.equal(identify(head('BSA\0', 103, 36)).id, 'bsa', 'BSA version 103 (Oblivion)');
+  assert.equal(identify(head('BSA\0', 104, 36)).id, 'bsa', 'BSA version 104 (Fallout 3 / New Vegas)');
+  assert.equal(identify(head('BSA\0', 105, 36)).id, 'bsa', 'BSA version 105 (Skyrim)');
+  assert.equal(identify(ba2('GNRL')).id, 'ba2', 'BA2 general archive (Fallout 4)');
+  assert.equal(identify(ba2('DX10')).id, 'ba2', 'BA2 texture archive');
+  assert.equal(identify(ba2('GNMF')).id, 'ba2', 'BA2 mesh archive');
+  assert.equal(identify(Buffer.from('-==--==--==--==-', 'latin1')).id, 'unreal-utoc', 'Unreal IoStore .utoc');
   // Look-alikes
   assert.notEqual(identify(head('IWAD', 2, 4)).id, 'wad', 'directory inside the header');
   assert.notEqual(identify(Buffer.from('XNBz\x05')).id, 'xnb', 'unknown platform');
   assert.notEqual(identify(Buffer.from('XNBw\x09')).id, 'xnb', 'unknown version');
   assert.notEqual(identify(Buffer.from([0x34, 0x12, 0xaa, 0x55, 9, 0, 0, 0])).id, 'vpk', 'unknown VPK version');
   assert.notEqual(identify(head('PACK', 12, 100)).id, 'pak', 'directory length not a multiple of 64');
+  assert.notEqual(identify(head('MPQ\x1a', 4)).id, 'mpq', 'MPQ header size below 32');
+  assert.notEqual(identify(head('MPQ\x1b', 512, 512, 4)).id, 'mpq', 'MPQ user-data block with header size below 32');
+  assert.notEqual(identify(Buffer.from('CPKX', 'latin1')).id, 'cpk', 'CPK without the trailing space');
+  assert.notEqual(identify(head('BSA\0', 2, 36)).id, 'bsa', 'BSA version 2');
+  assert.notEqual(identify(head('BSA\0', 104, 32)).id, 'bsa', 'BSA header size not 36');
+  assert.notEqual(identify(ba2('XXXX')).id, 'ba2', 'BA2 with unknown type');
+  assert.notEqual(identify(Buffer.from('-==--==--==--===', 'latin1')).id, 'unreal-utoc', 'utoc magic with a wrong final byte');
 });

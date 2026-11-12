@@ -247,7 +247,7 @@ export async function openArchive(file) {
   }
   if (kind === 'renpy-rpa') return { abs, size, ...(await readRpa(abs, size)) };
   if (kind === 'gamemaker-data') return { abs, size, ...(await readGameMaker(abs, size)) };
-  if (head.toString('latin1', 0, 4) === 'FSB5') { const fsb = await readFsb5(abs, 0, size); if (fsb) return { abs, size, format: 'fsb5', fsb: { version: fsb.fsbVersion, codec: fsb.codec, samples: fsb.samples }, entries: fsb.entries, note: fsb.note }; }
+  if (kind === 'fsb5') { const fsb = await readFsb5(abs, 0, size); if (fsb) return { abs, size, format: 'fsb5', fsb: { version: fsb.fsbVersion, codec: fsb.codec, samples: fsb.samples }, entries: fsb.entries, note: fsb.note }; }
   if (kind === 'fmod-bank') return { abs, size, ...(await readFmodBank(abs, size)) };
   if (kind === 'wwise-bank') return { abs, size, ...(await readWwiseBank(abs, size)) };
   if (kind === 'swf') return { abs, size, ...(await readSwf(abs, size)) };

@@ -11,13 +11,13 @@ const CATEGORY_BY_EXT = {};
 const cat = (name, exts) => exts.split(' ').forEach(e => { CATEGORY_BY_EXT[`.${e}`] = name; });
 cat('scene', 'tscn scn unity prefab umap');
 cat('resource', 'tres res asset mat anim controller overrideController uasset physicmaterial mask playable lighting');
-cat('image', 'png jpg jpeg tga bmp gif webp psd exr hdr dds ktx ktx2 svg tif tiff ico basis');
+cat('image', 'png jpg jpeg tga bmp gif webp psd exr hdr dds ktx ktx2 pvr astc qoi svg tif tiff ico basis');
 cat('audio', 'wav ogg mp3 flac aif aiff opus wem bnk bank fsb xm it mod s3m mid midi');
 cat('model', 'fbx obj gltf glb blend dae 3ds max ma mb ply stl usd usda usdc usdz vox');
 cat('font', 'ttf otf woff woff2 fnt');
 cat('video', 'mp4 webm ogv mov avi mkv bik bk2 usm');
 cat('config', 'json yaml yml toml ini cfg xml plist properties godot import meta csproj sln vcxproj uproject uplugin gradle cmake lock editorconfig gitignore gitattributes');
-cat('build-binary', 'exe dll so dylib pck pak ucas utoc bundle assets ress resource apk aab ipa jar class dex wasm pdb lib a o x86_64 x86_32 arm64 node');
+cat('build-binary', 'exe dll so dylib pck pak mpq cpk bsa ba2 ucas utoc bundle assets ress resource apk aab ipa jar class dex wasm pdb lib a o x86_64 x86_32 arm64 node');
 cat('docs', 'md txt rst pdf html htm');
 
 // npm dependency → framework name, for "what is this built with" in JS/TS projects.

@@ -91,11 +91,19 @@ async function buildGameMaker(dir) {
 }
 
 // ---------------------------------------------------------------- FMOD bank with FSB5 (PCM16)
-async function buildFmod(dir) {
+function buildFsb5() {
   const pcm = Buffer.alloc(64, 1);
   const names = Buffer.concat([u32(4), Buffer.from('jump\0')]);
   const sampleHeader = (() => { const freqIdx = 8n, channels = 0n, dataOffset = 0n, samples = 32n; const v = (samples << 34n) | (dataOffset << 6n) | (channels << 5n) | (freqIdx << 1n); const b = Buffer.alloc(8); b.writeBigUInt64LE(v); return b; })();
-  const fsb = Buffer.concat([Buffer.from('FSB5'), u32(1), u32(1), u32(8), u32(names.length), u32(pcm.length), u32(2), Buffer.alloc(60 - 28), sampleHeader, names, pcm]);
+  return Buffer.concat([Buffer.from('FSB5'), u32(1), u32(1), u32(8), u32(names.length), u32(pcm.length), u32(2), Buffer.alloc(60 - 28), sampleHeader, names, pcm]);
+}
+async function buildFsb(dir) {
+  const file = path.join(dir, 'music.fsb');
+  await fs.writeFile(file, buildFsb5());
+  return file;
+}
+async function buildFmod(dir) {
+  const fsb = buildFsb5();
   const strings = Buffer.from('event:/Player/Jump\0bus:/Master\0');
   const chunk = (id, body) => Buffer.concat([Buffer.from(id), u32(body.length), body, body.length & 1 ? Buffer.alloc(1) : Buffer.alloc(0)]);
   const body = Buffer.concat([Buffer.from('FEV '), chunk('PROJ', strings), chunk('SND ', fsb)]);
@@ -224,6 +232,23 @@ test('FMOD bank: event paths and FSB5 samples; Wwise bank: media, objects and na
   assert.deepEqual(ww.objects, { sound: 1, event: 1, action: 1 });
   const ex = await archiveTool({ file: path.join(dir, 'Init.bnk'), action: 'extract', out: path.join(dir, 'out') });
   assert.equal((await fs.readFile(path.join(dir, 'out', 'media', 'jump.wem'))).toString(), 'RIFFwemdata');
+  await fs.rm(dir, { recursive: true, force: true });
+});
+
+test('Standalone FMOD .fsb: samples listed and extracted as WAV', async () => {
+  const dir = await tempDir();
+  const list = await archiveTool({ file: await buildFsb(dir) });
+  assert.equal(list.format, 'fsb5');
+  assert.equal(list.fsb.codec, 'PCM16');
+  assert.equal(list.fsb.samples, 1);
+  assert.equal(list.entries[0].path, 'samples/jump.wav');
+  assert.equal(list.entries[0].frequency, 44100);
+  assert.equal(list.entries[0].size, 64 + 44, 'the PCM data plus a WAV header');
+  const ex = await archiveTool({ file: path.join(dir, 'music.fsb'), action: 'extract', out: path.join(dir, 'out') });
+  assert.equal(ex.extracted, 1);
+  const wav = await fs.readFile(path.join(dir, 'out', 'samples', 'jump.wav'));
+  assert.equal(wav.length, 108);
+  assert.equal(wav.toString('latin1', 0, 4) + wav.toString('latin1', 8, 12), 'RIFFWAVE');
   await fs.rm(dir, { recursive: true, force: true });
 });
 
