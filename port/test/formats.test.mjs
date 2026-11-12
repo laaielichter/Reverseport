@@ -7,6 +7,7 @@ import { tempDir, buildPng, buildPck, buildDotNetDll } from './helpers.mjs';
 const dir = await tempDir();
 process.env.REVERSEPORT_HOME = path.join(dir, 'home');
 const { identify, findSignatures, strideGuess } = await import('../src/formats.mjs');
+const { categoryOf } = await import('../src/scan.mjs');
 const { probe, carve, compare } = await import('../src/compare.mjs');
 
 function wav(seconds = 0.01) {
@@ -25,6 +26,27 @@ test('identifies formats by content', () => {
   assert.equal(identify(Buffer.from('PACK')).id, 'pak');
   assert.notEqual(identify(Buffer.from('PAK!')).id, 'pak');
   assert.equal(identify(Buffer.from('FSB5')).id, 'fsb5');
+});
+
+test('identifies GPU texture formats (KTX2, PVR, ASTC, QOI) and sorts them as images (#73)', () => {
+  const qoi = (w, h, channels) => { const b = Buffer.alloc(14); b.write('qoif', 0); b.writeUInt32BE(w, 4); b.writeUInt32BE(h, 8); b[12] = channels; return b; };
+  const ktx2 = Buffer.from([0xab, 0x4b, 0x54, 0x58, 0x20, 0x32, 0x30, 0xbb, 0x0d, 0x0a, 0x1a, 0x0a]);
+  const ktx1 = Buffer.from([0xab, 0x4b, 0x54, 0x58, 0x20, 0x31, 0x31, 0xbb, 0x0d, 0x0a, 0x1a, 0x0a]);
+  for (const [buf, id] of [[ktx2, 'ktx2'], [ktx1, 'ktx'], [Buffer.from([0x50, 0x56, 0x52, 0x03, 0, 0, 0, 0]), 'pvr'], [Buffer.from([0x13, 0xab, 0xa1, 0x5c, 4, 4, 1, 0, 0, 0]), 'astc'], [qoi(64, 64, 3), 'qoi'], [qoi(1, 1, 4), 'qoi']]) {
+    const r = identify(buf);
+    assert.equal(r.id, id);
+    assert.equal(r.category, 'image');
+  }
+  // KTX 2 is no longer reported as plain KTX 1.
+  assert.notEqual(identify(ktx2).id, 'ktx');
+  // Look-alikes
+  assert.notEqual(identify(qoi(64, 64, 5)).id, 'qoi', 'QOI channels must be 3 or 4');
+  assert.notEqual(identify(qoi(0, 64, 4)).id, 'qoi', 'QOI width must be nonzero');
+  assert.notEqual(identify(Buffer.from('qoif')).id, 'qoi', 'truncated QOI header');
+  assert.notEqual(identify(Buffer.from([0x50, 0x56, 0x52, 0x02, 0, 0, 0, 0])).id, 'pvr', 'PVR v2 is not v3');
+  assert.notEqual(identify(Buffer.from([0x13, 0xab, 0xa1, 0x5d])).id, 'astc', 'wrong ASTC magic');
+  // re_scan sorts the texture extensions into the image category.
+  for (const ext of ['.ktx2', '.pvr', '.astc', '.qoi']) assert.equal(categoryOf({ ext, rel: `tex${ext}` }), 'image');
 });
 
 test('finds, sizes and carves files embedded in a blob', async () => {
