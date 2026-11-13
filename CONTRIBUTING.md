@@ -92,8 +92,9 @@ Before requesting maintainer review, the human owner must:
   conclusions and proposed checks accurately; never report an unrun check as
   passing. Follow the [verification requirements](#development-feedback-and-pr-verification)
   for required checks and real-provider coverage.
-- Complete the **Author readiness** declaration in the PR template, explicitly
-  stating that the PR is ready for initial review.
+- State in the PR description that the PR is ready for initial review. The
+  [PR template](.github/pull_request_template.md) has no separate readiness
+  section, so add a short sentence, for example at the end of **Summary**.
 
 Keep the PR description concise and current. Explain the problem, observable
 outcome, approach, and useful evidence; link long logs or put them in optional
@@ -107,16 +108,16 @@ and incomplete checks. Agents preserve the current draft status unless asked to
 change it; missing readiness declarations or later updates do not require a PR
 to become a draft.
 
-Leave the readiness declaration unchecked until the human owner has completed
-it. The declaration records initial readiness; later pushes do not invalidate
-it or require another human sign-off. Keep the PR description and affected
-validation current as work changes. AI agents must leave human declarations to
-the human owner and must not attest to a human review on their behalf.
+Leave the readiness statement out until the human owner has completed the
+steps above. The declaration records initial readiness; later pushes do not
+invalidate it or require another human sign-off. Keep the PR description and
+affected validation current as work changes. AI agents must leave human
+declarations to the human owner and must not attest to a human review on their
+behalf.
 
 The `PR readiness` check reports pending for drafts and requires a named human
 owner and all three template declarations for non-drafts. It checks that the
 declaration is filled, not whether the code or evidence is correct.
-Existing PRs can copy the **Author readiness** section from the current template.
 Open PRs must have distinct head commits because GitHub shares commit statuses.
 
 Maintainers enable merge enforcement after the workflow is merged: run
