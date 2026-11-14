@@ -43,7 +43,7 @@ ReversePort gives agents one consistent way to do all of that:
 - 🎮 **Game formats built in** — Godot `.pck` (also inside the `.exe`) and `.gdc`/`.scn`/`.res` back to an editable
   project, Unity asset bundles and `.assets` (textures as PNG, meshes as OBJ, audio, scripts in use), Unity IL2CPP
   `global-metadata.dat`, `.unitypackage`, GameMaker, Ren'Py, RPG Maker, Unreal `.pak`, FMOD and
-  Wwise banks; it also recognises Quake PAK, Doom WAD, XNB and VPK. No engine install needed.
+  Wwise banks; it also recognises Quake PAK, Doom WAD, XNB and VPK, compiled shaders (SPIR-V, DXBC/DXIL) and TrueType collections (`.ttc`). No engine install needed.
 - 🔍 **Understand anything** — engine and version of any project or exported game, dependency graphs, scenes, symbols
   in 30+ languages, executables, packs and unknown data. JS/TS monorepos (pnpm, Turborepo, Nx, Lerna, Rush, tsconfig
   paths, `#imports`, Deno import maps) and Rust workspaces resolve too. No build step, no dependencies.

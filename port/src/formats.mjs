@@ -97,6 +97,17 @@ export const FORMATS = [
   { id: 'woff', name: 'WOFF font', category: 'font', test: (b, o) => str(b, o, 'wOFF') },
   { id: 'woff2', name: 'WOFF2 font', category: 'font', test: (b, o) => str(b, o, 'wOF2') },
   { id: 'ttf', name: 'TrueType font', category: 'font', offsetZeroOnly: true, test: (b, o) => o === 0 && at(b, 0, [0, 1, 0, 0]) && b.length > 12 && b.readUInt16BE(4) > 0 && b.readUInt16BE(4) < 64 },
+  // Compiled shaders and font collections (#137). Kept in one block so parallel
+  // format additions (#73, #108) do not collide with these lines. SPIR-V is a
+  // stream of 32-bit words (Khronos SPIR-V spec §3.1, magic 0x07230203), so the
+  // bytes from the magic must be a multiple of 4; both endiannesses occur.
+  // DXBC is the DirectX container fourcc (same container holds DXIL for SM6).
+  // TTC is the 'ttcf' tag plus a big-endian header version 1.0 or 2.0
+  // (Microsoft OpenType spec, TTC Header). SPIR-V is left out of CARVE: a
+  // 4-byte magic matches too often by chance inside other files.
+  { id: 'spirv', name: 'SPIR-V shader', category: 'executable', test: (b, o) => (u32le(b, o) === 0x07230203 || u32be(b, o) === 0x07230203) && (b.length - o) % 4 === 0 },
+  { id: 'dxbc', name: 'DirectX shader container (DXBC/DXIL)', category: 'executable', test: (b, o) => str(b, o, 'DXBC') },
+  { id: 'ttc', name: 'TrueType collection (.ttc)', category: 'font', test: (b, o) => str(b, o, 'ttcf') && [0x00010000, 0x00020000].includes(u32be(b, o + 4)) },
 ];
 
 const TEXT_KINDS = [
@@ -133,6 +144,7 @@ const CARVE = [
   ['unityfs', B('UnityFS\0'), 0], ['glb', B('glTF'), 0], ['dds', B('DDS |'), 0], ['fbx', B('Kaydara FBX Binary'), 0],
   ['sqlite', B('SQLite format 3\0'), 0], ['pdf', B('%PDF-'), 0], ['elf', B('\x7fELF'), 0], ['pe', B('MZ'), 0], ['wasm', B('\0asm'), 0],
   ['wwise-bank', B('BKHD'), 0], ['otf', B('OTTO'), 0], ['woff', B('wOFF'), 0], ['woff2', B('wOF2'), 0], ['midi', B('MThd'), 0],
+  ['dxbc', B('DXBC'), 0], ['ttc', B('ttcf'), 0],
   ['bink', B('BIK'), 0], ['psd', B('8BPS'), 0], ['blend', B('BLENDER'), 0], ['7z', Buffer.from([0x37, 0x7a, 0xbc, 0xaf, 0x27, 0x1c]), 0],
   ['xz', Buffer.from([0xfd, 0x37, 0x7a, 0x58, 0x5a, 0]), 0], ['gzip', Buffer.from([0x1f, 0x8b, 8]), 0], ['lua-bytecode', Buffer.from([0x1b, 0x4c, 0x75, 0x61]), 0],
 ];

@@ -26,6 +26,10 @@ test('identifies formats by content', () => {
   assert.equal(identify(Buffer.from('PACK')).id, 'pak');
   assert.notEqual(identify(Buffer.from('PAK!')).id, 'pak');
   assert.equal(identify(Buffer.from('FSB5')).id, 'fsb5');
+  // #137: the issue's three samples (magic + zeros, 64 bytes each).
+  assert.equal(identify(Buffer.concat([Buffer.from([0x03, 0x02, 0x23, 0x07]), Buffer.alloc(60)])).id, 'spirv');
+  assert.equal(identify(Buffer.concat([Buffer.from('DXBC', 'latin1'), Buffer.alloc(60)])).id, 'dxbc');
+  assert.equal(identify(Buffer.concat([Buffer.from('ttcf\0\x01\0\0', 'latin1'), Buffer.alloc(60)])).id, 'ttc');
 });
 
 test('identifies GPU texture formats (KTX2, PVR, ASTC, QOI) and sorts them as images (#73)', () => {
@@ -47,6 +51,27 @@ test('identifies GPU texture formats (KTX2, PVR, ASTC, QOI) and sorts them as im
   assert.notEqual(identify(Buffer.from([0x13, 0xab, 0xa1, 0x5d])).id, 'astc', 'wrong ASTC magic');
   // re_scan sorts the texture extensions into the image category.
   for (const ext of ['.ktx2', '.pvr', '.astc', '.qoi']) assert.equal(categoryOf({ ext, rel: `tex${ext}` }), 'image');
+});
+
+test('identifies compiled shaders and TrueType collections, rejects near misses (#137)', () => {
+  const head = (bytes, len = 64) => { const b = Buffer.alloc(len); Buffer.from(bytes).copy(b); return b; };
+  // SPIR-V: both endiannesses, and the 4-byte-multiple rule.
+  assert.equal(identify(head([0x07, 0x23, 0x02, 0x03])).id, 'spirv', 'big-endian SPIR-V');
+  assert.equal(identify(head([0x03, 0x02, 0x23, 0x07], 4)).id, 'spirv', 'magic alone is a whole number of words');
+  assert.notEqual(identify(head([0x03, 0x02, 0x23, 0x07], 7)).id, 'spirv', '7 bytes is not a stream of 32-bit words');
+  assert.notEqual(identify(head([0x03, 0x02, 0x23, 0x07], 5)).id, 'spirv', '5 bytes is not a stream of 32-bit words');
+  assert.notEqual(identify(head([0x03, 0x02, 0x23, 0x08])).id, 'spirv', 'wrong magic');
+  // DXBC: the container fourcc at offset 0.
+  assert.equal(identify(head([...Buffer.from('DXBC', 'latin1')])).id, 'dxbc');
+  assert.notEqual(identify(head([...Buffer.from('DXBD', 'latin1')])).id, 'dxbc');
+  // TTC: 'ttcf' plus a header version of 1.0 or 2.0 (big-endian).
+  assert.equal(identify(head([...Buffer.from('ttcf', 'latin1'), 0x00, 0x02, 0x00, 0x00])).id, 'ttc', 'TTC header version 2.0');
+  assert.notEqual(identify(head([...Buffer.from('ttcf', 'latin1'), 0x00, 0x03, 0x00, 0x00])).id, 'ttc', 'unknown TTC header version');
+  assert.notEqual(identify(head([...Buffer.from('ttcX', 'latin1'), 0x00, 0x01, 0x00, 0x00])).id, 'ttc', 'wrong tag');
+  // Categories: compiled code is executable, fonts are fonts.
+  assert.equal(identify(head([0x03, 0x02, 0x23, 0x07])).category, 'executable');
+  assert.equal(identify(head([...Buffer.from('DXBC', 'latin1')])).category, 'executable');
+  assert.equal(identify(head([...Buffer.from('ttcf', 'latin1'), 0x00, 0x01, 0x00, 0x00])).category, 'font');
 });
 
 test('finds, sizes and carves files embedded in a blob', async () => {
