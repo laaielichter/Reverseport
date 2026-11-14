@@ -14,7 +14,7 @@ import { RPError, readAt, requireFile, compileMatcher, sha256, MiB } from './uti
 import { identify } from './formats.mjs';
 import { parsePE, parseELF } from './binary.mjs';
 import { safeJoin, workspaceDir, extractionName } from './workspace.mjs';
-import { readRpa, readGameMaker, readFmodBank, readFsb5, readWwiseBank, readUnrealPak, readSwf, readUnityWebData, readEmscriptenData, swfLzmaBody } from './gamearchives.mjs';
+import { readRpa, readGameMaker, readFmodBank, readFsb5, readWwiseBank, readUnrealPak, readQuakePak, readDoomWad, readSwf, readUnityWebData, readEmscriptenData, swfLzmaBody } from './gamearchives.mjs';
 import { readUnityBundle, readUnityAssets, looksLikeSerializedFile } from './unity.mjs';
 
 const MAX_ENTRIES = 2_000_000;
@@ -253,12 +253,14 @@ export async function openArchive(file) {
   if (kind === 'swf') return { abs, size, ...(await readSwf(abs, size)) };
   if (head.subarray(0, 16).toString('latin1').startsWith('UnityWebData') || /\.(data\.(gz|br)|unityweb)$/i.test(abs) || (/\.data$/i.test(abs) && /Build[\\/]/.test(abs))) { try { return { abs, size, ...(await readUnityWebData(abs)) }; } catch (e) { if (e.code !== 'BAD_FORMAT') throw e; } }
   if (/\.data$/i.test(abs)) { try { return { abs, size, ...(await readEmscriptenData(abs)) }; } catch (e) { if (e.code !== 'BAD_FORMAT') throw e; } }
+  if (kind === 'pak') return { abs, size, ...(await readQuakePak(abs, size)) };
+  if (kind === 'wad') return { abs, size, ...(await readDoomWad(abs, size)) };
   if (/\.pak$/i.test(abs) && kind !== 'zip') { try { return { abs, size, ...(await readUnrealPak(abs, size)) }; } catch (e) { if (e.code !== 'BAD_FORMAT') throw e; } }
   if (kind === 'unityfs' || /^Unity(Web|Raw)\0/.test(head.toString('latin1', 0, 9))) return { abs, size, ...(await readUnityBundle(abs, size)) };
   if (/\.pak$/i.test(abs)) { const d = await describeOnly(abs, size); if (d) return { abs, size, ...d }; }
   if (looksLikeSerializedFile(head, size)) return { abs, size, ...(await readUnityAssets(abs, size)) };
   try { return { abs, size, ...(await readPck(abs, size)) }; } catch (e) { if (e.code !== 'NOT_A_PCK') throw e; }
-  throw new RPError('BAD_FORMAT', `Not a supported archive (${identify(head).name}). Supported: Godot .pck (also embedded in a game .exe/binary), zip/apk/jar/ipa, tar, tar.gz/.unitypackage, Electron .asar, Unity asset bundles and .assets/level files, Ren'Py .rpa, GameMaker data.win, FMOD .bank and .fsb, Wwise .bnk, Unreal .pak, Flash .swf.`);
+  throw new RPError('BAD_FORMAT', `Not a supported archive (${identify(head).name}). Supported: Godot .pck (also embedded in a game .exe/binary), zip/apk/jar/ipa, tar, tar.gz/.unitypackage, Electron .asar, Unity asset bundles and .assets/level files, Ren'Py .rpa, GameMaker data.win, FMOD .bank and .fsb, Wwise .bnk, Unreal .pak, Quake .pak, Doom .wad, Flash .swf.`);
 }
 
 class Md5Pass extends Transform {
@@ -271,7 +273,7 @@ export async function archiveTool({ file, action = 'list', match, limit = 500, o
   const want = compileMatcher(match);
   const selected = arc.entries.filter(e => want(e.path));
   const summary = { format: arc.format, file: arc.abs, size: arc.size };
-  for (const k of ['packVersion', 'godotVersion', 'embedded', 'embeddedVia', 'start', 'encryptedDirectory', 'unityVersion', 'unityRevision', 'compression', 'pakVersion', 'bundleFormat', 'note', 'rpaVersion', 'keyed', 'renpy', 'chunks', 'game', 'counts', 'names', 'fsb', 'events', 'buses', 'vcas', 'bankVersion', 'bankId', 'objects', 'objectCount', 'namedIds', 'mountPoint', 'encryptedIndex', 'encryptionKeyGuid', 'compressionMethods', 'unreal', 'swfVersion', 'stage', 'tags', 'actionScript', 'documentClass', 'symbolClasses', 'frameLabels', 'classes', 'identifierStrings', 'loader', 'packageSize', 'engine', 'unity', 'blockCompression', 'blockInfoCompression', 'blocks', 'encrypted', 'signature', 'assets', 'next']) if (arc[k] !== undefined) summary[k] = arc[k];
+  for (const k of ['packVersion', 'godotVersion', 'embedded', 'embeddedVia', 'start', 'encryptedDirectory', 'unityVersion', 'unityRevision', 'compression', 'pakVersion', 'wadType', 'bundleFormat', 'note', 'rpaVersion', 'keyed', 'renpy', 'chunks', 'game', 'counts', 'names', 'fsb', 'events', 'buses', 'vcas', 'bankVersion', 'bankId', 'objects', 'objectCount', 'namedIds', 'mountPoint', 'encryptedIndex', 'encryptionKeyGuid', 'compressionMethods', 'unreal', 'swfVersion', 'stage', 'tags', 'actionScript', 'documentClass', 'symbolClasses', 'frameLabels', 'classes', 'identifierStrings', 'loader', 'packageSize', 'engine', 'unity', 'blockCompression', 'blockInfoCompression', 'blocks', 'encrypted', 'signature', 'assets', 'next']) if (arc[k] !== undefined) summary[k] = arc[k];
   const byExt = {};
   // Unity objects are views of the serialized files (counted in assets.classes): totals and types count the files.
   const counted = arc.entries.some(e => !e.derived) ? arc.entries.filter(e => !e.derived) : arc.entries;

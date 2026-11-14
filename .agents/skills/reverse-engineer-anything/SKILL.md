@@ -121,7 +121,7 @@ explicit path or endpoint and do not need it.
 - Archive or pack members: `re_archive` lists or extracts zip/apk/jar/asar,
   Godot .pck, Unity asset bundles and .assets (textures as PNG, meshes as OBJ,
   audio, objects as JSON), Ren'Py .rpa, GameMaker data.win, FMOD/Wwise banks,
-  Unreal .pak and Flash .swf. For IPA/MSIX/AppX/DMG or a PyInstaller executable, or when you need
+  Unreal .pak, Quake .pak, Doom .wad and Flash .swf. For IPA/MSIX/AppX/DMG or a PyInstaller executable, or when you need
   Evidence IDs and integrity findings: `open_binary` with the local path, then
   `inspect_artifact`, starting with `detail: "summary"` for large inventories. A
   PyInstaller CArchive is the application layer; the bootloader is only the
