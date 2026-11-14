@@ -94,8 +94,10 @@ You can also draft a script that belongs to a larger project. These commands wer
 
 ```sh
 node port/cli.mjs plan port/test/fixtures/godot-mini --to godot-csharp
-node port/cli.mjs draft godot-mini-to-godot-csharp-c203ee u001
+node port/cli.mjs draft <planId> u001
 ```
+
+Use the `planId` printed by your `plan` command; its suffix is derived from the source path and will differ between checkouts.
 
 The plan command returned 13 units: 6 scripts, 5 scenes, 1 resource, and 1 config. Its `nextUnit` was `u001`, `actors/bullet.gd`. The next command returned these fields (the machine-specific output path and remaining fields are omitted):
 

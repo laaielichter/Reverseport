@@ -18,6 +18,8 @@ test('GDScript draft guide shows real output, review steps, and links', () => {
   assert.match(guide, /"translatedCleanly": "59%"/);
   assert.match(guide, /"portMarkers": 17/);
   assert.match(guide, /"status": "partial"/);
+  assert.match(guide, /draft <planId> u001/);
+  assert.match(guide, /planId.*printed.*suffix.*differ/i);
   assert.match(guide, /port_write/);
   assert.match(guide, /does not build or run the output/);
 
