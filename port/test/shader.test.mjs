@@ -4,6 +4,9 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { portShaderTool, detectShader, hlslToGlsl, shaderLabToGodot, shadertoyToGodot, godotToThree, godotToUnity } from '../src/shader.mjs';
+import { languageOf } from '../src/symbols.mjs';
+import { scanProject } from '../src/scan.mjs';
+import { graphTool } from '../src/graph.mjs';
 
 const SURFACE = `Shader "Custom/Dissolve"
 {
@@ -224,5 +227,25 @@ test('Shadertoy → Godot canvas_item and three.js; Godot → three.js and Unity
   assert.equal(r.detected, 'shadertoy');
   assert.ok((await fs.readFile(path.join(dir, 'toy.js'), 'utf8')).includes('createShadertoyMaterial'));
   await assert.rejects(portShaderTool({ content: SURFACE, to: 'threejs' }), /Cannot port/);
+  await fs.rm(dir, { recursive: true, force: true });
+});
+
+test('languageOf treats Vulkan GLSL, HLSL, Metal and include extensions as shader', () => {
+  for (const ext of ['.comp', '.geom', '.tesc', '.tese', '.hlsli', '.fx', '.fxh', '.metal', '.hlslinc']) {
+    assert.equal(languageOf(`shader${ext}`), 'shader', ext);
+  }
+  // .fs stays F# and .vs stays unmapped; neither becomes shader.
+  assert.equal(languageOf('shader.fs'), 'fsharp');
+  assert.equal(languageOf('shader.vs'), null);
+});
+
+test('scan and graph cover a .hlsl file including a .hlsli file', async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'rp-shader-'));
+  await fs.writeFile(path.join(dir, 'lit.hlsl'), '#include "common.hlsli"\nfloat4 main(float2 uv : TEXCOORD0) : SV_Target { return float4(uv, 0.0, 1.0); }\n');
+  await fs.writeFile(path.join(dir, 'common.hlsli'), 'float3 tint(float3 c) { return c; }\n');
+  const s = await scanProject({ path: dir });
+  assert.equal(s.languages.shader.files, 2);
+  const g = await graphTool({ path: dir });
+  assert.ok(g.edges.some(e => e.from === 'lit.hlsl' && e.to === 'common.hlsli'), JSON.stringify(g.edges));
   await fs.rm(dir, { recursive: true, force: true });
 });

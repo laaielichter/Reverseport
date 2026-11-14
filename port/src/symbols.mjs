@@ -9,7 +9,7 @@ export const LANGUAGE_BY_EXT = {
   '.gd': 'gdscript', '.cs': 'csharp', '.c': 'c', '.h': 'c-header', '.cpp': 'cpp', '.cc': 'cpp', '.cxx': 'cpp', '.hpp': 'cpp', '.hh': 'cpp', '.hxx': 'cpp', '.inl': 'cpp',
   '.py': 'python', '.pyw': 'python', '.js': 'javascript', '.mjs': 'javascript', '.cjs': 'javascript', '.jsx': 'javascript', '.ts': 'typescript', '.tsx': 'typescript', '.mts': 'typescript', '.cts': 'typescript',
   '.vue': 'javascript', '.svelte': 'javascript', '.lua': 'lua', '.java': 'java', '.kt': 'kotlin', '.kts': 'kotlin', '.go': 'go', '.rs': 'rust', '.swift': 'swift', '.rb': 'ruby', '.php': 'php',
-  '.gdshader': 'shader', '.gdshaderinc': 'shader', '.shader': 'shader', '.hlsl': 'shader', '.glsl': 'shader', '.vert': 'shader', '.frag': 'shader', '.compute': 'shader', '.cginc': 'shader', '.usf': 'shader', '.ush': 'shader', '.wgsl': 'shader',
+  '.gdshader': 'shader', '.gdshaderinc': 'shader', '.shader': 'shader', '.hlsl': 'shader', '.glsl': 'shader', '.vert': 'shader', '.frag': 'shader', '.compute': 'shader', '.cginc': 'shader', '.usf': 'shader', '.ush': 'shader', '.wgsl': 'shader', '.comp': 'shader', '.geom': 'shader', '.tesc': 'shader', '.tese': 'shader', '.hlsli': 'shader', '.fx': 'shader', '.fxh': 'shader', '.metal': 'shader', '.hlslinc': 'shader',
   '.tscn': 'godot-scene', '.tres': 'godot-resource', '.unity': 'unity-scene', '.prefab': 'unity-prefab', '.rpy': 'renpy', '.hx': 'haxe', '.dart': 'dart', '.m': 'objc', '.mm': 'objc', '.gml': 'gml',
   '.vb': 'vbnet', '.fs': 'fsharp', '.pas': 'pascal', '.as': 'actionscript', '.coffee': 'coffeescript', '.zig': 'zig', '.nim': 'nim', '.cr': 'crystal', '.scala': 'scala', '.ex': 'elixir', '.exs': 'elixir', '.erl': 'erlang', '.clj': 'clojure',
 };
