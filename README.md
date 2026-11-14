@@ -259,6 +259,7 @@ and it never sends your targets anywhere. Commercial tools such as IDA and Hoppe
 - [MCP contracts](docs/reference/mcp-contracts.md) and [agent prompts](docs/getting-started/mcp-prompts.md): tool results, sessions, guided investigations.
 - [Porting and rebuilds](.agents/skills/reverse-engineer-anything/references/porting-and-rebuilds.md): the recon, rebuild and port workflows.
 - [Walkthrough: Godot → three.js](docs/walkthrough-godot-to-threejs.md): a small port, every command run and its output pasted.
+- [GDScript to C# first draft](docs/gdscript-to-csharp.md): real Godot C# and Unity drafts, `PORT:` markers, and reviewing a planned unit.
 - [Proof cases, guard hooks and memory](docs/proof-and-memory.md): `re_case`, the Claude Code hooks, the optional Stashpad link and context cost.
 - [Challenge self-check](bench/README.md): programs with known answers (from rea-lab) and what `re_binary` reveals.
 - [Rated by agents](AGENT-RATINGS.md): independent agent reviews, round by round, and what is still open.
