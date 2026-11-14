@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.25.0](https://github.com/laaielichter/Reverseport/compare/reverseport-1.24.0...reverseport-1.25.0) (2026-11-14)
+
+
+### Features
+
+* **formats:** recognize SPIR-V, DXBC shaders and .ttc collections ([#137](https://github.com/laaielichter/Reverseport/issues/137)) ([#148](https://github.com/laaielichter/Reverseport/issues/148)) ([54a195c](https://github.com/laaielichter/Reverseport/commit/54a195c3d59205eddd5f3e90da04b485fcfd5be4))
+* **symbols:** treat more shader extensions as shader code ([#79](https://github.com/laaielichter/Reverseport/issues/79)) ([#164](https://github.com/laaielichter/Reverseport/issues/164)) ([96f6867](https://github.com/laaielichter/Reverseport/commit/96f6867e33c7eb6a87ee37ee04698a060343ae5e))
+
+
+### Documentation
+
+* **contributing:** drop the description of a PR readiness workflow that does not exist ([#167](https://github.com/laaielichter/Reverseport/issues/167)) ([92b7b7d](https://github.com/laaielichter/Reverseport/commit/92b7b7dd309aecff3c06ba726373b1d1deeb49a8))
+* **contributing:** state PR readiness in the description, not a template section ([#166](https://github.com/laaielichter/Reverseport/issues/166)) ([03871e9](https://github.com/laaielichter/Reverseport/commit/03871e9fe4071714c837018634bf845e68902a58))
+
 ## [1.24.0](https://github.com/laaielichter/Reverseport/compare/reverseport-1.23.0...reverseport-1.24.0) (2026-11-12)
 
 
