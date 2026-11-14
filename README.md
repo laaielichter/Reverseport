@@ -50,7 +50,7 @@ ReversePort gives agents one consistent way to do all of that:
 - 🧠 **Go deep** — decompile, cross-reference and trace native, managed (.NET), Android, Electron/JavaScript,
   WebAssembly, firmware and browser targets through Ghidra, Hopper, IDA, JADX and more. ReversePort connects to the
   tools you have installed, drives them and shows the evidence behind every conclusion.
-- 🔀 **Compare builds** — what changed between build 43 and 44: files, packs and .NET types and methods, biggest
+- 🔀 **Compare builds** — what changed between build 43 and 44: files, packs, .NET types and methods, and IL2CPP metadata, biggest
   changes first.
 - 🧾 **Proof, not guesses** — a proof case ties every claim to saved evidence and keeps unknowns visible. In Claude
   Code, guard hooks stop a "done" while a proof case fails its check.

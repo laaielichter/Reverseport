@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { tempDir, buildPng, buildPck, buildDotNetDll } from './helpers.mjs';
+import { tempDir, buildPng, buildPck, buildDotNetDll, buildIl2cppMetadata } from './helpers.mjs';
 
 const dir = await tempDir();
 process.env.REVERSEPORT_HOME = path.join(dir, 'home');
@@ -129,6 +129,64 @@ test('compares two .NET builds by type and method, and says how to go deeper', a
   const same = await compare({ a, b: a });
   assert.equal(same.identical, true);
   assert.equal(same.next, undefined, 'nothing to follow up when the builds are the same');
+});
+
+test('compares two IL2CPP metadata files by type, method and literal', async () => {
+  const oldTypes = [
+    ['mscorlib.dll', 'System', 'Object', ['ToString', 'GetHashCode']],
+    ['Assembly-CSharp.dll', '', 'Player', ['Awake', 'Update', 'Jump']],
+    ['Assembly-CSharp.dll', 'Game.UI', 'HealthBar', ['SetValue']],
+    ['Assembly-CSharp.dll', 'Game', 'SaveSystem', ['Save', 'Load']],
+  ];
+  const newTypes = [
+    ['mscorlib.dll', 'System', 'Object', ['ToString', 'GetHashCode', 'Equals']],
+    ['Assembly-CSharp.dll', '', 'Player', ['Awake', 'Update', 'Jump', 'Jump', 'Dash']],
+    ['Assembly-CSharp.dll', 'Game.UI', 'QuestLog', ['Show']],
+    ['Game.dll', 'Game', 'SaveSystem', ['Save', 'Load']],
+  ];
+  const a = path.join(dir, 'meta-1.dat'), b = path.join(dir, 'meta-2.dat');
+  await fs.writeFile(a, buildIl2cppMetadata({ types: oldTypes }));
+  await fs.writeFile(b, buildIl2cppMetadata({ types: newTypes, literals: ['Game Over', 'Press start', 'Quest complete'] }));
+  const r = await compare({ a, b });
+  assert.equal(r.kind, 'il2cpp-metadata');
+  assert.deepEqual(r.metadataVersion, [29, 29]);
+  assert.equal(r.identical, false);
+  assert.deepEqual(r.assemblies.added, ['Game.dll']);
+  assert.deepEqual(r.assemblies.removed, []);
+  assert.deepEqual(r.assemblies.changed, [{ name: 'Assembly-CSharp.dll', typesA: 3, typesB: 2 }]);
+  assert.deepEqual(r.typesAdded, ['Game.UI.QuestLog']);
+  assert.deepEqual(r.typesRemoved, ['Game.UI.HealthBar']);
+  assert.deepEqual(r.methodsAdded, ['Player::Dash']);
+  assert.deepEqual(r.methodsRemoved, []);
+  assert.deepEqual(r.overloadsChanged, [{ method: 'Player::Jump', before: 1, after: 2 }]);
+  assert.deepEqual(r.movedAssembly, [{ type: 'Game.SaveSystem', from: 'Assembly-CSharp.dll', to: 'Game.dll' }]);
+  assert.deepEqual(r.stringLiterals, { added: ['Quest complete'], removed: [] });
+  assert.deepEqual(r.system, [{ assembly: 'mscorlib.dll', typesAdded: 0, typesRemoved: 0, methodsAdded: 1, methodsRemoved: 0 }]);
+  assert.equal(r.counts.typesAdded, r.typesAdded.length);
+  assert.equal(r.counts.literalsAdded, 1);
+  assert.match(r.next, /re_binary/);
+  const same = await compare({ a, b: a });
+  assert.equal(same.kind, 'il2cpp-metadata');
+  assert.equal(same.identical, true);
+  assert.equal(same.next, undefined);
+  const enc = Buffer.alloc(128);
+  enc.writeUInt32LE(0xfab11baf, 0);
+  enc.writeInt32LE(29, 4);
+  const encPath = path.join(dir, 'enc-meta.dat');
+  await fs.writeFile(encPath, enc);
+  const bad = await compare({ a, b: encPath });
+  assert.equal(bad.kind, 'bytes');
+  assert.match(bad.note, /identifier table/);
+  const oldDir = path.join(dir, 'old-build', 'Game_Data', 'il2cpp_data', 'Metadata');
+  const newDir = path.join(dir, 'new-build', 'Game_Data', 'il2cpp_data', 'Metadata');
+  await fs.mkdir(oldDir, { recursive: true });
+  await fs.mkdir(newDir, { recursive: true });
+  await fs.writeFile(path.join(oldDir, 'global-metadata.dat'), buildIl2cppMetadata({ types: oldTypes }));
+  await fs.writeFile(path.join(newDir, 'global-metadata.dat'), buildIl2cppMetadata({ types: newTypes, literals: ['Game Over', 'Press start', 'Quest complete'] }));
+  const folders = await compare({ a: path.join(dir, 'old-build'), b: path.join(dir, 'new-build') });
+  assert.equal(folders.kind, 'folders');
+  assert.match(folders.next, /re_compare/);
+  assert.match(folders.next, /global-metadata\.dat/);
 });
 
 test('game archives: Doom WAD, Quake WAD2/3, XNB, VPK; Git packs are not Quake PAKs', () => {
