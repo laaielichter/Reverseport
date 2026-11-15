@@ -158,16 +158,20 @@ function diffMetadata(ma, mb, cap) {
     skip.add(`${lb[0].assembly}|${n}`);
     diffMethodPair(la[0], lb[0], n, out, touched);
   }
-  const typesAdded = [], typesRemoved = [];
-  for (const [key, lb] of kb) {
+  const typesAdded = [], typesRemoved = [], repeatedNames = [];
+  for (const key of new Set([...ka.keys(), ...kb.keys()])) {
     if (skip.has(key)) continue;
-    const la = ka.get(key) ?? [];
+    const la = ka.get(key) ?? [], lb = kb.get(key) ?? [];
+    if (la.length > 1 || lb.length > 1) {
+      if (la.length !== lb.length) {
+        const sample = lb[0] ?? la[0];
+        repeatedNames.push({ type: typeName(sample), assembly: sample.assembly, before: la.length, after: lb.length });
+      }
+      continue;
+    }
     if (la.length === 1 && lb.length === 1) diffMethodPair(la[0], lb[0], typeName(lb[0]), out, touched);
-    else if (!la.length && lb.length === 1) typesAdded.push(typeName(lb[0]));
-  }
-  for (const [key, la] of ka) {
-    if (skip.has(key) || kb.has(key) || la.length !== 1) continue;
-    typesRemoved.push(typeName(la[0]));
+    else if (lb.length === 1) typesAdded.push(typeName(lb[0]));
+    else if (la.length === 1) typesRemoved.push(typeName(la[0]));
   }
   const countAsm = list => {
     const m = new Map();
@@ -197,13 +201,13 @@ function diffMetadata(ma, mb, cap) {
   const litA = new Set(ma.literals), litB = new Set(mb.literals);
   const literalsAdded = [...litB].filter(s => !litA.has(s)), literalsRemoved = [...litA].filter(s => !litB.has(s));
   const cut = list => list.slice(0, cap);
-  const identical = ![assembliesAdded, assembliesRemoved, assembliesChanged, typesAdded, typesRemoved, out.methodsAdded, out.methodsRemoved, out.overloadsChanged, movedAssembly, literalsAdded, literalsRemoved, system].some(list => list.length);
+  const identical = ma.version === mb.version && ![assembliesAdded, assembliesRemoved, assembliesChanged, typesAdded, typesRemoved, repeatedNames, out.methodsAdded, out.methodsRemoved, out.overloadsChanged, movedAssembly, literalsAdded, literalsRemoved, system].some(list => list.length);
   return {
     kind: 'il2cpp-metadata', metadataVersion: [ma.version, mb.version], identical,
     assemblies: { added: cut(assembliesAdded), removed: cut(assembliesRemoved), changed: cut(assembliesChanged) },
-    typesAdded: cut(typesAdded), typesRemoved: cut(typesRemoved), methodsAdded: cut(out.methodsAdded), methodsRemoved: cut(out.methodsRemoved), overloadsChanged: cut(out.overloadsChanged), movedAssembly: cut(movedAssembly),
+    typesAdded: cut(typesAdded), typesRemoved: cut(typesRemoved), repeatedNames: cut(repeatedNames), methodsAdded: cut(out.methodsAdded), methodsRemoved: cut(out.methodsRemoved), overloadsChanged: cut(out.overloadsChanged), movedAssembly: cut(movedAssembly),
     stringLiterals: { added: cut(literalsAdded), removed: cut(literalsRemoved) }, system: cut(system),
-    counts: { assembliesAdded: assembliesAdded.length, assembliesRemoved: assembliesRemoved.length, assembliesChanged: assembliesChanged.length, typesAdded: typesAdded.length, typesRemoved: typesRemoved.length, methodsAdded: out.methodsAdded.length, methodsRemoved: out.methodsRemoved.length, overloadsChanged: out.overloadsChanged.length, movedAssembly: movedAssembly.length, literalsAdded: literalsAdded.length, literalsRemoved: literalsRemoved.length, system: system.length },
+    counts: { assembliesAdded: assembliesAdded.length, assembliesRemoved: assembliesRemoved.length, assembliesChanged: assembliesChanged.length, typesAdded: typesAdded.length, typesRemoved: typesRemoved.length, repeatedNames: repeatedNames.length, methodsAdded: out.methodsAdded.length, methodsRemoved: out.methodsRemoved.length, overloadsChanged: out.overloadsChanged.length, movedAssembly: movedAssembly.length, literalsAdded: literalsAdded.length, literalsRemoved: literalsRemoved.length, system: system.length },
     ...(identical ? {} : { next: 'Method bodies are not in the metadata. Read the native code (GameAssembly.dll / libil2cpp.so / .wasm) with re_binary.' }),
   };
 }
@@ -227,7 +231,7 @@ export async function compare({ a, b, limit: max = 300 } = {}) {
     }
     changed.sort((x, y) => Math.abs(y.delta) - Math.abs(x.delta));
     const metaFile = changed.find(c => c.file.endsWith('global-metadata.dat'));
-    const next = metaFile ? `re_compare {a:"${ma.get(metaFile.file).abs}", b:"${mb.get(metaFile.file).abs}"}` : undefined;
+    const next = metaFile ? `re_compare {a:${JSON.stringify(ma.get(metaFile.file).abs)}, b:${JSON.stringify(mb.get(metaFile.file).abs)}}` : undefined;
     return { kind: 'folders', a: A, b: Bp, summary: { added: added.length, removed: removed.length, changed: changed.length, unchanged: ma.size - removed.length - changed.length }, added: limit(added, cap), removed: limit(removed, cap), changed: limit(changed, cap), ...(next ? { next } : {}) };
   }
   if (!sa.isFile() || !sb.isFile()) throw new RPError('INVALID_ARGUMENT', 'Compare two folders or two files.');
