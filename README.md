@@ -15,6 +15,7 @@ between Godot, Unity, Unreal and three.js with parity checks.
 [![MCP tool catalog](https://img.shields.io/badge/MCP-tool_catalog-5c4ee5?style=flat-square)](docs/reference/mcp-contracts.md#generated-catalog)
 [![Node.js](https://img.shields.io/badge/Node.js-22.23.4%2B-339933?style=flat-square&logo=nodedotjs&logoColor=white)](docs/getting-started/installation.md)
 [![License: MIT](https://img.shields.io/badge/license-MIT-22c55e?style=flat-square)](LICENSE)
+[![GitHub stars](https://img.shields.io/github/stars/laaielichter/Reverseport?style=social)](https://github.com/laaielichter/Reverseport/stargazers)
 
 ```bash
 npx reverseport setup
@@ -276,10 +277,12 @@ The deep-analysis engine is based on [REA: Reverse Engineer Anything](https://gi
 Proof cases are ported from [Digfox](https://github.com/Devaretanmay/digfox) (MIT) and the guard hooks follow
 [rea-jev](https://github.com/juan-viox/rea-jev) (MIT); the challenge self-check uses
 [rea-lab](https://github.com/pablodiazjorge/rea-lab)'s generator and oracle (MIT). Third-party components are listed in
-[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). Thanks to everyone who sent a pull request, such as
-[@chinmayee5599](https://github.com/chinmayee5599) for Quake PAK support.
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). Thanks to everyone who has contributed:
+[@chinmayee5599](https://github.com/chinmayee5599) (Quake PAK support) and [@jay23606](https://github.com/jay23606).
 
 ## Support
+
+If ReversePort is useful to you, a ⭐ on [GitHub](https://github.com/laaielichter/Reverseport) helps other people find it.
 
 ReversePort is free and open source. If it saves you or your agent time, a gift is welcome but never expected. SOL and
 any token on Solana (such as USDC) can be sent to:
