@@ -2,6 +2,8 @@
 
 ReversePort welcomes focused bug fixes, documentation improvements, tests, and reverse-engineering workflows. For large contract or architecture changes, explain the intended scope and link the relevant issue or design discussion.
 
+Starring the repo is a simple way to keep it in your list and helps others find it, but it is never needed to get an issue, help or a review.
+
 ## Choosing a contribution
 
 Explain the concrete problem, keep related corrections together, and report
