@@ -519,6 +519,15 @@ function inferType(e, ctx) {
   }
 }
 
+function negativeIntegerLiteral(e) {
+  if (e?.k !== 'un' || e.op !== '-' || e.e?.k !== 'num') return false;
+  const value = e.e.v.replaceAll('_', '');
+  if (/^0[xX][\da-fA-F]+$/.test(value)) return BigInt(value) !== 0n;
+  if (/^0[bB][01]+$/.test(value)) return BigInt(value) !== 0n;
+  if (/^\d+$/.test(value)) return BigInt(value) !== 0n;
+  return false;
+}
+
 function nodeType(p, ctx) {
   if (p.startsWith('%')) return ctx.facts.unique.get(p.slice(1)) ?? null;
   return ctx.facts.nodeTypes.get(p) ?? null;
@@ -784,7 +793,20 @@ export function ex(e, ctx) {
       const side = x => (x.k === 'tern' || x.k === 'lambda' || x.k === 'await' ? `(${ex(x, ctx)})` : ex(x, ctx));
       return `${side(e.a)} ${op} ${side(e.b)}`;
     }
-    case 'index': return `${wrap(e.e, ex(e.e, ctx))}[${ex(e.idx, ctx)}]`;
+    case 'index': {
+      const type = inferType(e.e, ctx);
+      if (negativeIntegerLiteral(e.idx) && (type === 'Array' || type === 'String' || /^Packed\w+Array$/.test(type ?? ''))) {
+        return `${wrap(e.e, ex(e.e, ctx))}[^${ex(e.idx.e, ctx)}]`;
+      }
+      if (negativeIntegerLiteral(e.idx) && type == null) {
+        ctx.mark('negative index: from the end for arrays and strings, a key for dictionaries');
+        return `${wrap(e.e, ex(e.e, ctx))}[^${ex(e.idx.e, ctx)}]`;
+      }
+      if (negativeIntegerLiteral(e.idx) && type !== 'Dictionary' && type !== 'Array' && type !== 'String' && !/^Packed\w+Array$/.test(type ?? '')) {
+        ctx.mark(`negative index on ${type}: preserved as a direct index; from-end indexing is supported only for arrays and strings`);
+      }
+      return `${wrap(e.e, ex(e.e, ctx))}[${ex(e.idx, ctx)}]`;
+    }
     case 'attr': return exAttr(e, ctx, null);
     case 'call': {
       // Only the outermost call of an expression statement may become "event += handler".

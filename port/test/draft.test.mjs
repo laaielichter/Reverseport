@@ -175,6 +175,45 @@ func f(v: Vector2, other: Node) -> String:
   assert.ok(balanced(c));
 });
 
+test('negative literal indexes count from the end except for dictionary keys', () => {
+  const source = `
+extends Node
+var queue: Array = [1, 2, 3]
+var name: String = "abc"
+var stats: Dictionary = {-1: 42}
+var mystery = get_value()
+func f():
+    print(queue[-2])
+    print(name[-1])
+    print(stats[-1])
+    print(mystery[-1])
+`;
+  const godot = gd(source);
+  assert.match(godot.content, /Queue\[\^2\]/);
+  assert.match(godot.content, /Name\[\^1\]/);
+  assert.match(godot.content, /Stats\[-1\]/);
+  assert.match(godot.content, /Mystery\[\^1\].*PORT: negative index: from the end for arrays and strings, a key for dictionaries/);
+  assert.ok(godot.markers.some(marker => marker.note.includes('negative index')));
+
+  const unity = gd(source, { to: 'unity' });
+  assert.match(unity.content, /queue\[\^2\]/);
+  assert.match(unity.content, /name\[\^1\]/);
+  assert.match(unity.content, /stats\[-1\]/);
+  assert.match(unity.content, /mystery\[\^1\].*PORT: negative index/);
+});
+
+test('negative literal on a typed Vector2 is not rewritten as from-end indexing', () => {
+  const source = `
+extends Node
+func component(v: Vector2) -> float:
+    return v[-1]
+`;
+  for (const result of [gd(source), gd(source, { to: 'unity' })]) {
+    assert.match(result.content, /return v\[-1\]; \/\/ PORT: negative index on Vector2: preserved as a direct index/);
+    assert.ok(result.markers.some(marker => marker.note.includes('negative index on Vector2')));
+  }
+});
+
 test('nothing is dropped: what cannot be translated stays in place with a PORT marker', () => {
   const { content: c, markers } = gd(`
 extends Node
