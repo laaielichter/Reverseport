@@ -109,7 +109,14 @@ The plan command returned 13 units: 6 scripts, 5 scenes, 1 resource, and 1 confi
   "status": "partial",
   "translatedCleanly": "100%",
   "portMarkers": 0,
-  "progress": { "done": 0, "skipped": 0, "partial": 1, "pending": 12, "total": 13, "percent": 0 }
+  "progress": {
+    "done": 0,
+    "skipped": 0,
+    "partial": 1,
+    "pending": 12,
+    "total": 13,
+    "percent": 0
+  }
 }
 ```
 
