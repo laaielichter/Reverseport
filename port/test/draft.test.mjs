@@ -202,6 +202,18 @@ func f():
   assert.match(unity.content, /mystery\[\^1\].*PORT: negative index/);
 });
 
+test('negative literal on a typed Vector2 is not rewritten as from-end indexing', () => {
+  const source = `
+extends Node
+func component(v: Vector2) -> float:
+    return v[-1]
+`;
+  for (const result of [gd(source), gd(source, { to: 'unity' })]) {
+    assert.match(result.content, /return v\[-1\]; \/\/ PORT: negative index on Vector2: preserved as a direct index/);
+    assert.ok(result.markers.some(marker => marker.note.includes('negative index on Vector2')));
+  }
+});
+
 test('nothing is dropped: what cannot be translated stays in place with a PORT marker', () => {
   const { content: c, markers } = gd(`
 extends Node

@@ -798,9 +798,12 @@ export function ex(e, ctx) {
       if (negativeIntegerLiteral(e.idx) && (type === 'Array' || type === 'String' || /^Packed\w+Array$/.test(type ?? ''))) {
         return `${wrap(e.e, ex(e.e, ctx))}[^${ex(e.idx.e, ctx)}]`;
       }
-      if (negativeIntegerLiteral(e.idx) && type !== 'Dictionary') {
+      if (negativeIntegerLiteral(e.idx) && type == null) {
         ctx.mark('negative index: from the end for arrays and strings, a key for dictionaries');
         return `${wrap(e.e, ex(e.e, ctx))}[^${ex(e.idx.e, ctx)}]`;
+      }
+      if (negativeIntegerLiteral(e.idx) && type !== 'Dictionary' && type !== 'Array' && type !== 'String' && !/^Packed\w+Array$/.test(type ?? '')) {
+        ctx.mark(`negative index on ${type}: preserved as a direct index; from-end indexing is supported only for arrays and strings`);
       }
       return `${wrap(e.e, ex(e.e, ctx))}[${ex(e.idx, ctx)}]`;
     }
