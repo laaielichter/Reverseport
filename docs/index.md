@@ -50,7 +50,8 @@ For runtime instrumentation, see the [Frida guide](guides/runtime/frida-instrume
 The [documentation directory](README.md) lists every guide by domain. To port a
 game to another engine, start with the
 [walkthrough from Godot to three.js](walkthrough-godot-to-threejs.md); to
-connect an agent without `reverseport setup`, see
+turn a GDScript file into a C# first draft, see
+[the GDScript-to-C# guide](gdscript-to-csharp.md); to connect an agent without `reverseport setup`, see
 [connect any agent](connect-any-agent.md).
 
 | Task                                                | Guides                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |

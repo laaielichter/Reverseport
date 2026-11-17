@@ -174,6 +174,7 @@ the exact commit messages and references from the release they describe.
 - [GameCube DOL analysis through Ghidra](ghidra-dol.md)
 - [PowerPC ELF analysis through Ghidra](ghidra-ppc.md)
 - [Godot PCK archives](godot-pck.md)
+- [Turn a GDScript file into a C# first draft](gdscript-to-csharp.md)
 - [Static CUDA and HIP code objects](gpu-code-objects.md)
 - [Intel HEX and S-record images](hex-records.md)
 - [IL2CPP metadata](il2cpp-metadata.md)
