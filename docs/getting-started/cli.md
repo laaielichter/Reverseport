@@ -31,12 +31,20 @@ Install the command for regular use with `npm install --global reverseport`, or 
 
 ## Run a command
 
-After [installing ReversePort](installation.md), use `rea`. You can also run a command
+After [installing ReversePort](installation.md), use `reverseport`. You can also run a command
 without a global installation:
 
 ```bash
 npx -y reverseport@latest analyze-javascript-application /absolute/path/to/app --json
 ```
+
+The `rea` spelling still appears in this guide where it is part of a wire or file
+format rather than the command name: the `$rea` JSON Lines envelope key, the
+`rea_timings` stderr record, the `rea-invocation` limit scope, the
+`rea-delimited-v1` CSV/TSV metadata marker, and `REA_*` environment variables.
+Those names are part of the output and configuration contracts, so they keep the
+old spelling. The package also still installs `rea` as a command alias, but this
+guide uses `reverseport` throughout.
 
 Use an extracted application directory or an ASAR as the target. Static
 JavaScript analysis returns the application graph and Evidence directly.
@@ -196,7 +204,7 @@ see the available shells and their setup commands. For Bash, load the hook
 into the current shell:
 
 ```bash
-eval "$(rea completions bash)"
+eval "$(reverseport completions bash)"
 ```
 
 For zsh, initialize completion before loading the hook. If your shell already
@@ -218,10 +226,10 @@ For future interactive non-login Bash sessions, add the command to
 `~/.bashrc`. Interactive login Bash sessions read the first available file in
 `~/.bash_profile`, `~/.bash_login`, and `~/.profile`; add the command to the
 file your shell reads, or have that file source `~/.bashrc`. Remove the command
-from the startup file to stop loading completion, and run `complete -r rea` to
+from the startup file to stop loading completion, and run `complete -r reverseport` to
 remove the registration from the current shell. These are manual, opt-in
 steps.
-Completion is a discovery aid; use `rea COMMAND --help` to confirm the
+Completion is a discovery aid; use `reverseport COMMAND --help` to confirm the
 available options and subcommands.
 
 ## Managed assemblies (.NET)
@@ -1044,7 +1052,7 @@ after hostname normalization; the explicit list replaces `MCP_ALLOWED_HOSTS`.
 For example:
 
 ```sh
-reverseport mcp --http --host 0.0.0.0 --allowed-hosts 127.0.0.1,rea.lan
+reverseport mcp --http --host 0.0.0.0 --allowed-hosts 127.0.0.1,reverseport.lan
 ```
 
 Requests with a different `Host` or browser `Origin` receive `403`; a missing
@@ -1094,7 +1102,7 @@ reverseport environment-serve manifest.json --evidence capture.json --port 8765
 `reverseport mcp --http`. For example:
 
 ```sh
-MCP_ALLOWED_HOSTS=127.0.0.1,rea.lan reverseport environment-serve manifest.json --evidence capture.json --host 0.0.0.0
+MCP_ALLOWED_HOSTS=127.0.0.1,reverseport.lan reverseport environment-serve manifest.json --evidence capture.json --host 0.0.0.0
 ```
 
 `ENVIRONMENT_NAME` renames
@@ -1227,7 +1235,7 @@ such as `UNSUPPORTED_OUTPUT_COMBINATION` for `--json` with `--token-limit`. Use
 ## Output and exit status
 
 Commands reject surplus positional arguments before execution, including commands
-that accept no positionals. Use `rea <command> --help` for the declared argument
+that accept no positionals. Use `reverseport <command> --help` for the declared argument
 shape; a final variadic argument continues to accept multiple values.
 `reverseport mcp add` accepts options only and rejects unknown options before reading or
 backing up client settings or starting registration. Its `--agent` and
@@ -1410,7 +1418,7 @@ itself fails, `collection_failure` names the error type and the closure state is
 unknown; the original failure is still returned. Nothing is retained after exit,
 and running the command again is a new observation.
 
-When the reader of piped output closes early, as `rea ... | head` does, the
+When the reader of piped output closes early, as `reverseport ... | head` does, the
 CLI stops writing, prints no error and exits `141` (`128 + 13`, the status of a
 SIGPIPE-terminated writer). The operation itself may have completed; only its
 output was declined.
