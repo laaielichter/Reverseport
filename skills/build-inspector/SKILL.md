@@ -52,6 +52,7 @@ control; a build is a last resort and gives imported (not original) assets.
 re_compare {a:"<old build folder>", b:"<new build folder>"}   → added / removed / changed files (by size, then hash)
 re_compare {a:"old/Game.pck", b:"new/Game.pck"}               → changed entries inside the packs (MD5)
 re_compare {a:"old/Game.exe", b:"new/Game.exe"}               → imports, exports and sections that changed
+re_compare {a:"old/…/global-metadata.dat", b:"new/…/global-metadata.dat"} → IL2CPP types, methods and string literals that changed
 ```
 
 Report: what changed (grouped: scripts, scenes, textures, audio, engine binary), the biggest size changes, anything
