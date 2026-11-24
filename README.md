@@ -280,6 +280,8 @@ Proof cases are ported from [Digfox](https://github.com/Devaretanmay/digfox) (MI
 [rea-lab](https://github.com/pablodiazjorge/rea-lab)'s generator and oracle (MIT). Third-party components are listed in
 [THIRD_PARTY_NOTICES.md](https://github.com/laaielichter/Reverseport/blob/main/THIRD_PARTY_NOTICES.md). Thanks to everyone who has contributed:
 [@chinmayee5599](https://github.com/chinmayee5599) (Quake PAK support) and [@jay23606](https://github.com/jay23606).
+Thanks also to the automated contributions from [@nickstrooo-bot](https://github.com/nickstrooo-bot) (listing and extracting Quake
+.pak and Doom .wad archives, and the `rea` → `reverseport` rename in the docs).
 
 ## Support
 

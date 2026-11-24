@@ -1,8 +1,8 @@
 // Game-specific containers: Ren'Py RPA, GameMaker data.win (FORM), FMOD Studio banks (RIFF FEV + FSB5),
-// Wwise sound banks (BKHD), Unreal .pak (v1–v11) and Flash SWF. Each reader returns the same shape openArchive
-// uses: { format, entries: [{ path, size, offset, ... }], ...facts }. Entries that are stored in the clear get an
-// offset/size (and optionally a prefix or zlib flag) so archiveTool can extract them; encrypted content is
-// described and never decrypted (project rule).
+// Wwise sound banks (BKHD), Unreal .pak (v1–v11), Quake .pak (PACK), Doom .wad (IWAD/PWAD) and Flash SWF.
+// Each reader returns the same shape openArchive uses: { format, entries: [{ path, size, offset, ... }], ...facts }.
+// Entries that are stored in the clear get an offset/size (and optionally a prefix or zlib flag) so archiveTool
+// can extract them; encrypted content is described and never decrypted (project rule).
 import fs from 'node:fs/promises';
 import zlib from 'node:zlib';
 import path from 'node:path';
@@ -389,6 +389,74 @@ export async function readUnrealPak(abs, size) {
   for (const e of entries) { const ext = path.extname(e.path).toLowerCase() || '(none)'; byExt[ext] = (byExt[ext] ?? 0) + 1; }
   const uassets = entries.filter(e => /\.uasset$/i.test(e.path)).length, umaps = entries.filter(e => /\.umap$/i.test(e.path)).length;
   return { ...base, mountPoint, entries, unreal: { uassets, umaps, note: `${uassets} .uasset (${umaps} maps). Cooked .uasset/.uexp hold serialized UObjects, not source: Blueprints are bytecode, C++ is compiled into the game binary. Port from the project (Content/*.uasset in the editor, Source/) when you have it; from a pak, re_binary on the executable plus asset names and this listing give the rebuild map.` }, note: entries.some(e => e.encrypted) ? 'Some entries are AES-encrypted: they are listed, never decrypted.' : entries.some(e => e.compression && !e.extractable) ? 'Oodle/LZ4-compressed entries are listed; only stored and Zlib entries extract here.' : undefined };
+}
+
+// ------------------------------------------------------------------------------------------------ Quake .pak / Doom .wad
+/** Two entries must never share an extraction path: the second (and later) gets a `~2`, `~3` suffix before the extension. */
+function dedupePaths(entries) {
+  const used = new Set();
+  for (const e of entries) {
+    if (!used.has(e.path)) { used.add(e.path); continue; }
+    const dot = e.path.lastIndexOf('.'), slash = e.path.lastIndexOf('/');
+    const hasExt = dot > slash + 1;
+    const base = hasExt ? e.path.slice(0, dot) : e.path, ext = hasExt ? e.path.slice(dot) : '';
+    let n = 2;
+    while (used.has(`${base}~${n}${ext}`)) n++;
+    e.path = `${base}~${n}${ext}`;
+    used.add(e.path);
+  }
+  return entries;
+}
+
+/** Quake PAK: "PACK", directory offset, directory length; each entry is 64 bytes: name (56, NUL-padded), offset, size. */
+export async function readQuakePak(abs, size) {
+  const head = await readAt(abs, 0, 12);
+  if (head.toString('latin1', 0, 4) !== 'PACK') throw new RPError('BAD_FORMAT', 'Not a Quake PAK file.');
+  const dirOffset = head.readUInt32LE(4), dirLength = head.readUInt32LE(8);
+  if (dirLength % 64 !== 0 || dirOffset + dirLength > size) throw new RPError('BAD_FORMAT', 'Quake PAK directory outside the file.');
+  const dir = await readAt(abs, dirOffset, dirLength);
+  const entries = [];
+  for (let p = 0; p + 64 <= dir.length; p += 64) {
+    const name = dir.toString('latin1', p, p + 56).replace(/\0.*$/s, '');
+    const offset = dir.readUInt32LE(p + 56), entrySize = dir.readUInt32LE(p + 60);
+    if (!name) continue;
+    if (offset + entrySize > size) throw new RPError('BAD_FORMAT', `Quake PAK entry ${name} points outside the file.`);
+    entries.push({ path: name, offset, size: entrySize });
+  }
+  return { format: 'quake-pak', entries: dedupePaths(entries) };
+}
+
+// A Doom map is a zero-size marker lump (E1M1, MAP01, …) followed by its lumps; only the standard map lumps
+// belong to the map, so a global lump after the last map (PLAYPAL, COLORMAP, …) ends the map folder.
+const MAP_MARKER = /^(E[1-9]M[1-9]|MAP\d\d)$/i;
+const MAP_LUMPS = new Set(['THINGS', 'LINEDEFS', 'SIDEDEFS', 'VERTEXES', 'SEGS', 'SSECTORS', 'NODES', 'SECTORS', 'REJECT', 'BLOCKMAP', 'BEHAVIOR']);
+
+/** Doom WAD: "IWAD" or "PWAD", lump count, directory offset; each entry is 16 bytes: offset, size, name (8, NUL-padded). */
+export async function readDoomWad(abs, size) {
+  const head = await readAt(abs, 0, 12);
+  const wadType = head.toString('latin1', 0, 4);
+  if (wadType !== 'IWAD' && wadType !== 'PWAD') throw new RPError('BAD_FORMAT', 'Not a Doom WAD file.');
+  const count = head.readUInt32LE(4), dirOffset = head.readUInt32LE(8);
+  if (dirOffset + count * 16 > size) throw new RPError('BAD_FORMAT', 'Doom WAD directory outside the file.');
+  const dir = await readAt(abs, dirOffset, count * 16);
+  const entries = [];
+  let map = null;
+  for (let i = 0; i < count; i++) {
+    const p = i * 16;
+    const offset = dir.readUInt32LE(p), lumpSize = dir.readUInt32LE(p + 4);
+    const name = dir.toString('latin1', p + 8, p + 16).replace(/\0.*$/s, '');
+    if (!name) continue;
+    if (offset + lumpSize > size) throw new RPError('BAD_FORMAT', `Doom WAD lump ${name} points outside the file.`);
+    if (lumpSize === 0 && MAP_MARKER.test(name)) {
+      // The marker is structural: it names the folder the following map lumps extract into. It is not
+      // itself an entry — a file named E1M1 would collide with the E1M1/ folder on extract.
+      map = name;
+      continue;
+    }
+    if (map && !MAP_LUMPS.has(name.toUpperCase())) map = null;
+    entries.push({ path: map ? `${map}/${name}` : name, offset, size: lumpSize });
+  }
+  return { format: 'doom-wad', wadType, entries: dedupePaths(entries) };
 }
 
 // ------------------------------------------------------------------------------------------------ Flash SWF
