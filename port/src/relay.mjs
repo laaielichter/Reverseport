@@ -41,6 +41,8 @@ const LIST_TTL_MS = 300_000;
 const BATCH_MAX = 20;
 /** Read-only for the target and the output, but they record progress in the plan file, so they wait for writers. */
 const PLAN_BOOKKEEPING = new Set(['port_status', 'port_verify']);
+/** What a list method answers when nothing (or an engine without that capability) provides it. */
+const EMPTY_LISTS = { 'prompts/list': () => ({ prompts: [] }), 'resources/list': () => ({ resources: [] }), 'completion/complete': () => ({ completion: { values: [], hasMore: false } }) };
 const LIST_METHODS = new Set(['tools/list', 'prompts/list', 'resources/list', 'resources/read', 'resources/templates/list']);
 const ENGINE_START_TIMEOUT_MS = Number(process.env.REVERSEPORT_ENGINE_TIMEOUT_MS) || 60_000;
 const MAX_RESTARTS = 3;
@@ -791,7 +793,8 @@ export function createRelay(hooks = {}, options = {}) {
     }
     if (method === 'resources/templates/list') {
       const own = { uriTemplate: `${TOOL_OUTPUT_URI}{file}`, name: 'tool-output', title: 'Saved full results', description: 'Complete results that were too big for one answer (outputTruncated.fullOutputUri).', mimeType: 'application/json' };
-      const theirs = engine ? await engine.forward(method, params, { requestId: id }) : { result: { resourceTemplates: [] } };
+      let theirs = engine ? await engine.forward(method, params, { requestId: id }) : { result: { resourceTemplates: [] } };
+      if (theirs.error?.code === -32601) theirs = { result: { resourceTemplates: [] } }; // an engine without resources
       return theirs.error ? { jsonrpc: '2.0', id, error: theirs.error } : reply({ ...theirs.result, resourceTemplates: [own, ...(theirs.result?.resourceTemplates ?? [])] });
     }
     if (method === 'logging/setLevel' && !engine) return reply({});
@@ -800,12 +803,12 @@ export function createRelay(hooks = {}, options = {}) {
       state.requestKeys.set(id, key);
       try {
         const res = await engine.forward(method, params, key);
+        // We advertise resources (saved tool output) even when the engine has none: answer its missing list methods empty.
+        if (res.error?.code === -32601 && EMPTY_LISTS[method]) return reply(EMPTY_LISTS[method]());
         return res.error ? { jsonrpc: '2.0', id, error: res.error } : reply(res.result);
       } finally { if (state.requestKeys.get(id) === key) state.requestKeys.delete(id); }
     }
-    if (method === 'prompts/list') return reply({ prompts: [] });
-    if (method === 'resources/list') return reply({ resources: [] });
-    if (method === 'completion/complete') return reply({ completion: { values: [], hasMore: false } });
+    if (EMPTY_LISTS[method]) return reply(EMPTY_LISTS[method]());
     return fail(-32601, `Method not found: ${method}`);
   }
 
