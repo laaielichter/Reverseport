@@ -15,6 +15,8 @@ between Godot, Unity, Unreal and three.js with parity checks.
 [![MCP tool catalog](https://img.shields.io/badge/MCP-tool_catalog-5c4ee5?style=flat-square)](https://github.com/laaielichter/Reverseport/blob/main/docs/reference/mcp-contracts.md#generated-catalog)
 [![Node.js](https://img.shields.io/badge/Node.js-22.23.4%2B-339933?style=flat-square&logo=nodedotjs&logoColor=white)](https://github.com/laaielichter/Reverseport/blob/main/docs/getting-started/installation.md)
 [![License: MIT](https://img.shields.io/badge/license-MIT-22c55e?style=flat-square)](https://github.com/laaielichter/Reverseport/blob/main/LICENSE)
+[![laaielichter/reverseport MCP server](https://glama.ai/mcp/servers/laaielichter/reverseport/badges/score.svg)](https://glama.ai/mcp/servers/laaielichter/reverseport)
+[![GitHub stars](https://img.shields.io/github/stars/laaielichter/Reverseport?style=social)](https://github.com/laaielichter/Reverseport/stargazers)
 
 ```bash
 npx reverseport setup
@@ -43,14 +45,14 @@ ReversePort gives agents one consistent way to do all of that:
 - 🎮 **Game formats built in** — Godot `.pck` (also inside the `.exe`) and `.gdc`/`.scn`/`.res` back to an editable
   project, Unity asset bundles and `.assets` (textures as PNG, meshes as OBJ, audio, scripts in use), Unity IL2CPP
   `global-metadata.dat`, `.unitypackage`, GameMaker, Ren'Py, RPG Maker, Unreal `.pak`, FMOD and
-  Wwise banks; it also recognises Quake PAK, Doom WAD, XNB and VPK. No engine install needed.
+  Wwise banks; it also recognises Quake PAK, Doom WAD, XNB and VPK, compiled shaders (SPIR-V, DXBC/DXIL) and TrueType collections (`.ttc`). No engine install needed.
 - 🔍 **Understand anything** — engine and version of any project or exported game, dependency graphs, scenes, symbols
   in 30+ languages, executables, packs and unknown data. JS/TS monorepos (pnpm, Turborepo, Nx, Lerna, Rush, tsconfig
   paths, `#imports`, Deno import maps) and Rust workspaces resolve too. No build step, no dependencies.
 - 🧠 **Go deep** — decompile, cross-reference and trace native, managed (.NET), Android, Electron/JavaScript,
   WebAssembly, firmware and browser targets through Ghidra, Hopper, IDA, JADX and more. ReversePort connects to the
   tools you have installed, drives them and shows the evidence behind every conclusion.
-- 🔀 **Compare builds** — what changed between build 43 and 44: files, packs and .NET types and methods, biggest
+- 🔀 **Compare builds** — what changed between build 43 and 44: files, packs, .NET types and methods, and IL2CPP metadata, biggest
   changes first.
 - 🧾 **Proof, not guesses** — a proof case ties every claim to saved evidence and keeps unknowns visible. In Claude
   Code, guard hooks stop a "done" while a proof case fails its check.
@@ -259,6 +261,7 @@ and it never sends your targets anywhere. Commercial tools such as IDA and Hoppe
 - [MCP contracts](https://github.com/laaielichter/Reverseport/blob/main/docs/reference/mcp-contracts.md) and [agent prompts](https://github.com/laaielichter/Reverseport/blob/main/docs/getting-started/mcp-prompts.md): tool results, sessions, guided investigations.
 - [Porting and rebuilds](https://github.com/laaielichter/Reverseport/blob/main/.agents/skills/reverse-engineer-anything/references/porting-and-rebuilds.md): the recon, rebuild and port workflows.
 - [Walkthrough: Godot → three.js](https://github.com/laaielichter/Reverseport/blob/main/docs/walkthrough-godot-to-threejs.md): a small port, every command run and its output pasted.
+- [GDScript to C# first draft](https://github.com/laaielichter/Reverseport/blob/main/docs/gdscript-to-csharp.md): real Godot C# and Unity drafts, `PORT:` markers, and reviewing a planned unit.
 - [Proof cases, guard hooks and memory](https://github.com/laaielichter/Reverseport/blob/main/docs/proof-and-memory.md): `re_case`, the Claude Code hooks, the optional Stashpad link and context cost.
 - [Challenge self-check](https://github.com/laaielichter/Reverseport/blob/main/bench/README.md): programs with known answers (from rea-lab) and what `re_binary` reveals.
 - [Rated by agents](https://github.com/laaielichter/Reverseport/blob/main/AGENT-RATINGS.md): independent agent reviews, round by round, and what is still open.
@@ -275,10 +278,12 @@ The deep-analysis engine is based on [REA: Reverse Engineer Anything](https://gi
 Proof cases are ported from [Digfox](https://github.com/Devaretanmay/digfox) (MIT) and the guard hooks follow
 [rea-jev](https://github.com/juan-viox/rea-jev) (MIT); the challenge self-check uses
 [rea-lab](https://github.com/pablodiazjorge/rea-lab)'s generator and oracle (MIT). Third-party components are listed in
-[THIRD_PARTY_NOTICES.md](https://github.com/laaielichter/Reverseport/blob/main/THIRD_PARTY_NOTICES.md). Thanks to everyone who sent a pull request, such as
-[@chinmayee5599](https://github.com/chinmayee5599) for Quake PAK support.
+[THIRD_PARTY_NOTICES.md](https://github.com/laaielichter/Reverseport/blob/main/THIRD_PARTY_NOTICES.md). Thanks to everyone who has contributed:
+[@chinmayee5599](https://github.com/chinmayee5599) (Quake PAK support) and [@jay23606](https://github.com/jay23606).
 
 ## Support
+
+If ReversePort is useful to you, a ⭐ on [GitHub](https://github.com/laaielichter/Reverseport) helps other people find it.
 
 ReversePort is free and open source. If it saves you or your agent time, a gift is welcome but never expected. SOL and
 any token on Solana (such as USDC) can be sent to:

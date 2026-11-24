@@ -92,7 +92,11 @@ export function parseMetadata(buf) {
   return { version, sections: pairs.length, images: images.list, types: typeList, methodCount, literals, layout: { strings: strSec.index, images: images.section, types: types.section, typeRecord: types.rec, methods: methods?.section ?? null, methodRecord: methods?.rec ?? null } };
 }
 
-const SYSTEM_ASM = /^(mscorlib|System|Mono\.|Unity\.|UnityEngine|netstandard|Microsoft\.|DOTween|TextMeshPro|Newtonsoft)/;
+export const SYSTEM_ASM = /^(mscorlib|System|Mono\.|Unity\.|UnityEngine|netstandard|Microsoft\.|DOTween|TextMeshPro|Newtonsoft)/;
+
+export function typeName(t) {
+  return `${t.namespace ? t.namespace + '.' : ''}${t.name}`;
+}
 
 /** C# skeleton per assembly: namespaces, classes and method names, for port_plan/re_blueprint to work from. */
 export function skeleton(meta, { includeSystem = false } = {}) {
@@ -132,7 +136,7 @@ export async function il2cppTool({ file, out, match, includeSystem = false, limi
   const gameTypes = meta.types.filter(t => t.name && !t.name.startsWith('<') && (includeSystem || !SYSTEM_ASM.test(t.assembly ?? '')));
   const shown = gameTypes.filter(t => !q || `${t.namespace}.${t.name} ${t.methods.join(' ')}`.toLowerCase().includes(q));
   const unityCallbacks = ['Awake', 'Start', 'Update', 'FixedUpdate', 'LateUpdate', 'OnEnable', 'OnDisable', 'OnDestroy', 'OnTriggerEnter', 'OnCollisionEnter', 'OnTriggerEnter2D', 'OnCollisionEnter2D'];
-  const behaviours = gameTypes.filter(t => t.methods.some(m => unityCallbacks.includes(m))).map(t => `${t.namespace ? t.namespace + '.' : ''}${t.name}`);
+  const behaviours = gameTypes.filter(t => t.methods.some(m => unityCallbacks.includes(m))).map(typeName);
   const files = skeleton(meta, { includeSystem });
   const dir = out ? path.resolve(out) : path.join(await workspaceDir('il2cpp'), path.basename(path.dirname(path.dirname(abs))) || 'game');
   await fs.mkdir(dir, { recursive: true });
@@ -141,7 +145,7 @@ export async function il2cppTool({ file, out, match, includeSystem = false, limi
   const lit = meta.literals.filter(s => s.length > 1 && s.length < 200);
   return {
     file: abs, metadataVersion: meta.version, assemblies: meta.images.map(i => ({ name: i.name, types: i.typeCount })), types: meta.types.length, gameTypes: gameTypes.length, methods: meta.methodCount,
-    behaviours: limit(behaviours, 300), typesMatching: limit(shown.map(t => ({ name: `${t.namespace ? t.namespace + '.' : ''}${t.name}`, assembly: t.assembly, methods: [...new Set(t.methods)].slice(0, 40) })), max),
+    behaviours: limit(behaviours, 300), typesMatching: limit(shown.map(t => ({ name: typeName(t), assembly: t.assembly, methods: [...new Set(t.methods)].slice(0, 40) })), max),
     stringLiterals: { count: meta.literals.length, sample: lit.slice(0, 80) }, written, layout: meta.layout,
     next: 'The skeleton lists every game class and method name; behaviours are MonoBehaviours (Unity callbacks). Port or rebuild from it with re_blueprint/port_plan; for method bodies, read the native code (GameAssembly.dll / libil2cpp.so / .wasm) with re_binary and the deep-analysis engine, matching names from here.',
   };
