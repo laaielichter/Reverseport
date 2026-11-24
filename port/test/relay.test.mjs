@@ -179,3 +179,21 @@ test('knownEngineToolNames reads every engine tool from the effect audit, not on
   for (const tool of ['inspect_sqlite_database', 'inspect_binary_hardening', 'record_unknown']) assert.ok(names.has(tool), tool);
   assert.ok(names.size > CORE_ENGINE_TOOLS.length * 5, `only ${names.size} names`);
 });
+
+test('relay: resources/list and resources/templates/list answer even when the engine has no resources', async () => {
+  // The fake engine advertises tools and prompts only, and answers resources/* with -32601, like the real one.
+  const s = session({ REVERSEPORT_ENGINE_COMMAND: JSON.stringify([process.execPath, FAKE]) });
+  try {
+    const i = await s.call(1, 'initialize', init);
+    assert.ok(i.result.capabilities.resources, 'resources are advertised (saved tool output)');
+    s.write({ method: 'notifications/initialized' });
+    const res = await s.call(2, 'resources/list', {});
+    assert.equal(res.error, undefined, JSON.stringify(res.error));
+    assert.deepEqual(res.result.resources, []);
+    const tpl = await s.call(3, 'resources/templates/list', {});
+    assert.equal(tpl.error, undefined, JSON.stringify(tpl.error));
+    assert.deepEqual(tpl.result.resourceTemplates.map(t => t.name), ['tool-output']);
+    const prompts = await s.call(4, 'prompts/list', {});
+    assert.deepEqual(prompts.result.prompts.map(p => p.name), ['investigate'], 'engine prompts still come through');
+  } finally { s.close(); }
+});
