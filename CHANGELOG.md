@@ -1,5 +1,28 @@
 # Changelog
 
+## [1.25.0](https://github.com/laaielichter/Reverseport/compare/reverseport-1.24.0...reverseport-1.25.0) (2026-11-24)
+
+
+### Features
+
+* **compare:** show IL2CPP types that changed between two metadata files ([#165](https://github.com/laaielichter/Reverseport/issues/165)) ([9a9f787](https://github.com/laaielichter/Reverseport/commit/9a9f787c474ea4172e12de7eb8b93c666e48bdf1))
+* **formats:** recognize SPIR-V, DXBC shaders and .ttc collections ([#137](https://github.com/laaielichter/Reverseport/issues/137)) ([#148](https://github.com/laaielichter/Reverseport/issues/148)) ([54a195c](https://github.com/laaielichter/Reverseport/commit/54a195c3d59205eddd5f3e90da04b485fcfd5be4))
+* **symbols:** treat more shader extensions as shader code ([#79](https://github.com/laaielichter/Reverseport/issues/79)) ([#164](https://github.com/laaielichter/Reverseport/issues/164)) ([96f6867](https://github.com/laaielichter/Reverseport/commit/96f6867e33c7eb6a87ee37ee04698a060343ae5e))
+
+
+### Bug Fixes
+
+* **draft:** translate negative literal indexes ([#179](https://github.com/laaielichter/Reverseport/issues/179)) ([369bfca](https://github.com/laaielichter/Reverseport/commit/369bfcaff7b97e339af76409220ea2966274782b))
+
+
+### Documentation
+
+* add a stars badge, thank contributors and add a no-strings star note ([#181](https://github.com/laaielichter/Reverseport/issues/181)) ([93dc88d](https://github.com/laaielichter/Reverseport/commit/93dc88d707cbb45ba5fa790990b25de239631fb3))
+* **contributing:** drop the description of a PR readiness workflow that does not exist ([#167](https://github.com/laaielichter/Reverseport/issues/167)) ([92b7b7d](https://github.com/laaielichter/Reverseport/commit/92b7b7dd309aecff3c06ba726373b1d1deeb49a8))
+* **contributing:** state PR readiness in the description, not a template section ([#166](https://github.com/laaielichter/Reverseport/issues/166)) ([03871e9](https://github.com/laaielichter/Reverseport/commit/03871e9fe4071714c837018634bf845e68902a58))
+* **draft:** explain the GDScript-to-C# first-draft workflow ([#178](https://github.com/laaielichter/Reverseport/issues/178)) ([8ba8e70](https://github.com/laaielichter/Reverseport/commit/8ba8e70af249b7f4e1625bf4145914b35d570438))
+* link the Glama listing from the README ([#182](https://github.com/laaielichter/Reverseport/issues/182)) ([cadcb5a](https://github.com/laaielichter/Reverseport/commit/cadcb5a90b06d693f08807dd1c8cfedaf9ef666c))
+
 ## [1.24.0](https://github.com/laaielichter/Reverseport/compare/reverseport-1.23.0...reverseport-1.24.0) (2026-11-12)
 
 
