@@ -14,7 +14,7 @@ Add this to `cline_mcp_settings.json` (Cline → MCP Servers → Configure):
   "mcpServers": {
     "reverseport": {
       "command": "npx",
-      "args": ["-y", "reverseport@1.24.0", "mcp"],
+      "args": ["-y", "reverseport@1.25.0", "mcp"],
       "disabled": false,
       "timeout": 600
     }
@@ -22,7 +22,7 @@ Add this to `cline_mcp_settings.json` (Cline → MCP Servers → Configure):
 }
 ```
 
-On Windows use `"command": "cmd"` and `"args": ["/c", "npx", "-y", "reverseport@1.24.0", "mcp"]`.
+On Windows use `"command": "cmd"` and `"args": ["/c", "npx", "-y", "reverseport@1.25.0", "mcp"]`.
 
 <!-- x-release-please-end -->
 
