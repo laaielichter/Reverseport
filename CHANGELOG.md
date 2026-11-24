@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.26.0](https://github.com/laaielichter/Reverseport/compare/reverseport-1.25.0...reverseport-1.26.0) (2026-11-24)
+
+
+### Features
+
+* **archive:** list and extract Quake .pak and Doom .wad ([#101](https://github.com/laaielichter/Reverseport/issues/101)) ([#152](https://github.com/laaielichter/Reverseport/issues/152)) ([13245ee](https://github.com/laaielichter/Reverseport/commit/13245eeb98e6e078cb8b3f317b57b5cbfa78d701))
+
+
+### Bug Fixes
+
+* **mcp:** answer resources/list when the engine has no resources ([#184](https://github.com/laaielichter/Reverseport/issues/184)) ([b67d00d](https://github.com/laaielichter/Reverseport/commit/b67d00d3641c16218f6ec65afcfa8725fa7fba82))
+
+
+### Documentation
+
+* **cli:** rename rea to reverseport ([#125](https://github.com/laaielichter/Reverseport/issues/125)) ([#154](https://github.com/laaielichter/Reverseport/issues/154)) ([106b68e](https://github.com/laaielichter/Reverseport/commit/106b68e650f75cb1889a030de55c946590892357))
+* thank [@nickstrooo-bot](https://github.com/nickstrooo-bot) for the Quake .pak / Doom .wad reader and the CLI rename ([#152](https://github.com/laaielichter/Reverseport/issues/152), [#154](https://github.com/laaielichter/Reverseport/issues/154)) ([#185](https://github.com/laaielichter/Reverseport/issues/185)) ([e9f9d03](https://github.com/laaielichter/Reverseport/commit/e9f9d0378399263ba6d5954814ea1c48cb4ffcca))
+
 ## [1.25.0](https://github.com/laaielichter/Reverseport/compare/reverseport-1.24.0...reverseport-1.25.0) (2026-11-24)
 
 
