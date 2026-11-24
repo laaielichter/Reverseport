@@ -15,6 +15,7 @@ between Godot, Unity, Unreal and three.js with parity checks.
 [![MCP tool catalog](https://img.shields.io/badge/MCP-tool_catalog-5c4ee5?style=flat-square)](docs/reference/mcp-contracts.md#generated-catalog)
 [![Node.js](https://img.shields.io/badge/Node.js-22.23.4%2B-339933?style=flat-square&logo=nodedotjs&logoColor=white)](docs/getting-started/installation.md)
 [![License: MIT](https://img.shields.io/badge/license-MIT-22c55e?style=flat-square)](LICENSE)
+[![laaielichter/reverseport MCP server](https://glama.ai/mcp/servers/laaielichter/reverseport/badges/score.svg)](https://glama.ai/mcp/servers/laaielichter/reverseport)
 [![GitHub stars](https://img.shields.io/github/stars/laaielichter/Reverseport?style=social)](https://github.com/laaielichter/Reverseport/stargazers)
 
 ```bash
