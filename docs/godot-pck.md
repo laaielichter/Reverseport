@@ -141,7 +141,8 @@ unknown content identity; ReversePort does not decrypt them. Sparse bundles like
 retain header facts with unknown member coverage. Extraction refuses an
 unreadable directory or encrypted member. This capability does not recover
 keys, decode Godot resources, decompile GDScript bytecode, analyze signals,
-apply patch/removal entries or execute targets.
+apply patch/removal entries or execute targets. For decoding, see
+[Back to an editable project](#back-to-an-editable-project).
 
 Readable logical member bytes, including repeated physical ranges, share the ZIP
 archive expansion policy: at most the larger of 256 MiB or 500 times the PCK's
@@ -150,3 +151,68 @@ directory is checked before any member is yielded, hashed or extracted. Encrypte
 members are not read and do not consume this plaintext-work allowance. Small
 bounded aliases remain valid. This is a processing/output resource bound, separate
 from the directory metadata retention budget and format validity.
+
+## Back to an editable project
+
+The sections above describe the deep-analysis engine's `inspect-artifact`, which keeps Evidence and decodes nothing.
+ReversePort's own tools go further, without Godot installed:
+
+1. `re_archive` lists and extracts the pack (also when it sits inside the exported `.exe`), MD5-checked.
+2. `re_decode` on the extracted folder turns what the export stores back into files you can edit.
+
+| In the export                                       | Written by `re_decode`                                                                    | Reported and left                 |
+| --------------------------------------------------- | ----------------------------------------------------------------------------------------- | --------------------------------- |
+| `.gdc` (Godot 3 bytecode v10–13, Godot 4.3+ tokens) | `.gd` with indentation                                                                    | Encrypted scripts (`.gde`)        |
+| `.scn`, `.res`, `project.binary`                    | `.tscn`, `.tres`, `project.godot`                                                         |                                   |
+| `.ctex`, `.stex` textures                           | PNG: stored PNG and WebP copied as they are; raw 8-bit, DXT1/5, RGTC and ETC/ETC2 decoded | Basis Universal, ASTC and BPTC    |
+| `.sample`                                           | WAV (PCM, IMA ADPCM decoded, loop points kept)                                            |                                   |
+| `.oggvorbisstr`, `.oggstr`, `.mp3str`               | OGG, MP3                                                                                  |                                   |
+| `.translation`                                      | CSV for the keys that can be matched                                                      | Texts without a key, listed apart |
+
+In a folder, the `.import` files give every converted file its original name and place. Translation keys are stored
+as hashes: `re_decode` takes candidate keys from the scripts, scenes and CSV files in the folder, and from `keys` when
+you give them.
+
+```bash
+reverseport archive ./Game.pck --action extract     # prints the folder it wrote
+reverseport decode <that folder>
+```
+
+A run on a two-file fixture built for this page with the writers from `port/test/helpers.mjs` (one imported texture,
+one imported sound), trimmed to the key fields:
+
+```json
+{
+  "decoded": 2,
+  "byKind": { "wav": 1, "png": 1 },
+  "files": [
+    {
+      "file": ".godot/imported/hit.wav-cccc.sample",
+      "decoded": "sfx/hit.wav",
+      "original": "res://sfx/hit.wav",
+      "kind": "AudioStreamWAV",
+      "sampleFormat": "16-bit",
+      "mixRate": 44100,
+      "channels": 1,
+      "frames": 100
+    },
+    {
+      "file": ".godot/imported/icon.png-aaaa.ctex",
+      "decoded": "icon.png",
+      "original": "res://icon.png",
+      "kind": "CompressedTexture2D",
+      "width": 1,
+      "height": 1,
+      "format": "RGBA8",
+      "how": "stored PNG"
+    }
+  ]
+}
+```
+
+Limits:
+
+- Names, constants and structure are exact; comments and the original formatting are not in an export.
+- The import readers (textures, audio, translations) are tested on self-built fixtures only.
+- A converted texture or sound is what the export stored, which can be a lossy copy of the original file.
+- Encrypted packs and scripts are reported, never decrypted.

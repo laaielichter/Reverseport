@@ -8,7 +8,7 @@
     {
       "name": "reverseport",
       "source": "./",
-      "description": "Reverse engineer anything. Port it anywhere. Recon, decompile and trace apps, games, binaries and websites; read Godot packs and Unity IL2CPP; compare builds; keep proof cases; and port between Godot, Unity, Unreal, three.js and languages.",
+      "description": "Reverse engineer anything. Port it anywhere. Recon, decompile and trace apps, games, binaries and websites; read Godot, Unity, Unreal, Ren'Py and GameMaker builds; work out unknown file formats from samples; compare builds; keep proof cases; and port between Godot, Unity, Unreal, three.js and languages.",
       "homepage": "https://laaielichter.github.io/Reverseport/",
       "license": "MIT",
       "keywords": [
@@ -17,6 +17,9 @@
         "godot",
         "unity",
         "il2cpp",
+        "unreal",
+        "renpy",
+        "gamemaker",
         "ghidra",
         "mcp"
       ]

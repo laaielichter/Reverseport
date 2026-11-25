@@ -1902,7 +1902,7 @@ Two registration forms are current, and `reverseport doctor` accepts both:
 
 - **Package runner (portable).** `npx -y reverseport@<version> mcp`, `npx -y reverseport@latest mcp` or
   `npx -y reverseport mcp` (on Windows wrapped as `cmd /c npx …`). This is what the Registry metadata,
-  `reverseport connect <client>` and [llms-install.md](../../llms-install.md) print. It works anywhere Node.js
+  `reverseport connect <client>` and [llms-install.md](https://github.com/laaielichter/reverseport/blob/main/llms-install.md) print. It works anywhere Node.js
   and npm do; npm resolves the package each time the client starts the server. A version pin older than the
   CLI that runs doctor is reported as drift: print a fresh snippet with `reverseport connect <client>` or run
   setup.

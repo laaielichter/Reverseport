@@ -122,4 +122,4 @@ The plan command returned 13 units: 6 scripts, 5 scenes, 1 resource, and 1 confi
 
 Even with no markers, the unit stays `partial` until you review and submit it with `port_write`. The returned `nextCall` shows the plan ID, unit, and file path to write. Review the code, make the engine-specific changes, and send the edited file with `port_write`; do not treat a draft as completed work. This example stops before writing the unit, so its status correctly remains `partial`.
 
-For a complete project port, repeat the plan/draft/review/write loop for the remaining units, then verify the port. See the [porting and rebuilds reference](../.agents/skills/reverse-engineer-anything/references/porting-and-rebuilds.md) for the broader workflow.
+For a complete project port, repeat the plan/draft/review/write loop for the remaining units, then verify the port. See the [porting and rebuilds reference](https://github.com/laaielichter/reverseport/blob/main/.agents/skills/reverse-engineer-anything/references/porting-and-rebuilds.md) for the broader workflow.

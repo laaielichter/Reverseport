@@ -22,18 +22,24 @@ re_archive {file:"Game.pck"}                         → entries, sizes, types, 
 re_archive {file:"Game.exe"}                         → same, when the pack is embedded in the executable
 re_archive {file, action:"extract", match:"*.gd"}    → extract (MD5-checked) into the workspace or out
 re_il2cpp {file:"…/Metadata/global-metadata.dat"}    → Unity IL2CPP: assemblies, classes, method names, literals, C# skeleton
-re_decode {path:"<extracted pack folder>"}         → .gdc → .gd, .scn/.res → .tscn/.tres, project.binary → project.godot
+re_decode {path:"<extracted pack folder>"}         → .gdc → .gd, .scn/.res → .tscn/.tres, project.binary → project.godot;
+                                                       imported .ctex → PNG, .sample → WAV, OGG, MP3, .translation → CSV
 re_archive {file:"data.win"}                         → GameMaker: game name/version, sprite/object/room names, textures + audio
-re_archive {file:"archive.rpa"}                      → Ren'Py: scripts/images/audio (.rpyc = compiled AST, no source)
+re_decode  {path:"data.win"}                         → GameMaker: GML bytecode → .gml per script, object event and room (unsure = assembly)
+re_archive {file:"archive.rpa"}                      → Ren'Py: scripts/images/audio; extract, then
+re_decode  {path:"<extracted folder>"}               → Ren'Py: compiled .rpyc → .rpy (comments are not in the file)
 re_archive {file:"Master.bank"} / {file:"Init.bnk"}  → FMOD events + FSB5 samples / Wwise media (.wem) + object counts
 re_archive {file:"Game.pak"}                         → Unreal: entries, compression, stored/Zlib extract; encrypted = listed only
+re_unreal  {file:"<x>.uasset"}                       → Unreal: names, imports, exports; also .utoc file list, .locres texts, GVAS .sav
+re_archive {file:"game.apk"} / {file:"game.ipa"}     → Android manifest (package, versions, permissions, ABIs) / iOS Info.plist
 re_archive {file:"Build/game.data.br"}              → Unity WebGL: data files, StreamingAssets, IL2CPP metadata; Emscripten .data via its loader .js
 re_archive {file:"game.swf"}                         → Flash: stage, AS2/AS3, classes, symbols, images/sounds/ABC extract
 re_archive {file:"<Game>_Data/data.unity3d"}             → Unity build: objects by class and name, scenes, C# scripts in use (+ counts)
 re_archive {file:"<Game>_Data/sharedassets0.assets"}     → the same for one serialized file (level0, globalgamemanagers, …)
 re_archive {file:"StreamingAssets/<x>.bundle", action:"extract"} → asset bundle: textures → PNG, meshes → OBJ, audio (FSB5), text, objects as JSON
 re_binary  {file:"<Game>_Data/Managed/Assembly-CSharp.dll"}   → Unity Mono build: game classes and methods
-re_binary  {file:"Game.exe"}                         → arch, imports (graphics API, Steam, FMOD/Wwise…), hints
+re_binary  {file:"Game.exe"}                         → arch, imports (graphics API, Steam, FMOD/Wwise…), hints; detected packer,
+                                                       installer or compiler with evidence (named, never unpacked)
 ```
 
 Godot exports store imported resources (`.ctex`, `.scn`, `.res` under `.godot/imported/`) rather than the original

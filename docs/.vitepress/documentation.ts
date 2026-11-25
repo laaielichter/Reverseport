@@ -34,6 +34,36 @@ export const documentationSections = [
         route: "/proof-and-memory",
       },
       {
+        text: "Injection shield",
+        source: "injection-shield.md",
+        route: "/injection-shield",
+      },
+      {
+        text: "Unknown formats from samples",
+        source: "re-struct.md",
+        route: "/re-struct",
+      },
+      {
+        text: "Ren'Py games",
+        source: "renpy.md",
+        route: "/renpy",
+      },
+      {
+        text: "GameMaker games",
+        source: "gamemaker.md",
+        route: "/gamemaker",
+      },
+      {
+        text: "Unreal Engine files",
+        source: "unreal.md",
+        route: "/unreal",
+      },
+      {
+        text: "Android and iOS packages",
+        source: "android-ios.md",
+        route: "/android-ios",
+      },
+      {
         text: "Walkthrough: Godot to three.js",
         source: "walkthrough-godot-to-threejs.md",
         route: "/walkthrough-godot-to-threejs",
