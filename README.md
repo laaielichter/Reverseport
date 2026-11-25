@@ -171,6 +171,29 @@ For engine selection, see [Choose a provider](docs/getting-started/cli.md#choose
 
 One MCP server serves the recon, build, proof and porting tools. See [the tool overview](docs/tool-overview.md) and [generated contracts](docs/reference/mcp-contracts.md#generated-catalog).
 
+## New: formats from samples, and an injection shield
+
+**`re_struct`** works out an unknown binary format from two or more sample files (saves, levels, packets). Bytes that
+are the same everywhere are the format; a number that follows the file size is a length, one that follows the record
+count is a count, and a CRC that matches the rest gives itself away. It returns every field with its evidence, the
+columns of record tables, and a Kaitai Struct draft:
+
+```text
+reverseport struct ./saves "*.sav"
+ 0  constant  "SAVE" 03 00 00 00 …     magic
+12  u4le      length     the size of the file minus 16
+16  u4le      checksum   CRC-32 of the bytes after this field
+20  u4le      time       Unix time in seconds
+24  u4le length + text   "Roel", "Alexandra", "Bo"
+ …  u4le      count      records of 12 bytes: u4le id, f4le, u4le
+```
+
+**Injection shield.** A binary, a pack or a web page can carry text written for the agent that reads it ("ignore your
+instructions", "run this command", invisible Unicode). Every tool result, also decompiled code from the engine, is
+checked before the agent sees it; a hit adds an `untrusted` note with the place and the text, and says it is data.
+Nothing is removed, no model is involved. `REVERSEPORT_SHIELD=off` turns it off. See
+[the details](docs/injection-shield.md).
+
 ## How it compares
 
 |                            | ReversePort                                                       | Disassembler MCP servers (IDA, Ghidra, …) | By hand                     |
@@ -182,6 +205,8 @@ One MCP server serves the recon, build, proof and porting tools. See [the tool o
 | Native binaries            | Through the Ghidra, Hopper or IDA that you have installed         | Deepest inside their own tool             | The tool's own UI           |
 | Porting                    | Plan, API maps, code drafts, scene and asset conversion, verify   | Not part of the job                       | Rewrite and check by hand   |
 | Proof                      | Proof cases and guard hooks                                       | Up to the agent                           | Your notes                  |
+| Unknown file formats       | `re_struct`: layout and a Kaitai draft from sample files          | Hex views                                 | Stare at hex                |
+| Text aimed at the agent    | Flagged in every result (injection shield), nothing removed       | A warning in the docs                     | Not a problem               |
 | Runs                       | Locally, target read-only                                         | Usually locally                           | Locally                     |
 | Does not                   | Crack DRM or anti-cheat, or finish a code port without an agent   | Port or compare builds                    | Scale                       |
 

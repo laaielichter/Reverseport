@@ -64,7 +64,7 @@ Alles staat in de [changelog](https://github.com/laaielichter/reverseport/blob/m
 - **Verkennen** — `re_scan` herkent engine en versie (Godot, Unity, Unreal, GameMaker, RPG Maker, Ren'Py, LÖVE,
   Defold, Bevy, MonoGame, three.js, Electron…), talen en startpunten, ook van geëxporteerde builds. Afhankelijkheden
   (`re_graph`), klassen en signalen (`re_symbols`), scènes (`re_scene`), executables (`re_binary`), packs zoals
-  Godot `.pck` — ook in de `.exe` (`re_archive`) — onbekende data (`re_probe`, `re_extract`) en verschillen tussen
+  Godot `.pck` — ook in de `.exe` (`re_archive`) — onbekende data (`re_probe`, `re_extract`), een onbekend formaat uit voorbeeldbestanden (`re_struct`) en verschillen tussen
   builds (`re_compare`).
 - **Diep gaan** — decompileren, cross-references en call-paden van native, .NET-, Android-, Electron/JavaScript-,
   WebAssembly-, firmware- en browserdoelen via Ghidra, Hopper, IDA, JADX en meer, met het bewijs bij elke conclusie.

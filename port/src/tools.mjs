@@ -25,6 +25,7 @@ import { portTraceTool } from './trace.mjs';
 import { decodeTool } from './godotbin.mjs';
 import { il2cppTool } from './il2cpp.mjs';
 import { portRpgMakerTool } from './rpgmaker.mjs';
+import { structTool } from './struct.mjs';
 import { shieldValue } from './shield.mjs';
 
 /** One version for the whole package: the root package.json. */
@@ -64,6 +65,9 @@ export const tools = [
   { name: 're_probe', brief: 'Identify unknown data: hex, entropy map, embedded files and record strides.', title: 'Probe unknown data',
     description: 'For unknown or custom formats: identifies the format at an offset, hex view, entropy map (text/code/compressed regions), embedded files (PNG, OGG, WAV, ZIP, GDPC, glTF, DDS, ELF/PE…) with offsets and sizes, and likely record strides for tables. Works on multi-GB files.',
     inputSchema: obj({ file: str('File to probe.'), offset: int('Start offset (default 0).', { minimum: 0 }), length: int('Bytes in the hex view (default 256, max 4096).', { minimum: 16, maximum: 4096 }), maxMB: int('MiB to scan for entropy/embedded files (default 512).', { minimum: 1, maximum: 65536 }) }, ['file']) },
+  { name: 're_struct', brief: 'Work out an unknown binary format from 2+ sample files: constants, lengths, counts, checksums, text, record tables, and a Kaitai Struct draft.', title: 'Infer a binary format from samples',
+    description: 'Give 2 to 32 files of the same unknown format (saves, levels, packets, custom archives). Compares them side by side and returns the layout as fields with the evidence for each: bytes that are the same in every sample (magic, version, padding), numbers that follow the file size or the bytes after them (lengths), counts of fixed-size records (count x record size = what follows) with the columns of the record table (whole numbers, floats, ids that rise), CRC-32/Adler-32 fields and what they cover, MD5/SHA-1/SHA-256 or CRC trailers, Unix times, offsets that land on the same bytes in every sample, and text with a length in front or a NUL behind it. A text of a different length per sample does not end the comparison: every sample keeps its own cursor. Also returns a Kaitai Struct (.ksy) draft. A hypothesis from the samples given: more samples that differ in one known thing sharpen it. Read-only; it decrypts and decompresses nothing.',
+    inputSchema: obj({ files: { type: 'array', items: { type: 'string' }, minItems: 2, maxItems: 32, description: 'Sample files of the same format.' }, path: str('Or: a folder with the samples (use match to pick them).'), match: str('With path: only files matching, e.g. "*.sav" or /slot\\d+\\.dat/.'), maxKB: int('KiB of each sample to read (default 1024). Checksums over the whole file need the whole file.', { minimum: 1, maximum: 65536 }) }) },
   { name: 're_extract', brief: 'Carve a byte range out of a file (for whole archives use re_archive action:"extract").', title: 'Carve bytes out of a file',
     description: 'Copies a byte range (e.g. an embedded PNG/WAV/glb/ZIP found by re_probe) into the workspace as its own file. length is optional when the embedded format stores its size (RIFF/WAV, glb, PNG). To unpack a whole archive or pack, use re_archive with action:"extract" instead.',
     inputSchema: obj({ file: str('Source file.'), offset: int('Start offset.', { minimum: 0 }), length: int('Bytes to copy.', { minimum: 1 }), name: str('Output file name.') }, ['file', 'offset']) },
@@ -155,7 +159,7 @@ for (const t of tools) t.annotations = annotationsFor(t.name);
 
 const handlers = {
   re_scan: scanProject, re_graph: graphTool, re_symbols: symbolsTool, re_scene: a => readScene(a.file), re_binary: inspectBinary,
-  re_archive: archiveTool, re_probe: probe, re_extract: carve, re_compare: compare, re_refs: refsTool, re_strings: stringsTool, re_apicheck: apicheckTool, re_decode: decodeTool, re_il2cpp: il2cppTool, port_upgrade: upgradeTool, re_save: saveTool, port_shader: portShaderTool, port_trace: portTraceTool, port_rpgmaker: portRpgMakerTool, re_report: report, re_lookup: lookupTool, re_blueprint: blueprintTool,
+  re_archive: archiveTool, re_probe: probe, re_struct: structTool, re_extract: carve, re_compare: compare, re_refs: refsTool, re_strings: stringsTool, re_apicheck: apicheckTool, re_decode: decodeTool, re_il2cpp: il2cppTool, port_upgrade: upgradeTool, re_save: saveTool, port_shader: portShaderTool, port_trace: portTraceTool, port_rpgmaker: portRpgMakerTool, re_report: report, re_lookup: lookupTool, re_blueprint: blueprintTool,
   port_map: portMapTool, port_convert: convert, port_plan: planPort, port_unit: portUnit, port_write: portWrite, port_draft: portDraft, port_scene: portScene,
   port_copy_assets: portCopyAssets, port_status: portStatus, port_verify: portVerify, re_case: caseTool, share_feedback: shareFeedback,
 };
