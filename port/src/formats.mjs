@@ -115,6 +115,25 @@ export const FORMATS = [
   { id: 'bplist', name: 'Apple binary property list (bplist)', category: 'data', test: (b, o) => str(b, o, 'bplist0') },
 ];
 
+/**
+ * The name of the root element of an XML text, after an optional declaration, comments and a doctype; '' when there is
+ * none. One pass with indexOf: a pattern with a repeated comment group can take very long on a file full of comments.
+ */
+function rootElement(text, caseSensitive = false) {
+  let i = 0;
+  const skipSpace = () => { while (i < text.length && /\s/.test(text[i])) i++; };
+  skipSpace();
+  if (text.startsWith('<?xml', i)) { const end = text.indexOf('?>', i); if (end < 0) return ''; i = end + 2; }
+  for (;;) {
+    skipSpace();
+    if (text.startsWith('<!--', i)) { const end = text.indexOf('-->', i + 4); if (end < 0) return ''; i = end + 3; continue; }
+    if (text.slice(i, i + 9).toUpperCase() === '<!DOCTYPE') { const end = text.indexOf('>', i); if (end < 0) return ''; i = end + 1; continue; }
+    break;
+  }
+  const m = /^<([A-Za-z][\w:.-]*)[\s>/]/.exec(text.slice(i, i + 80));
+  return m ? (caseSensitive ? m[1] : m[1].toLowerCase()) : '';
+}
+
 const TEXT_KINDS = [
   { id: 'godot-scene', name: 'Godot text scene (.tscn)', re: /^\[gd_scene\b/ },
   { id: 'godot-text-resource', name: 'Godot text resource (.tres)', re: /^\[gd_resource\b/ },
@@ -122,8 +141,8 @@ const TEXT_KINDS = [
   { id: 'unity-yaml', name: 'Unity YAML asset (scene/prefab/asset)', re: /^%YAML[^\n]*\n%TAG !u! tag:unity3d\.com/ },
   { id: 'yaml', name: 'YAML', re: /^(%YAML|---\s*\n)/ },
   // SVG before XML: the root element decides, after an optional XML declaration, comments and a doctype.
-  { id: 'svg', name: 'SVG image', re: /^\s*(?:<\?xml[^>]*\?>\s*)?(?:<!--[\s\S]*?-->\s*|<!DOCTYPE[^>]*>\s*)*<svg[\s>]/i },
-  { id: 'plist-xml', name: 'Apple XML property list', re: /^\s*(?:<\?xml[^>]*\?>\s*)?(?:<!--[\s\S]*?-->\s*|<!DOCTYPE[^>]*>\s*)*<plist[\s>]/ },
+  { id: 'svg', name: 'SVG image', re: { test: t => rootElement(t) === 'svg' } },
+  { id: 'plist-xml', name: 'Apple XML property list', re: { test: t => rootElement(t, true) === 'plist' } },
   { id: 'xml', name: 'XML', re: /^\s*<\?xml/ },
   { id: 'html', name: 'HTML', re: /^\s*<!doctype html|^\s*<html/i },
   // INI before JSON: both start with "[". A section line holds a bare name (no quotes, commas or brackets, and
