@@ -194,6 +194,23 @@ checked before the agent sees it; a hit adds an `untrusted` note with the place 
 Nothing is removed, no model is involved. `REVERSEPORT_SHIELD=off` turns it off. See
 [the details](docs/injection-shield.md).
 
+## New: what other tools do, in one place
+
+Things you used to need a separate tool for, now read by ReversePort's own engine (no Ghidra or IDA needed):
+
+- **Executables** (`re_binary`): packers, protectors, installers and compilers with the evidence for each; what the
+  imports point at (networking, cryptography, debugger checks, ...); PE version info, manifest and icons; the Rich
+  header as tool versions; ELF build-id and DWARF producers; Mach-O code signature and entitlements; WebAssembly
+  function names.
+- **Godot exports** (`re_decode`): imported textures back to PNG, audio back to WAV, OGG and MP3, translations back
+  to CSV, each under its original name.
+- **Unreal** (`re_unreal`): `.uasset`/`.umap` names, imports and exports, IoStore `.utoc` file lists, `.locres` texts
+  and GVAS saves.
+- **Mobile and Steam** (`re_archive`, `re_save`): the Android manifest and `resources.arsc` of an `.apk`, the
+  `Info.plist` of an `.ipa`, Apple property lists and Steam `appmanifest` files.
+
+Detection only: nothing is unpacked, decrypted or patched.
+
 ## How it compares
 
 |                            | ReversePort                                                       | Disassembler MCP servers (IDA, Ghidra, …) | By hand                     |
@@ -205,6 +222,8 @@ Nothing is removed, no model is involved. `REVERSEPORT_SHIELD=off` turns it off.
 | Native binaries            | Through the Ghidra, Hopper or IDA that you have installed         | Deepest inside their own tool             | The tool's own UI           |
 | Porting                    | Plan, API maps, code drafts, scene and asset conversion, verify   | Not part of the job                       | Rewrite and check by hand   |
 | Proof                      | Proof cases and guard hooks                                       | Up to the agent                           | Your notes                  |
+| Executables                | Packers, installers, compilers, capabilities, version info, Rich  | Their own analysis                        | Several tools               |
+| Mobile and Unreal          | APK manifest, IPA plist, .uasset tables, .locres, GVAS saves      | Not part of the job                       | One tool per format         |
 | Unknown file formats       | `re_struct`: layout and a Kaitai draft from sample files          | Hex views                                 | Stare at hex                |
 | Text aimed at the agent    | Flagged in every result (injection shield), nothing removed       | A warning in the docs                     | Not a problem               |
 | Runs                       | Locally, target read-only                                         | Usually locally                           | Locally                     |

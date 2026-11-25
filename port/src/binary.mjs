@@ -3,6 +3,8 @@
 // It only reads and describes — it does not unpack, decrypt or patch anything.
 import { entropy, readAt, readHead, sha256File, MiB, hex, RPError, requireFile, compileMatcher } from './util.mjs';
 import { identify } from './formats.mjs';
+import { parsePeResources } from './pe-resources.mjs';
+import { parseRichHeader, detectTools, detectCapabilities, CAPABILITY_NOTE } from './bindetect.mjs';
 
 const HEAD_LIMIT = 256 * MiB;
 
@@ -18,7 +20,7 @@ function cstr(buf, off, max = 4096) {
 const PE_MACHINES = { 0x14c: 'x86', 0x8664: 'x86-64', 0xaa64: 'arm64', 0x1c0: 'arm', 0x1c4: 'arm (thumb-2)', 0x200: 'ia64', 0xa641: 'arm64ec' };
 const PE_SUBSYSTEMS = { 1: 'native', 2: 'windows GUI', 3: 'console', 9: 'Windows CE', 10: 'EFI application', 14: 'Xbox' };
 
-export function parsePE(buf) {
+export function parsePE(buf, { resources: resourceOptions } = {}) {
   const peOff = buf.readUInt32LE(0x3c);
   if (buf.toString('latin1', peOff, peOff + 4) !== 'PE\0\0') throw new RPError('BAD_FORMAT', 'MZ header without PE signature');
   const coff = peOff + 4;
@@ -122,6 +124,12 @@ export function parsePE(buf) {
   }
   // MSVC "Rich" header between the DOS stub and the PE header
   const richAt = buf.subarray(0x40, peOff).indexOf('Rich');
+  let richHeader = null;
+  if (richAt >= 0) { try { richHeader = parseRichHeader(buf, peOff); } catch { warnings.push('Rich header damaged'); } }
+  let resources = null;
+  if (dirs[2]?.rva) {
+    try { resources = parsePeResources(buf, rvaToOff, dirs[2], resourceOptions); } catch (e) { warnings.push(`resource directory could not be read completely (${e.message})`); }
+  }
   const dotnet = dirs[14]?.rva ? parseDotNet(buf, rvaToOff, dirs[14].rva, warnings) : null;
   let lastRaw = sections.reduce((m, s) => Math.max(m, s.rawOffset + s.rawSize), 0);
   if (symPtr && symPtr >= lastRaw) { // MinGW keeps a COFF symbol table + string table after the sections
@@ -134,7 +142,9 @@ export function parsePE(buf) {
     format: 'pe', bits: pe64 ? 64 : 32, endian: 'little', arch: PE_MACHINES[machine] ?? hex(machine),
     kind: characteristics & 0x2000 ? 'dll' : 'exe', subsystem: PE_SUBSYSTEMS[subsystem] ?? subsystem,
     entryPoint: hex(entry), imageBase: hex(imageBase), timestamp: timestamp ? new Date(timestamp * 1000).toISOString() : null,
+    linkerVersion: `${buf[opt + 2]}.${buf[opt + 3]}`,
     sections, imports, exports, pdb, signed: !!certTable?.size, msvcRichHeader: richAt >= 0,
+    ...(richHeader ? { richHeader } : {}), ...(resources ? { resources } : {}),
     dotnet, lastSectionEnd: lastRaw, certTable, warnings,
   };
 }
@@ -242,13 +252,25 @@ export function parseELF(buf) {
   const shstr = sections[shstrndx];
   for (const s of sections) s.name = shstr ? cstr(buf, shstr.offset + s.nameOff, 256) ?? '' : '';
   let interpreter = null;
+  const noteRanges = sections.filter(s => s.type === 7).map(s => [s.offset, s.size]);
+  const noteSegments = [];
   for (let i = 0; i < phnum && phoff; i++) {
     const p = phoff + i * phentsize;
     if (p + phentsize > buf.length) break;
     if (u32(p) === 3) { const off = is64 ? u64(p + 8) : u32(p + 4); interpreter = cstr(buf, off, 512); }
+    if (u32(p) === 4) noteSegments.push(is64 ? [u64(p + 8), u64(p + 32)] : [u32(p + 4), u32(p + 16)]);
+  }
+  const noteInfo = elfNotes(buf, noteRanges.length ? noteRanges : noteSegments, u32);
+  const commentSec = sections.find(s => s.name === '.comment' && s.type === 1);
+  const comment = commentSec ? [...new Set(buf.toString('utf8', commentSec.offset, Math.min(buf.length, commentSec.offset + Math.min(commentSec.size, 65536))).split('\0').map(t => t.trim()).filter(Boolean))].slice(0, 16) : [];
+  const debugSections = sections.filter(s => /^\.z?debug_/.test(s.name)).map(s => s.name);
+  let dwarf = null;
+  if (debugSections.length) {
+    dwarf = { sections: debugSections.length };
+    try { Object.assign(dwarf, dwarfProducers(buf, sections, { u16, u32, u64, relocatable: type === 1 })); } catch { dwarf.note = 'compile units could not be read'; }
   }
   const strAt = (sec, off) => (sec ? cstr(buf, sec.offset + off, 1024) : null);
-  const needed = [], rpath = [];
+  const needed = [], rpath = [], runpath = [];
   let soname = null;
   const dyn = sections.find(s => s.type === 6);
   if (dyn) {
@@ -260,6 +282,7 @@ export function parseELF(buf) {
       if (tag === 1) needed.push(strAt(dynstr, val));
       if (tag === 14) soname = strAt(dynstr, val);
       if (tag === 15 || tag === 29) rpath.push(strAt(dynstr, val));
+      if (tag === 29) runpath.push(strAt(dynstr, val));
     }
   }
   const readSyms = sec => {
@@ -287,10 +310,127 @@ export function parseELF(buf) {
     sections: sections.map(s => ({ name: s.name, type: s.type, offset: s.offset, size: s.type === 8 ? 0 : s.size, flags: s.flags })),
     imports: [{ library: '(dynamic)', libraries: needed, functions: dynsym.filter(s => !s.defined).map(s => s.name) }],
     exports: { names: dynsym.filter(s => s.defined && s.global).map(s => s.name) },
-    soname, rpath, stripped: !symtab, functionSymbols: symbols.filter(s => s.kind === 'function' && s.defined).length,
+    soname, rpath, ...(runpath.length ? { runpath } : {}), ...noteInfo, ...(comment.length ? { comment } : {}), ...(dwarf ? { dwarf } : {}), stripped: !symtab, functionSymbols: symbols.filter(s => s.kind === 'function' && s.defined).length,
     debugInfo: sections.some(s => s.name.startsWith('.debug_')), goBinary: !!goBuildId || sections.some(s => s.name === '.gopclntab'),
     pckSection: sections.find(s => s.name === 'pck') ? { offset: sections.find(s => s.name === 'pck').offset, size: sections.find(s => s.name === 'pck').size } : null,
     lastSectionEnd: Math.max(shoff + shnum * shentsize, phoff + phnum * phentsize, sections.reduce((m, s) => (s.type === 8 ? m : Math.max(m, s.offset + s.size)), 0)), warnings,
+  };
+}
+
+const align4 = n => (n + 3) & ~3;
+const GNU_ABI_OS = ['Linux', 'GNU Hurd', 'Solaris', 'FreeBSD', 'NetBSD', 'Syllable', 'NaCl'];
+const NOTE_NAMES = { 'GNU/1': 'ABI tag', 'GNU/2': 'hardware capabilities', 'GNU/3': 'build id', 'GNU/4': 'gold version', 'GNU/5': 'program properties', 'Go/4': 'Go build id', 'Go/1': 'Go package list', 'Go/2': 'Go ABI hash', 'Go/3': 'Go dependencies', 'stapsdt/3': 'SystemTap probe', 'FDO/0xcafe1a7e': 'package metadata', 'Android/1': 'Android API level' };
+
+/** ELF notes: namesz, descsz, type, then the owner name and the descriptor, each padded to 4 bytes. */
+function elfNotes(buf, ranges, u32) {
+  const out = {};
+  const notes = [];
+  const seen = new Set();
+  let total = 0;
+  for (const [start, size] of ranges) {
+    const end = Math.min(buf.length, start + size);
+    for (let o = start; o + 12 <= end && total < 4096;) {
+      const namesz = u32(o), descsz = u32(o + 4), type = u32(o + 8);
+      const descOff = o + 12 + align4(namesz);
+      if (namesz > 256 || descOff + descsz > end) break;
+      const at = o;
+      o = descOff + align4(descsz);
+      if (seen.has(at)) continue;
+      seen.add(at); total++;
+      const owner = cstr(buf, at + 12, namesz) ?? '';
+      const key = `${owner}/${type > 0xffff ? hex(type) : type}`;
+      const desc = buf.subarray(descOff, descOff + descsz);
+      if (key === 'GNU/3' && !out.buildId) out.buildId = desc.toString('hex');
+      else if (key === 'GNU/1' && descsz >= 16 && !out.abiTag) out.abiTag = { os: GNU_ABI_OS[u32(descOff)] ?? u32(descOff), minVersion: `${u32(descOff + 4)}.${u32(descOff + 8)}.${u32(descOff + 12)}` };
+      else if (key === 'Go/4' && !out.goBuildId) out.goBuildId = desc.toString('latin1').replace(/\0+$/, '');
+      else if (key === 'GNU/4' && !out.goldVersion) out.goldVersion = desc.toString('latin1').replace(/\0+$/, '');
+      else if (key === 'Android/1' && descsz >= 4 && !out.androidApiLevel) out.androidApiLevel = u32(descOff);
+      const same = notes.find(n => n.owner === owner && n.type === type);
+      if (same) same.count = (same.count ?? 1) + 1;
+      else if (notes.length < 16) notes.push({ owner, type, ...(NOTE_NAMES[key] ? { name: NOTE_NAMES[key] } : {}), size: descsz });
+    }
+  }
+  if (notes.length) out.notes = notes;
+  return out;
+}
+
+// DW_FORM sizes for the attributes that can come before DW_AT_producer in a compile unit DIE. -1: offset size,
+// -2: address size, -3: LEB128, -4: NUL-terminated string. Anything else stops the walk for that unit.
+const DW_FORM_SIZE = { 0x01: -2, 0x05: 2, 0x06: 4, 0x07: 8, 0x08: -4, 0x0b: 1, 0x0c: 1, 0x0d: -3, 0x0e: -1, 0x0f: -3, 0x10: -1, 0x11: 1, 0x12: 2, 0x13: 4, 0x14: 8, 0x15: -3, 0x17: -1, 0x19: 0, 0x1a: -3, 0x1b: -3, 0x1e: 16, 0x1f: -1, 0x20: 8, 0x21: 0, 0x22: -3, 0x23: -3, 0x25: 1, 0x26: 2, 0x27: 3, 0x28: 4, 0x29: 1, 0x2a: 2, 0x2b: 3, 0x2c: 4 };
+
+/** DWARF version and the DW_AT_producer of each compile unit (the compiler and its flags). Cheap: headers and first DIE only. */
+function dwarfProducers(buf, sections, { u16, u32, u64, relocatable }) {
+  const sec = name => sections.find(s => s.name === name && s.type === 1 && !(s.flags & 0x800));
+  const info = sec('.debug_info'), abbrev = sec('.debug_abbrev'), strs = sec('.debug_str'), lineStrs = sec('.debug_line_str'), strOffsets = sec('.debug_str_offsets');
+  if (!info || !abbrev) return sections.some(s => /^\.zdebug_/.test(s.name) || (s.name.startsWith('.debug_') && s.flags & 0x800)) ? { note: 'debug sections are compressed; producers not read' } : {};
+  const end = Math.min(buf.length, info.offset + info.size), abbrevEnd = Math.min(buf.length, abbrev.offset + abbrev.size);
+  const producers = new Map();
+  const versions = new Set();
+  let units = 0;
+  for (let o = info.offset; o + 11 <= end && units < 20000;) {
+    let length = u32(o), p = o + 4, offSize = 4;
+    if (length === 0xffffffff) { length = u64(o + 4); p = o + 12; offSize = 8; }
+    const next = p + length;
+    if (!length || next > end) break;
+    units++;
+    const version = u16(p);
+    versions.add(version);
+    const off = q => (offSize === 8 ? u64(q) : u32(q));
+    let abbrevOff, addrSize, die;
+    if (version >= 5) { addrSize = buf[p + 3]; abbrevOff = off(p + 4); die = p + 4 + offSize; if (buf[p + 2] !== 1 && buf[p + 2] !== 3) { o = next; continue; } }
+    else { abbrevOff = off(p + 2); addrSize = buf[p + 2 + offSize]; die = p + 3 + offSize; }
+    o = next;
+    if (relocatable || version < 2 || version > 5) continue;
+    let code; [code, die] = leb(buf, die);
+    // find the abbreviation with this code
+    let a = abbrev.offset + abbrevOff, attrs = null;
+    for (let guard = 0; a < abbrevEnd && guard < 4096; guard++) {
+      let c, tag; [c, a] = leb(buf, a);
+      if (!c) break;
+      [tag, a] = leb(buf, a); a++;
+      const list = [];
+      for (let k = 0; a < abbrevEnd && k < 256; k++) {
+        let name, form; [name, a] = leb(buf, a); [form, a] = leb(buf, a);
+        if (form === 0x21) [, a] = leb(buf, a);
+        if (!name && !form) break;
+        list.push([name, form]);
+      }
+      if (c === code) { attrs = tag === 0x11 || tag === 0x3c ? list : null; break; }
+    }
+    if (!attrs) continue;
+    let text = null, strx = null, strBase = null;
+    for (const [name, form] of attrs) {
+      if (name === 0x25) {
+        if (form === 0x08) text = cstr(buf, die, 1024);
+        else if (form === 0x0e && strs) text = cstr(buf, strs.offset + off(die), 1024);
+        else if (form === 0x1f && lineStrs) text = cstr(buf, lineStrs.offset + off(die), 1024);
+        else if (form === 0x1a) strx = leb(buf, die)[0];
+        else if (form >= 0x25 && form <= 0x28) strx = buf.readUIntLE(die, form - 0x24);
+        if (text) break;
+      }
+      if (name === 0x72 && form === 0x17) strBase = off(die); // DW_AT_str_offsets_base
+      if (strx !== null && strBase !== null) break;
+      const size = DW_FORM_SIZE[form];
+      if (size === undefined) break;
+      if (size >= 0) die += size;
+      else if (size === -1) die += offSize;
+      else if (size === -2) die += addrSize;
+      else if (size === -3) [, die] = leb(buf, die);
+      else { while (die < next && buf[die] !== 0) die++; die++; }
+      if (die >= next) break;
+    }
+    // DWARF 5 string index: the unit's slice of .debug_str_offsets, then .debug_str.
+    if (!text && strx !== null && strBase !== null && strOffsets && strs) {
+      const slot = strOffsets.offset + strBase + strx * offSize;
+      if (slot + offSize <= buf.length) text = cstr(buf, strs.offset + off(slot), 1024);
+    }
+    if (text) producers.set(text, (producers.get(text) ?? 0) + 1);
+  }
+  const list = [...producers.entries()].sort((x, y) => y[1] - x[1]);
+  return {
+    ...(versions.size ? { version: [...versions].sort().join(', ') } : {}), compileUnits: units,
+    ...(list.length ? { producers: list.slice(0, 8).map(([producer, n]) => ({ producer: producer.length > 200 ? producer.slice(0, 200) + '…' : producer, units: n })) } : {}),
+    ...(list.length > 8 ? { more: list.length - 8 } : {}),
   };
 }
 
@@ -298,7 +438,47 @@ export function parseELF(buf) {
 const MACHO_CPU = { 7: 'x86', 0x01000007: 'x86-64', 12: 'arm', 0x0100000c: 'arm64', 0x0200000c: 'arm64_32', 18: 'powerpc' };
 const MACHO_TYPES = { 1: 'object', 2: 'executable', 6: 'dylib', 7: 'dylinker', 8: 'bundle', 0xb: 'dSYM companion' };
 const MACHO_PLATFORMS = { 1: 'macOS', 2: 'iOS', 3: 'tvOS', 4: 'watchOS', 6: 'Mac Catalyst', 7: 'iOS simulator', 11: 'visionOS' };
+const MACHO_TOOLS = { 1: 'clang', 2: 'swift', 3: 'ld', 4: 'lld' };
+const MACHO_VERSION_MIN = { 0x24: ['macOS', 'LC_VERSION_MIN_MACOSX'], 0x25: ['iOS', 'LC_VERSION_MIN_IPHONEOS'], 0x2f: ['tvOS', 'LC_VERSION_MIN_TVOS'], 0x30: ['watchOS', 'LC_VERSION_MIN_WATCHOS'] };
 const ver = v => `${v >>> 16}.${(v >> 8) & 0xff}.${v & 0xff}`;
+
+/** Top-level <key> names of an XML property list (keys of nested dicts are left out). */
+function plistTopKeys(xml) {
+  const keys = [];
+  let depth = 0;
+  for (const m of xml.matchAll(/<(\/?)(dict|array)\b[^>]*?(\/?)>|<key>([^<]*)<\/key>/g)) {
+    if (m[4] !== undefined) { if (depth === 1) keys.push(m[4]); } else if (!m[3]) depth += m[1] ? -1 : 1;
+  }
+  return keys;
+}
+
+/** LC_CODE_SIGNATURE: an embedded-signature SuperBlob (big-endian) with the code directory, entitlements and CMS blob. */
+function machoCodeSignature(buf, at, size) {
+  const out = { offset: at, size };
+  if (at + 12 > buf.length) return { ...out, note: 'outside the read range' };
+  if (buf.readUInt32BE(at) !== 0xfade0cc0) return { ...out, note: 'not an embedded-signature SuperBlob' };
+  const count = Math.min(buf.readUInt32BE(at + 8), 64);
+  for (let i = 0; i < count; i++) {
+    const e = at + 12 + i * 8;
+    if (e + 8 > buf.length) break;
+    const b = at + buf.readUInt32BE(e + 4);
+    if (b + 8 > buf.length) continue;
+    const magic = buf.readUInt32BE(b), len = buf.readUInt32BE(b + 4), end = Math.min(buf.length, b + len);
+    if (magic === 0xfade0c02 && out.identifier === undefined && b + 44 <= end) {
+      const version = buf.readUInt32BE(b + 8), flags = buf.readUInt32BE(b + 12);
+      out.identifier = cstr(buf, b + buf.readUInt32BE(b + 20), 256);
+      if (version >= 0x20200 && b + 52 <= end && buf.readUInt32BE(b + 48)) out.teamId = cstr(buf, b + buf.readUInt32BE(b + 48), 64);
+      out.adHoc = !!(flags & 0x2);
+      out.hardenedRuntime = !!(flags & 0x10000);
+    } else if (magic === 0xfade7171) {
+      const keys = plistTopKeys(buf.toString('utf8', b + 8, end));
+      out.entitlements = { count: keys.length, keys: keys.slice(0, 40), ...(keys.length > 40 ? { more: keys.length - 40 } : {}) };
+    } else if (magic === 0xfade7172) out.derEntitlements = true;
+    else if (magic === 0xfade0b01) out.cmsSignature = len > 8;
+  }
+  out.entitlements ??= null;
+  return out;
+}
 
 export function parseMachO(buf, base = 0) {
   const magicLE = buf.readUInt32LE(base);
@@ -309,7 +489,7 @@ export function parseMachO(buf, base = 0) {
   const cpu = u32(4), ftype = u32(12), ncmds = u32(16);
   let p = is64 ? 32 : 28;
   const segments = [], sections = [], libraries = [], rpaths = [];
-  let entryOff = null, uuid = null, platform = null, signed = false, encrypted = false, symtab = null;
+  let entryOff = null, uuid = null, platform = null, signed = false, encrypted = false, symtab = null, codeSignature = null;
   for (let i = 0; i < ncmds && i < 4096; i++) {
     const cmd = u32(p), size = u32(p + 4);
     if (!size) break;
@@ -332,14 +512,20 @@ export function parseMachO(buf, base = 0) {
       libraries.push(cstr(buf, base + p + u32(p + 8), 1024));
     } else if (cmd === 0x80000028) entryOff = u64(p + 8);
     else if (cmd === 0x1b) uuid = buf.subarray(base + p + 8, base + p + 24).toString('hex');
-    else if (cmd === 0x32) platform = { platform: MACHO_PLATFORMS[u32(p + 8)] ?? u32(p + 8), minOS: ver(u32(p + 12)), sdk: ver(u32(p + 16)) };
-    else if (cmd === 0x1d) signed = true;
+    else if (cmd === 0x32) {
+      platform = { platform: MACHO_PLATFORMS[u32(p + 8)] ?? u32(p + 8), minOS: ver(u32(p + 12)), sdk: ver(u32(p + 16)), source: 'LC_BUILD_VERSION' };
+      const tools = [];
+      for (let k = 0, n = Math.min(u32(p + 20), 8); k < n && 24 + k * 8 + 8 <= size; k++) tools.push({ tool: MACHO_TOOLS[u32(p + 24 + k * 8)] ?? u32(p + 24 + k * 8), version: ver(u32(p + 28 + k * 8)) });
+      if (tools.length) platform.tools = tools;
+    } else if (MACHO_VERSION_MIN[cmd] && !platform) platform = { platform: MACHO_VERSION_MIN[cmd][0], minOS: ver(u32(p + 8)), sdk: ver(u32(p + 12)), source: MACHO_VERSION_MIN[cmd][1] };
+    else if (cmd === 0x1d) { signed = true; try { codeSignature = machoCodeSignature(buf, base + u32(p + 8), u32(p + 12)); } catch { codeSignature = { note: 'signature blob could not be read' }; } }
     else if (cmd === 0x21 || cmd === 0x2c) encrypted = u32(p + 16) !== 0;
     else if (cmd === 0x8000001c) rpaths.push(cstr(buf, base + p + u32(p + 8), 1024));
     else if (cmd === 0x2) symtab = { symoff: u32(p + 8), nsyms: u32(p + 12), stroff: u32(p + 16) };
     p += size;
   }
   const imports = [], exports = [];
+  let localSymbols = 0;
   if (symtab) {
     const ent = is64 ? 16 : 12;
     for (let i = 0; i < Math.min(symtab.nsyms, 200000); i++) {
@@ -348,14 +534,15 @@ export function parseMachO(buf, base = 0) {
       const strx = u32(o), type = buf[base + o + 4];
       if (type & 0xe0) continue; // stabs (debug)
       const name = cstr(buf, base + symtab.stroff + strx, 1024);
+      if (name && !(type & 1) && (type & 0x0e)) localSymbols++;
       if (!name || !(type & 1)) continue;
       ((type & 0x0e) === 0 ? imports : exports).push(name);
     }
   }
   return {
     format: 'macho', bits: is64 ? 64 : 32, endian: le ? 'little' : 'big', arch: MACHO_CPU[cpu] ?? hex(cpu), kind: MACHO_TYPES[ftype] ?? ftype,
-    entryPoint: entryOff != null ? hex(entryOff) : null, uuid, platform, signed, encrypted,
-    segments, sections, imports: [{ library: '(dylibs)', libraries, functions: imports }], exports: { names: exports }, rpath: rpaths,
+    entryPoint: entryOff != null ? hex(entryOff) : null, uuid, platform, signed, ...(codeSignature ? { codeSignature } : {}), encrypted,
+    segments, sections, imports: [{ library: '(dylibs)', libraries, functions: imports }], exports: { names: exports }, rpath: rpaths, stripped: localSymbols === 0,
     lastSectionEnd: segments.reduce((m, s) => Math.max(m, s.offset + s.size), 0), warnings: encrypted ? ['binary is encrypted (App Store FairPlay); ReversePort does not decrypt'] : [],
   };
 }
@@ -381,6 +568,8 @@ export function parseWasm(buf) {
   const SECT = { 0: 'custom', 1: 'type', 2: 'import', 3: 'function', 4: 'table', 5: 'memory', 6: 'global', 7: 'export', 8: 'start', 9: 'element', 10: 'code', 11: 'data', 12: 'datacount', 13: 'tag' };
   const KIND = ['function', 'table', 'memory', 'global', 'tag'];
   const sections = [], imports = [], exports = [];
+  const bodySizes = [], functionNames = new Map();
+  let moduleName = null, producers = null, declared = 0;
   let p = 8;
   const name = o => { const [len, s] = leb(buf, o); return [buf.toString('utf8', s, s + len), s + len]; };
   const limits = o => { const flag = buf[o]; let [, q] = leb(buf, o + 1); if (flag & 1) [, q] = leb(buf, q); return q; };
@@ -388,7 +577,38 @@ export function parseWasm(buf) {
     const id = buf[p];
     const [size, start] = leb(buf, p + 1);
     const sec = { id, name: SECT[id] ?? `unknown ${id}`, offset: start, size };
-    if (id === 0) sec.customName = name(start)[0];
+    if (id === 0) {
+      let q; [sec.customName, q] = name(start);
+      const end = Math.min(buf.length, start + size);
+      try {
+        if (sec.customName === 'name') {
+          while (q < end) {
+            const sub = buf[q]; let len; [len, q] = leb(buf, q + 1);
+            const subEnd = q + len;
+            if (sub === 0) moduleName = name(q)[0];
+            if (sub === 1) {
+              let [n, r] = leb(buf, q);
+              for (let i = 0; i < n && i < 1000000 && r < subEnd; i++) { let idx, nm; [idx, r] = leb(buf, r); [nm, r] = name(r); functionNames.set(idx, nm); }
+            }
+            q = subEnd;
+          }
+        } else if (sec.customName === 'producers') {
+          producers = {};
+          let n; [n, q] = leb(buf, q);
+          for (let i = 0; i < n && i < 16 && q < end; i++) {
+            let field, m; [field, q] = name(q); [m, q] = leb(buf, q);
+            const values = [];
+            for (let k = 0; k < m && k < 64 && q < end; k++) { let nm, version; [nm, q] = name(q); [version, q] = name(q); values.push(version ? { name: nm, version } : { name: nm }); }
+            producers[field] = values;
+          }
+        }
+      } catch { sec.damaged = true; }
+    }
+    if (id === 3) declared = leb(buf, start)[0];
+    if (id === 10) {
+      let [n, q] = leb(buf, start);
+      for (let i = 0; i < n && i < 1000000 && q < start + size; i++) { let len; [len, q] = leb(buf, q); bodySizes.push(len); q += len; }
+    }
     if (id === 2) {
       let [n, q] = leb(buf, start);
       for (let i = 0; i < n && i < 100000; i++) {
@@ -404,13 +624,24 @@ export function parseWasm(buf) {
     }
     if (id === 7) {
       let [n, q] = leb(buf, start);
-      for (let i = 0; i < n && i < 100000; i++) { let nm; [nm, q] = name(q); const kind = buf[q++]; [, q] = leb(buf, q); exports.push({ name: nm, kind: KIND[kind] ?? kind }); }
+      for (let i = 0; i < n && i < 100000; i++) { let nm; [nm, q] = name(q); const kind = buf[q++]; let index; [index, q] = leb(buf, q); exports.push({ name: nm, kind: KIND[kind] ?? kind, index }); }
     }
     sections.push(sec);
     p = start + size;
   }
   const modules = [...new Set(imports.map(i => i.module))];
-  return { format: 'wasm', version: buf.readUInt32LE(4), sections, imports: modules.map(m => ({ library: m, functions: imports.filter(i => i.module === m).map(i => i.name) })), exports: { names: exports.map(e => e.name), detail: exports }, warnings: [] };
+  // Function index space: imported functions first, then the functions of the code section.
+  const importedFns = imports.filter(i => i.kind === 'function');
+  const exportedFn = new Map(exports.filter(e => e.kind === 'function').map(e => [e.index, e.name]));
+  const items = [];
+  const total = importedFns.length + Math.max(declared, bodySizes.length);
+  for (let index = 0; index < total; index++) {
+    const imp = importedFns[index];
+    const [fnName, source] = functionNames.has(index) ? [functionNames.get(index), 'name section'] : exportedFn.has(index) ? [exportedFn.get(index), 'export'] : imp ? [`${imp.module}.${imp.name}`, 'import'] : [null, null];
+    items.push({ index, name: fnName, ...(source ? { source } : {}), ...(imp ? { imported: true } : { size: bodySizes[index - importedFns.length] ?? null }) });
+  }
+  const functions = { count: total, imported: importedFns.length, named: functionNames.size, items };
+  return { format: 'wasm', version: buf.readUInt32LE(4), ...(moduleName ? { moduleName } : {}), ...(producers ? { producers } : {}), sections, functions, imports: modules.map(m => ({ library: m, functions: imports.filter(i => i.module === m).map(i => i.name) })), exports: { names: exports.map(e => e.name), detail: exports }, warnings: [] };
 }
 
 // ---------------------------------------------------------------- Java class
@@ -511,7 +742,8 @@ const HINTS = [
   [/rustc version ([\d.]+)|\/rustc\/[0-9a-f]{40}/, m => ({ language: 'Rust', ...(m[1] ? { compiler: `rustc ${m[1]}` } : {}) })],
   [/Go build ID:|runtime\.gopanic|go1\.(\d+)/, () => ({ language: 'Go' })],
   [/Microsoft \(R\) C\/C\+\+|MSVCP\d+|VCRUNTIME\d+/i, () => ({ compiler: 'Microsoft Visual C++' })],
-  [/mscoree\.dll|_CorExeMain|_CorDllMain/, () => ({ runtime: '.NET (CLR)' })],
+  // Not "mscoree.dll" alone: the MSVC runtime of a native program names it too (CorExitProcess on exit).
+  [/_CorExeMain|_CorDllMain/, () => ({ runtime: '.NET (CLR)' })],
   [/PyInstaller|_MEIPASS|pyi-runtime/, () => ({ packager: 'PyInstaller (Python)' })],
   [/Qt_\d|QApplication|Qt5Core|Qt6Core/, () => ({ framework: 'Qt' })],
   [/SDL2?\.dll|SDL_Init/, () => ({ library: 'SDL' })],
@@ -556,7 +788,7 @@ export function constantName(t) {
   for (let k = 3; k < upper && !underscorePart; k++) if (head[k] === '_' && k < head.length - 1) underscorePart = true;
   return parts.length > 1 ? upper === head.length || underscorePart : underscorePart;
 }
-export async function inspectBinary({ file, strings = {}, names = {}, maxTypes = 300 } = {}) {
+export async function inspectBinary({ file, strings = {}, names = {}, maxTypes = 300, resources = {} } = {}) {
   const { abs, size } = await requireFile(file);
   const buf = await readHead(abs, HEAD_LIMIT);
   const kind = identify(buf.subarray(0, 4096));
@@ -564,14 +796,25 @@ export async function inspectBinary({ file, strings = {}, names = {}, maxTypes =
   const parsers = { pe: parsePE, elf: parseELF, macho: parseMachO, 'macho-fat': parseFat, wasm: parseWasm, 'java-class': parseClass, dex: parseDex };
   let info = null;
   if (parsers[kind.id]) {
-    try { info = parsers[kind.id](buf); } catch (e) { info = { format: kind.id, error: `Could not parse fully: ${e.message}` }; }
+    try { info = kind.id === 'pe' ? parsePE(buf, { resources }) : parsers[kind.id](buf); } catch (e) { info = { format: kind.id, error: `Could not parse fully: ${e.message}` }; }
   } else if (kind.id === 'lua-bytecode') info = { format: 'lua-bytecode', luaVersion: `${buf[4] >> 4}.${buf[4] & 15}` };
   else if (kind.id === 'pyc') {
     const magic = buf.readUInt16LE(0);
     const PY = [[3413, '3.8'], [3425, '3.9'], [3439, '3.10'], [3495, '3.11'], [3531, '3.12'], [3571, '3.13']];
     info = { format: 'pyc', magic, pythonVersion: PY.find(([m]) => m === magic)?.[1] ?? 'unknown (see importlib magic numbers)' };
   }
+  // Detection reads the full import lists, so keep them before the lists are trimmed for the result.
+  const subject = info?.format === 'macho-fat' ? info.arches.find(a => a.binary)?.binary : info;
+  const fullImports = (subject?.imports ?? []).map(i => ({ library: i.library, libraries: i.libraries, functions: i.functions }));
   if (info) {
+    if (info.functions?.items) {
+      const fnLimit = Math.max(1, Math.min(5000, names.limit ?? 40));
+      const wantFn = compileMatcher(names.match);
+      const kept = names.match ? info.functions.items.filter(f => f.name && wantFn(f.name)) : info.functions.items;
+      info.functions.items = kept.slice(0, fnLimit);
+      if (kept.length > fnLimit) info.functions.more = kept.length - fnLimit;
+    }
+    if (info.richHeader?.records.length > 24) { info.richHeader.more = info.richHeader.records.length - 24; info.richHeader.records = info.richHeader.records.slice(0, 24); }
     if (info.dotnet?.types) {
       info.dotnet.typesTruncated = info.dotnet.types.length > maxTypes;
       info.dotnet.types = info.dotnet.types.slice(0, maxTypes);
@@ -610,6 +853,13 @@ export async function inspectBinary({ file, strings = {}, names = {}, maxTypes =
     && (/[a-z]{5,}/.test(t) && /[aeiou][^aeiou\s]|[^aeiou\s][aeiou]/i.test(t) || constantName(t) || /\.(dll|so|dylib|exe|pck|json|png|wasm|js)\b/i.test(t));
   const shown = all.items.filter(s => s.text.length >= minLen && want(s.text) && (strings.raw || strings.match || meaningful(s.text)));
   const hintText = all.items.map(s => s.text).join('\n') + '\n' + (info?.imports ?? []).flatMap(i => [i.library, ...(i.libraries ?? [])]).join('\n');
+  if (subject && ['pe', 'elf', 'macho'].includes(subject.format) && !subject.error) {
+    const detectInfo = { ...subject, imports: fullImports };
+    const overlayOffset = subject === info && subject.lastSectionEnd && subject.lastSectionEnd < buf.length ? subject.lastSectionEnd : undefined;
+    result.detected = detectTools({ format: subject.format, info: detectInfo, buf, text: hintText, overlayOffset });
+    result.capabilities = detectCapabilities({ imports: fullImports, strings: all.items.map(s => s.text), text: hintText, format: subject.format });
+    result.capabilitiesNote = CAPABILITY_NOTE + (subject.format === 'pe' && !fullImports.some(i => i.functions?.length) ? ' This file has no named imports.' : '');
+  }
   result.binary = info;
   result.hints = toolchainHints(hintText);
   if (info?.dotnet && !info.dotnet.warning) result.hints.runtime = '.NET (CLR)';
