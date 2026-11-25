@@ -440,3 +440,271 @@ export function buildTranslation(messages, { locale = 'en', major = 4, smaz = {}
 export function buildImportFile({ remap, source = null, importer = 'texture', type = 'CompressedTexture2D' }) {
   return `[remap]\n\nimporter="${importer}"\ntype="${type}"\npath="${remap}"\n${source ? `\n[deps]\n\nsource_file="${source}"\ndest_files=["${remap}"]\n` : ''}`;
 }
+
+// ---------------------------------------------------------------- executables for re_binary detection tests
+const exeU16 = n => { const b = Buffer.alloc(2); b.writeUInt16LE(n); return b; };
+const exePad4 = b => Buffer.concat([b, Buffer.alloc((4 - (b.length % 4)) % 4)]);
+const exeWide = s => Buffer.from(s, 'utf16le');
+const exeRol32 = (v, n) => (n ? ((v << n) | (v >>> (32 - n))) >>> 0 : v >>> 0);
+
+/** VS_VERSIONINFO resource data: fixed file info, a StringFileInfo table and a Translation entry. */
+export function buildVersionResource({ fileVersion = [1, 2, 3, 4], productVersion = fileVersion, strings = {}, table = '040904B0' } = {}) {
+  const node = (key, value, type, children = []) => {
+    const b = Buffer.concat([exePad4(Buffer.concat([Buffer.alloc(6), exeWide(key + '\0')])), exePad4(value), ...children.map(exePad4)]);
+    b.writeUInt16LE(b.length, 0); b.writeUInt16LE(type === 1 ? value.length / 2 : value.length, 2); b.writeUInt16LE(type, 4);
+    return b;
+  };
+  const fixed = Buffer.alloc(52);
+  fixed.writeUInt32LE(0xfeef04bd, 0); fixed.writeUInt32LE(0x10000, 4);
+  fixed.writeUInt32LE(((fileVersion[0] << 16) | fileVersion[1]) >>> 0, 8); fixed.writeUInt32LE(((fileVersion[2] << 16) | fileVersion[3]) >>> 0, 12);
+  fixed.writeUInt32LE(((productVersion[0] << 16) | productVersion[1]) >>> 0, 16); fixed.writeUInt32LE(((productVersion[2] << 16) | productVersion[3]) >>> 0, 20);
+  fixed.writeUInt32LE(0x3f, 24); fixed.writeUInt32LE(0x40004, 32); fixed.writeUInt32LE(1, 36);
+  const none = Buffer.alloc(0);
+  const stringTable = node(table, none, 1, Object.entries(strings).map(([k, v]) => node(k, exeWide(v + '\0'), 1)));
+  const translation = Buffer.concat([exeU16(0x409), exeU16(1200)]);
+  return node('VS_VERSION_INFO', fixed, 0, [node('StringFileInfo', none, 1, [stringTable]), node('VarFileInfo', none, 1, [node('Translation', translation, 0)])]);
+}
+
+/** RT_GROUP_ICON data for images given as [width, height, bitCount, bytes]. */
+export function buildGroupIcon(images) {
+  const head = Buffer.alloc(6); head.writeUInt16LE(1, 2); head.writeUInt16LE(images.length, 4);
+  return Buffer.concat([head, ...images.map(([w, h, bits, bytes], i) => { const e = Buffer.alloc(14); e[0] = w & 0xff; e[1] = h & 0xff; e.writeUInt16LE(1, 4); e.writeUInt16LE(bits, 6); e.writeUInt32LE(bytes, 8); e.writeUInt16LE(i + 1, 12); return e; })]);
+}
+
+/** RT_STRING block data: up to 16 strings (empty slots are a zero length). */
+export function buildStringBlock(texts) {
+  return Buffer.concat(Array.from({ length: 16 }, (_, i) => { const t = texts[i] ?? ''; return Buffer.concat([exeU16(t.length), exeWide(t)]); }));
+}
+
+/** .rsrc section: types = [{ type: 16 | 'NAME', items: [{ name: 1 | 'NAME', lang, data }] }]. */
+function buildPeRsrc(types, rva) {
+  const dirSize = n => 16 + n * 8;
+  const named = v => typeof v === 'string';
+  const sort = list => [...list].sort((a, b) => named(b.key) - named(a.key));
+  const top = sort(types.map(t => ({ key: t.type, items: sort(t.items.map(i => ({ key: i.name, lang: i.lang ?? 1033, data: i.data }))) })));
+  let off = dirSize(top.length);
+  for (const t of top) { t.off = off; off += dirSize(t.items.length); }
+  for (const t of top) for (const i of t.items) { i.off = off; off += dirSize(1); }
+  for (const t of top) for (const i of t.items) { i.entry = off; off += 16; }
+  const names = [], namesStart = off;
+  const nameRef = key => { if (!named(key)) return key; const at = off; const b = Buffer.concat([exeU16(key.length), exeWide(key)]); names.push(b); off += b.length; return (0x80000000 | at) >>> 0; };
+  const refs = new Map();
+  for (const t of top) { refs.set(t, nameRef(t.key)); for (const i of t.items) refs.set(i, nameRef(i.key)); }
+  off = (off + 3) & ~3;
+  for (const t of top) for (const i of t.items) { i.dataOff = off; off += (i.data.length + 3) & ~3; }
+  const out = Buffer.alloc(off);
+  const dir = (at, entries) => {
+    out.writeUInt16LE(entries.filter(e => e[0] & 0x80000000).length, at + 12); out.writeUInt16LE(entries.filter(e => !(e[0] & 0x80000000)).length, at + 14);
+    entries.forEach(([name, target], k) => { out.writeUInt32LE(name >>> 0, at + 16 + k * 8); out.writeUInt32LE(target >>> 0, at + 20 + k * 8); });
+  };
+  dir(0, top.map(t => [refs.get(t), 0x80000000 | t.off]));
+  for (const t of top) {
+    dir(t.off, t.items.map(i => [refs.get(i), 0x80000000 | i.off]));
+    for (const i of t.items) {
+      dir(i.off, [[i.lang, i.entry]]);
+      out.writeUInt32LE(rva + i.dataOff, i.entry); out.writeUInt32LE(i.data.length, i.entry + 4);
+      i.data.copy(out, i.dataOff);
+    }
+  }
+  Buffer.concat(names).copy(out, namesStart);
+  return out;
+}
+
+/** Import directory for a PE32 file: { 'KERNEL32.dll': ['CreateFileW'] }. */
+function buildPeIdata(imports, rva) {
+  const dlls = Object.entries(imports);
+  let off = (dlls.length + 1) * 20;
+  const plan = dlls.map(([dll, fns]) => { const ilt = off; off += (fns.length + 1) * 4; return { dll, fns, ilt }; });
+  for (const d of plan) { d.name = off; off += d.dll.length + 1; d.hints = d.fns.map(f => { const at = off; off += 2 + f.length + 1; return at; }); }
+  const out = Buffer.alloc(off);
+  plan.forEach((d, i) => {
+    out.writeUInt32LE(rva + d.ilt, i * 20); out.writeUInt32LE(rva + d.name, i * 20 + 12); out.writeUInt32LE(rva + d.ilt, i * 20 + 16);
+    out.write(d.dll, d.name, 'latin1');
+    d.fns.forEach((f, k) => { out.writeUInt32LE(rva + d.hints[k], d.ilt + k * 4); out.write(f, d.hints[k] + 2, 'latin1'); });
+  });
+  return out;
+}
+
+/**
+ * Small PE32 executable. sections: [{ name, data }]; imports: { dll: [functions] }; resources: see buildPeRsrc;
+ * rich: [{ id, build, count }] writes a Rich header with a valid checksum (richTamper changes the stub afterwards);
+ * headerTail: bytes placed in the header slack (inside the first 4 KiB); overlay: bytes appended after the sections.
+ */
+export function buildPe({ sections = [{ name: '.text', data: Buffer.alloc(64, 0x90) }], imports, resources, rich, richTamper = false, overlay, headerTail, stub = 'This program cannot be run in DOS mode.\r\r\n$', linker = [14, 29] } = {}) {
+  const headerSize = 0x400;
+  const headers = Buffer.alloc(headerSize);
+  headers.write('MZ', 0);
+  headers.write(stub, 0x4e, 'latin1');
+  let peOff = 0x80;
+  if (rich) {
+    const records = rich.map(r => [((r.id << 16) | r.build) >>> 0, r.count >>> 0]);
+    let key = 0x80;
+    for (let i = 0; i < 0x80; i++) if (i < 0x3c || i > 0x3f) key = (key + exeRol32(headers[i], i & 31)) >>> 0;
+    for (const [id, count] of records) key = (key + exeRol32(id, count & 31)) >>> 0;
+    let o = 0x80;
+    for (const v of [0x536e6144, 0, 0, 0, ...records.flat()]) { headers.writeUInt32LE((v ^ key) >>> 0, o); o += 4; }
+    headers.write('Rich', o, 'latin1'); headers.writeUInt32LE(key, o + 4);
+    peOff = (o + 8 + 7) & ~7;
+    if (richTamper) headers[0x50] ^= 0x20;
+  }
+  headers.writeUInt32LE(peOff, 0x3c);
+  const all = [...sections];
+  if (imports) all.push({ name: '.idata', data: rva => buildPeIdata(imports, rva), dir: 1 });
+  if (resources) all.push({ name: '.rsrc', data: rva => buildPeRsrc(resources, rva), dir: 2 });
+  headers.write('PE\0\0', peOff, 'latin1');
+  const coff = peOff + 4, opt = coff + 20, sec = opt + 224;
+  headers.writeUInt16LE(0x14c, coff); headers.writeUInt16LE(all.length, coff + 2); headers.writeUInt32LE(0x5f5e100, coff + 4); headers.writeUInt16LE(224, coff + 16); headers.writeUInt16LE(0x0102, coff + 18);
+  headers.writeUInt16LE(0x10b, opt); headers[opt + 2] = linker[0]; headers[opt + 3] = linker[1];
+  headers.writeUInt32LE(0x1000, opt + 16); headers.writeUInt32LE(0x400000, opt + 28); headers.writeUInt32LE(0x1000, opt + 32); headers.writeUInt32LE(0x200, opt + 36); headers.writeUInt16LE(3, opt + 68); headers.writeUInt32LE(16, opt + 92);
+  const bodies = [];
+  let rva = 0x1000, raw = headerSize;
+  all.forEach((s, i) => {
+    const data = typeof s.data === 'function' ? s.data(rva) : Buffer.from(s.data ?? '');
+    const rawSize = Math.ceil(data.length / 0x200) * 0x200;
+    const h = sec + i * 40;
+    headers.write(s.name, h, 'latin1'); headers.writeUInt32LE(data.length, h + 8); headers.writeUInt32LE(rva, h + 12); headers.writeUInt32LE(rawSize, h + 16); headers.writeUInt32LE(rawSize ? raw : 0, h + 20); headers.writeUInt32LE(s.flags ?? 0x60000020, h + 36);
+    if (s.dir) { headers.writeUInt32LE(rva, opt + 96 + s.dir * 8); headers.writeUInt32LE(data.length, opt + 96 + s.dir * 8 + 4); }
+    bodies.push(data, Buffer.alloc(rawSize - data.length));
+    rva += Math.max(0x1000, Math.ceil(data.length / 0x1000) * 0x1000); raw += rawSize;
+  });
+  if (headerTail) Buffer.from(headerTail, 'latin1').copy(headers, headerSize - 0x20);
+  return Buffer.concat([headers, ...bodies, ...(overlay ? [Buffer.from(overlay, 'latin1')] : [])]);
+}
+
+/** One ELF note record. */
+export function elfNote(owner, type, desc) {
+  const name = Buffer.from(owner + '\0');
+  return Buffer.concat([u32(name.length), u32(desc.length), u32(type), exePad4(name), exePad4(Buffer.from(desc))]);
+}
+
+/** .dynstr + .dynamic + .dynsym sections: needed libraries, RPATH/RUNPATH and undefined (imported) functions. */
+export function elfDynamicSections({ needed = [], rpath, runpath, imports = [] } = {}) {
+  const parts = [Buffer.from('\0')];
+  let len = 1;
+  const add = s => { const at = len; const b = Buffer.from(s + '\0'); parts.push(b); len += b.length; return at; };
+  const tags = [...needed.map(n => [1, add(n)]), ...(rpath ? [[15, add(rpath)]] : []), ...(runpath ? [[29, add(runpath)]] : []), [0, 0]];
+  const syms = [Buffer.alloc(24), ...imports.map(f => { const s = Buffer.alloc(24); s.writeUInt32LE(add(f), 0); s[4] = 0x12; return s; })];
+  return [
+    { name: '.dynstr', type: 3, data: Buffer.concat(parts) },
+    { name: '.dynamic', type: 6, link: '.dynstr', data: Buffer.concat(tags.flatMap(([t, v]) => [u64(t), u64(v)])) },
+    { name: '.dynsym', type: 11, link: '.dynstr', data: Buffer.concat(syms) },
+  ];
+}
+
+/** .symtab + .strtab with defined functions, so the file does not count as stripped. */
+export function elfSymtabSections(functions = ['main']) {
+  const parts = [Buffer.from('\0')];
+  let len = 1;
+  const syms = [Buffer.alloc(24), ...functions.map(f => { const s = Buffer.alloc(24); s.writeUInt32LE(len, 0); s[4] = 0x12; s.writeUInt16LE(1, 6); const b = Buffer.from(f + '\0'); parts.push(b); len += b.length; return s; })];
+  return [{ name: '.strtab', type: 3, data: Buffer.concat(parts) }, { name: '.symtab', type: 2, link: '.strtab', data: Buffer.concat(syms) }];
+}
+
+/** Minimal DWARF 4: one compile unit whose DW_AT_producer points into .debug_str. */
+export function elfDwarfSections(producer) {
+  const abbrev = Buffer.from([1, 0x11, 0, 0x25, 0x0e, 0x13, 0x0b, 0, 0, 0]);
+  const body = Buffer.concat([exeU16(4), u32(0), Buffer.from([8]), Buffer.from([1]), u32(0), Buffer.from([0x0c])]);
+  return [{ name: '.debug_abbrev', data: abbrev }, { name: '.debug_info', data: Buffer.concat([u32(body.length), body]) }, { name: '.debug_str', data: Buffer.from(producer + '\0') }];
+}
+
+/** Small ELF64 little-endian file. sections: [{ name, type = 1 (PROGBITS), data, flags, link: 'section name' }]. */
+export function buildElf({ sections = [{ name: '.text', data: Buffer.alloc(32, 0x90) }], interp, type = 3, machine = 62, sectionHeaders = true } = {}) {
+  const all = [{ name: '', type: 0, data: Buffer.alloc(0) }, ...(interp ? [{ name: '.interp', data: Buffer.from(interp + '\0') }] : []), ...sections];
+  const names = [];
+  let nameLen = 0;
+  const nameOff = n => { const at = nameLen; const b = Buffer.from(n + '\0'); names.push(b); nameLen += b.length; return at; };
+  for (const s of all) s.nameOff = nameOff(s.name);
+  const shstr = { name: '.shstrtab', type: 3, nameOff: nameOff('.shstrtab') };
+  shstr.data = Buffer.concat(names);
+  all.push(shstr);
+  const phnum = interp ? 1 : 0;
+  let off = 64 + phnum * 56;
+  const blobs = [];
+  for (const s of all) { s.data = Buffer.from(s.data ?? ''); s.offset = off; const padded = exePad4(s.data); blobs.push(padded); off += padded.length; }
+  const head = Buffer.alloc(64 + phnum * 56);
+  Buffer.from([0x7f, 0x45, 0x4c, 0x46, 2, 1, 1, 0]).copy(head);
+  head.writeUInt16LE(type, 16); head.writeUInt16LE(machine, 18); head.writeUInt32LE(1, 20); head.writeBigUInt64LE(0x1000n, 24);
+  head.writeBigUInt64LE(phnum ? 64n : 0n, 32); head.writeBigUInt64LE(sectionHeaders ? BigInt(off) : 0n, 40);
+  head.writeUInt16LE(64, 52); head.writeUInt16LE(56, 54); head.writeUInt16LE(phnum, 56); head.writeUInt16LE(64, 58);
+  head.writeUInt16LE(sectionHeaders ? all.length : 0, 60); head.writeUInt16LE(sectionHeaders ? all.length - 1 : 0, 62);
+  if (interp) { const p = 64, s = all[1]; head.writeUInt32LE(3, p); head.writeUInt32LE(4, p + 4); head.writeBigUInt64LE(BigInt(s.offset), p + 8); head.writeBigUInt64LE(BigInt(s.data.length), p + 32); head.writeBigUInt64LE(BigInt(s.data.length), p + 40); }
+  const table = Buffer.alloc(sectionHeaders ? all.length * 64 : 0);
+  if (sectionHeaders) all.forEach((s, i) => {
+    const h = i * 64;
+    table.writeUInt32LE(s.nameOff, h); table.writeUInt32LE(s.type ?? 1, h + 4); table.writeBigUInt64LE(BigInt(s.flags ?? 0), h + 8);
+    table.writeBigUInt64LE(BigInt(i ? s.offset : 0), h + 24); table.writeBigUInt64LE(BigInt(s.data.length), h + 32);
+    table.writeUInt32LE(s.link ? all.findIndex(x => x.name === s.link) : 0, h + 40);
+  });
+  return Buffer.concat([head, ...blobs, table]);
+}
+
+/** Embedded code signature (SuperBlob): code directory, optional XML entitlements and CMS blob. */
+function buildMachOSignature({ identifier = 'com.example.app', teamId, entitlements, cms = false, flags = 0 } = {}) {
+  const be = n => { const b = Buffer.alloc(4); b.writeUInt32BE(n >>> 0); return b; };
+  const blob = (magic, body) => Buffer.concat([be(magic), be(body.length + 8), body]);
+  const ident = Buffer.from(identifier + '\0'), team = teamId ? Buffer.from(teamId + '\0') : Buffer.alloc(0);
+  const cd = Buffer.alloc(88 - 8);
+  cd.writeUInt32BE(0x20400, 0); cd.writeUInt32BE(flags, 4); cd.writeUInt32BE(88, 12); if (teamId) cd.writeUInt32BE(88 + ident.length, 40);
+  const blobs = [[0, blob(0xfade0c02, Buffer.concat([cd, ident, team]))]];
+  if (entitlements) blobs.push([5, blob(0xfade7171, Buffer.from(entitlements))]);
+  if (cms) blobs.push([0x10000, blob(0xfade0b01, Buffer.alloc(64, 0x30))]);
+  let off = 12 + blobs.length * 8;
+  const index = blobs.map(([slot, b]) => { const e = Buffer.concat([be(slot), be(off)]); off += b.length; return e; });
+  return Buffer.concat([be(0xfade0cc0), be(off), be(blobs.length), ...index, ...blobs.map(([, b]) => b)]);
+}
+
+/**
+ * Small Mach-O 64-bit little-endian executable. segments: [{ name, sections: ['__text'], data }];
+ * build: { platform, minos: [11, 0, 0], sdk: [14, 2, 0], tools: [[3, [1053, 12, 0]]] }; versionMin: { cmd: 0x24, minos, sdk };
+ * symbols: { imports: ['_socket'], locals: ['_helper'] }; signature: see buildMachOSignature.
+ */
+export function buildMachO({ uuid, build, versionMin, segments = [{ name: '__TEXT', sections: ['__text'], data: Buffer.alloc(32, 0x90) }], dylibs = [], symbols, signature, cpu = 0x0100000c } = {}) {
+  const v = ([a, b, c]) => ((a << 16) | (b << 8) | c) >>> 0;
+  const fixed = (s, n) => { const b = Buffer.alloc(n); b.write(s, 'latin1'); return b; };
+  const cmd = (id, body) => Buffer.concat([u32(id), u32(body.length + 8), body]);
+  const strtab = [Buffer.from('\0')];
+  let strLen = 1;
+  const nlist = (name, type) => { const e = Buffer.alloc(16); e.writeUInt32LE(strLen, 0); e[4] = type; if (type & 0x0e) e[5] = 1; const b = Buffer.from(name + '\0'); strtab.push(b); strLen += b.length; return e; };
+  const syms = symbols ? [...(symbols.locals ?? []).map(n => nlist(n, 0x0e)), ...(symbols.exports ?? []).map(n => nlist(n, 0x0f)), ...(symbols.imports ?? []).map(n => nlist(n, 0x01))] : [];
+  const symData = Buffer.concat(syms), strData = Buffer.concat(strtab);
+  const sig = signature ? buildMachOSignature(signature) : null;
+  const make = base => {
+    const cmds = [];
+    let off = base;
+    for (const s of segments) {
+      const data = Buffer.from(s.data ?? '');
+      const sects = (s.sections ?? []).map(n => { const e = Buffer.alloc(80); fixed(n, 16).copy(e, 0); fixed(s.name, 16).copy(e, 16); e.writeBigUInt64LE(BigInt(data.length), 40); e.writeUInt32LE(off, 48); return e; });
+      const seg = Buffer.alloc(64);
+      fixed(s.name, 16).copy(seg, 0); seg.writeBigUInt64LE(BigInt(off), 32); seg.writeBigUInt64LE(BigInt(data.length), 40); seg.writeUInt32LE(sects.length, 56);
+      cmds.push(cmd(0x19, Buffer.concat([seg, ...sects])));
+      off += data.length;
+    }
+    if (uuid) cmds.push(cmd(0x1b, Buffer.from(uuid.replace(/-/g, ''), 'hex')));
+    if (build) cmds.push(cmd(0x32, Buffer.concat([u32(build.platform ?? 1), u32(v(build.minos)), u32(v(build.sdk)), u32((build.tools ?? []).length), ...(build.tools ?? []).flatMap(([tool, version]) => [u32(tool), u32(v(version))])])));
+    if (versionMin) cmds.push(cmd(versionMin.cmd ?? 0x24, Buffer.concat([u32(v(versionMin.minos)), u32(v(versionMin.sdk))])));
+    for (const d of dylibs) cmds.push(cmd(0xc, Buffer.concat([u32(24), u32(0), u32(0x10000), u32(0x10000), exePad4(Buffer.concat([Buffer.from(d + '\0'), Buffer.alloc(4)]))])));
+    if (symbols) { cmds.push(cmd(0x2, Buffer.concat([u32(off), u32(syms.length), u32(off + symData.length), u32(strData.length)]))); off += symData.length + strData.length; }
+    if (sig) cmds.push(cmd(0x1d, Buffer.concat([u32(off), u32(sig.length)])));
+    return cmds;
+  };
+  const size = make(0).reduce((n, c) => n + c.length, 0);
+  const cmds = make(32 + size);
+  const head = Buffer.concat([u32(0xfeedfacf), u32(cpu), u32(0), u32(2), u32(cmds.length), u32(size), u32(0), u32(0)]);
+  return Buffer.concat([head, ...cmds, ...segments.map(s => Buffer.from(s.data ?? '')), ...(symbols ? [symData, strData] : []), ...(sig ? [sig] : [])]);
+}
+
+/** A WebAssembly custom section. */
+export function wasmCustomSection(name, payload) {
+  const body = Buffer.concat([Buffer.from([name.length]), Buffer.from(name), payload]);
+  return Buffer.concat([Buffer.from([0, body.length]), body]);
+}
+
+/** buildWasm() plus a `name` section (module name and function names) and a `producers` section. */
+export function buildWasmWithNames({ moduleName = 'demo', functions = { 0: 'host_log', 1: 'run_game' }, producers = { language: [['Rust', '']], 'processed-by': [['rustc', '1.75.0']] } } = {}) {
+  const str = s => Buffer.concat([Buffer.from([Buffer.byteLength(s)]), Buffer.from(s)]);
+  const sub = (id, body) => Buffer.concat([Buffer.from([id, body.length]), body]);
+  const fnNames = Object.entries(functions);
+  const names = Buffer.concat([sub(0, str(moduleName)), sub(1, Buffer.concat([Buffer.from([fnNames.length]), ...fnNames.map(([i, n]) => Buffer.concat([Buffer.from([Number(i)]), str(n)]))]))]);
+  const fields = Object.entries(producers);
+  const prod = Buffer.concat([Buffer.from([fields.length]), ...fields.map(([f, vals]) => Buffer.concat([str(f), Buffer.from([vals.length]), ...vals.map(([n, ver]) => Buffer.concat([str(n), str(ver)]))]))]);
+  return Buffer.concat([buildWasm(), wasmCustomSection('name', names), wasmCustomSection('producers', prod)]);
+}
