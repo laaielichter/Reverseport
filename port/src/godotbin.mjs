@@ -1,12 +1,16 @@
 // Godot export leftovers back to editable form: compiled GDScript (.gdc, Godot 3 bytecode v10–13 and Godot 4.3+
 // binary tokens v100/v101, zstd-compressed or not), binary resources and scenes (RSRC/RSCC .res/.scn → .tres/.tscn,
-// including PackedScene _bundled trees) and exported project settings (project.binary → project.godot).
+// including PackedScene _bundled trees) and exported project settings (project.binary → project.godot). Imported
+// resources (textures, audio, translations) go back to their source formats through godot-import.mjs.
 // Everything here is a faithful re-serialisation of what the file stores; comments and formatting are gone for good.
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import zlib from 'node:zlib';
 import { RPError, requireFile, requireDir, walk, statOrNull } from './util.mjs';
-import { workspaceDir } from './workspace.mjs';
+import { workspaceDir, safeJoin } from './workspace.mjs';
+import { IMPORTED_RE, isImported, convertImported, parseImportFile, importedDest, keysInText, keysInCsv } from './godot-import.mjs';
+import { isRpyc, decodeRpycFile, summarizeRpyc } from './renpy.mjs';
+import { findGameMakerData, decodeGameMaker } from './gml.mjs';
 
 // ------------------------------------------------------------------------------------------------ marshalled Variants
 const M3 = ['NIL', 'BOOL', 'INT', 'FLOAT', 'STRING', 'VECTOR2', 'RECT2', 'VECTOR3', 'TRANSFORM2D', 'PLANE', 'QUATERNION', 'AABB', 'BASIS', 'TRANSFORM3D', 'COLOR', 'NODE_PATH', 'RID', 'OBJECT', 'DICTIONARY', 'ARRAY', 'PACKED_BYTE_ARRAY', 'PACKED_INT32_ARRAY', 'PACKED_FLOAT32_ARRAY', 'PACKED_STRING_ARRAY', 'PACKED_VECTOR2_ARRAY', 'PACKED_VECTOR3_ARRAY', 'PACKED_COLOR_ARRAY'];
@@ -267,9 +271,13 @@ function decodeGdc4(buf, version) {
 // ------------------------------------------------------------------------------------------------ RSRC binary resources
 const R4 = { 1: 'NIL', 2: 'BOOL', 3: 'INT', 4: 'FLOAT', 5: 'STRING', 10: 'VECTOR2', 11: 'RECT2', 12: 'VECTOR3', 13: 'PLANE', 14: 'QUATERNION', 15: 'AABB', 16: 'BASIS', 17: 'TRANSFORM3D', 18: 'TRANSFORM2D', 20: 'COLOR', 21: 'IMAGE', 22: 'NODE_PATH', 23: 'RID', 24: 'OBJECT', 25: 'INPUT_EVENT', 26: 'DICTIONARY', 30: 'ARRAY', 31: 'PACKED_BYTE_ARRAY', 32: 'PACKED_INT32_ARRAY', 33: 'PACKED_FLOAT32_ARRAY', 34: 'PACKED_STRING_ARRAY', 35: 'PACKED_VECTOR3_ARRAY', 36: 'PACKED_COLOR_ARRAY', 37: 'PACKED_VECTOR2_ARRAY', 40: 'INT64', 41: 'DOUBLE', 42: 'CALLABLE', 43: 'SIGNAL', 44: 'STRING_NAME', 45: 'VECTOR2I', 46: 'RECT2I', 47: 'VECTOR3I', 48: 'PACKED_INT64_ARRAY', 49: 'PACKED_FLOAT64_ARRAY', 50: 'VECTOR4', 51: 'VECTOR4I', 52: 'PROJECTION', 53: 'PACKED_VECTOR4_ARRAY' };
 
-export function readRsrc(input) {
+/** byteBuffers: PackedByteArray values are Buffers (views on the file) instead of number arrays, for audio and other large payloads. */
+export function readRsrc(input, { byteBuffers = false } = {}) {
   let buf = input;
-  if (buf.toString('latin1', 0, 4) === 'RSCC') buf = inflateRscc(buf);
+  // A compressed file's stream starts after the magic, and its resource offsets count from there: put "RSRC" in front
+  // so one reader serves both, and move those offsets by its 4 bytes.
+  let shift = 0;
+  if (buf.toString('latin1', 0, 4) === 'RSCC') { buf = Buffer.concat([Buffer.from('RSRC', 'latin1'), inflateRscc(buf)]); shift = 4; }
   if (buf.toString('latin1', 0, 4) !== 'RSRC') throw new RPError('BAD_FORMAT', 'Not a Godot binary resource (RSRC/RSCC).');
   const bigEndian = buf.readUInt32LE(4) !== 0;
   if (bigEndian) throw new RPError('UNSUPPORTED', 'big-endian resource files are not supported');
@@ -296,7 +304,7 @@ export function readRsrc(input) {
   for (let i = 0; i < nExt; i++) { const t = ustr(); const pth = ustr(); let euid = null; if (flags & 2) { euid = buf.readBigInt64LE(p); p += 8; } ext.push({ type: t, path: pth, uid: euid, id: namedIds ? `${i + 1}_${hashId(pth)}` : String(i + 1) }); }
   const nInt = buf.readUInt32LE(p); p += 4;
   const internal = [];
-  for (let i = 0; i < nInt; i++) { const pth = ustr(); const off = Number(buf.readBigUInt64LE(p)); p += 8; internal.push({ path: pth, offset: off }); }
+  for (let i = 0; i < nInt; i++) { const pth = ustr(); const off = Number(buf.readBigUInt64LE(p)) + shift; p += 8; internal.push({ path: pth, offset: off }); }
   const getString = () => { const id = buf.readUInt32LE(p); p += 4; if (id & 0x80000000) { const n = id & 0x7fffffff; const s = buf.toString('utf8', p, p + n); p += n; return s; } return strings[id] ?? `str${id}`; };
   const real = () => { if (realIsDouble) { const v = buf.readDoubleLE(p); p += 8; return v; } const v = buf.readFloatLE(p); p += 4; return v; };
   const f32 = () => { const v = buf.readFloatLE(p); p += 4; return v; };
@@ -349,7 +357,7 @@ export function readRsrc(input) {
       case 'CALLABLE': case 'SIGNAL': return V('null', null);
       case 'DICTIONARY': { const n = buf.readUInt32LE(p) & 0x7fffffff; p += 4; const out = []; for (let i = 0; i < n; i++) { const k = parse(depth + 1); const v = parse(depth + 1); out.push([k, v]); } return V('dict', out); }
       case 'ARRAY': { const n = buf.readUInt32LE(p) & 0x7fffffff; p += 4; const out = []; for (let i = 0; i < n; i++) out.push(parse(depth + 1)); return V('array', out); }
-      case 'PACKED_BYTE_ARRAY': { const n = buf.readUInt32LE(p); p += 4; const v = [...buf.subarray(p, p + n)]; p += pad4(n); return V('PackedByteArray', v); }
+      case 'PACKED_BYTE_ARRAY': { const n = buf.readUInt32LE(p); p += 4; if (p + n > buf.length) throw new RPError('BAD_FORMAT', 'byte array runs past the end of the resource'); const v = byteBuffers ? buf.subarray(p, p + n) : [...buf.subarray(p, p + n)]; p += pad4(n); return V('PackedByteArray', v); }
       case 'PACKED_INT32_ARRAY': { const n = buf.readUInt32LE(p); p += 4; const v = []; for (let i = 0; i < n; i++) { v.push(buf.readInt32LE(p)); p += 4; } return V('PackedInt32Array', v); }
       case 'PACKED_INT64_ARRAY': { const n = buf.readUInt32LE(p); p += 4; const v = []; for (let i = 0; i < n; i++) { v.push(Number(buf.readBigInt64LE(p))); p += 8; } return V('PackedInt64Array', v); }
       case 'PACKED_FLOAT32_ARRAY': { const n = buf.readUInt32LE(p); p += 4; const v = []; for (let i = 0; i < n; i++) v.push(f32()); return V('PackedFloat32Array', v); }
@@ -375,22 +383,35 @@ export function readRsrc(input) {
 }
 function hashId(s) { let h = 5381; for (const c of s) h = ((h << 5) + h + c.charCodeAt(0)) >>> 0; return (h % 46656).toString(36).padStart(3, '0').slice(-5); }
 
+/**
+ * FileAccessCompressed (core/io/file_access_compressed.cpp, open_after_magic): "RSCC", u32 mode, u32 block_size,
+ * u32 read_total, then (read_total / block_size) + 1 block sizes (u32, so a size that is a whole number of blocks
+ * has an empty last block), then the blocks. Modes (core/io/compression.h): 0 FastLZ, 1 Deflate (zlib stream,
+ * window_bits 15), 2 Zstandard, 3 gzip. The stream holds what follows the magic of a plain file: a binary resource
+ * saved compressed has no "RSRC" inside (ResourceFormatSaverBinaryInstance::save writes it only uncompressed).
+ */
 function inflateRscc(buf) {
-  // FileAccessCompressed: "RSCC", mode u32, block_size u32, read_total u32, then blocks: for each block size u32 … (block data compressed). Modes: 0 FastLZ, 1 Deflate, 2 zstd, 3 gzip.
+  if (buf.length < 16) throw new RPError('BAD_FORMAT', 'RSCC header is truncated');
   const mode = buf.readUInt32LE(4), blockSize = buf.readUInt32LE(8), total = buf.readUInt32LE(12);
-  const blocks = Math.ceil(total / blockSize) || 1;
+  if (!blockSize) throw new RPError('BAD_FORMAT', 'RSCC block size is 0 (Godot calls this corrupt)');
+  const blocks = Math.floor(total / blockSize) + 1;
   let p = 16;
+  if (p + blocks * 4 > buf.length) throw new RPError('BAD_FORMAT', 'RSCC block table is truncated');
   const sizes = [];
   for (let i = 0; i < blocks; i++) { sizes.push(buf.readUInt32LE(p)); p += 4; }
   const out = [];
   for (let i = 0; i < blocks; i++) {
     const chunk = buf.subarray(p, p + sizes[i]); p += sizes[i];
-    if (mode === 1) out.push(zlib.inflateRawSync(chunk));
+    const want = Math.min(blockSize, total - i * blockSize);
+    if (want <= 0) continue; // the empty last block of a whole number of blocks
+    if (mode === 1) out.push(zlib.inflateSync(chunk));
     else if (mode === 2) { if (typeof zlib.zstdDecompressSync !== 'function') throw new RPError('UNSUPPORTED', 'RSCC zstd needs Node 22.15+'); out.push(zlib.zstdDecompressSync(chunk)); }
     else if (mode === 3) out.push(zlib.gunzipSync(chunk));
-    else throw new RPError('UNSUPPORTED', `RSCC compression mode ${mode} (FastLZ) is not supported here`);
+    else throw new RPError('UNSUPPORTED', `RSCC compression mode ${mode}${mode === 0 ? ' (FastLZ)' : ''} is not supported here`);
   }
-  return Buffer.concat(out).subarray(0, total);
+  const data = Buffer.concat(out);
+  if (data.length < total) throw new RPError('BAD_FORMAT', `RSCC data ends after ${data.length} of ${total} bytes`);
+  return data.subarray(0, total);
 }
 
 /** PackedScene _bundled dictionary → node list (name, type, parent, instance, properties, groups) + connections. */
@@ -501,44 +522,97 @@ export function decodeProjectBinary(buf) {
 }
 
 // ------------------------------------------------------------------------------------------------ tool
-export async function decodeTool({ path: target, out, limit: max = 2000 } = {}) {
-  if (!target) throw new RPError('INVALID_ARGUMENT', 'path is required: a .gdc/.scn/.res/project.binary file, or a folder (an extracted .pck).');
+const KEY_SOURCE_RE = /\.(gd|tscn|tres|cs|csv|godot|cfg|json)$/i;
+const MAX_KEYS = 500000;
+
+export async function decodeTool({ path: target, out, limit: max = 2000, keys, match, asm } = {}) {
+  if (!target) throw new RPError('INVALID_ARGUMENT', "path is required: a .gdc/.scn/.res/project.binary file, an imported resource (.ctex, .stex, .sample, .oggvorbisstr, .mp3str, .translation), a Ren'Py .rpyc/.rpymc, or a folder (an extracted .pck, or a Ren'Py game folder).");
+  if (keys != null && (!Array.isArray(keys) || keys.some(k => typeof k !== 'string'))) throw new RPError('INVALID_ARGUMENT', 'keys must be an array of strings (candidate translation keys).');
   const abs = path.resolve(target);
   const st = await statOrNull(abs);
   if (!st) throw new RPError('NOT_FOUND', `not found: ${abs}`);
+  const gm = await findGameMakerData(abs); // GameMaker data.win / game.unx / game.ios / game.droid, or a folder holding one: GML bytecode → .gml
+  if (gm) return decodeGameMaker({ ...gm, out, limit: arguments[0]?.limit, match, asm: asm === true });
   const files = [];
-  let root;
+  let root, treeFiles = [];
   const remaps = new Map(); // exported file → original path, from the .remap files an export leaves
+  const imports = new Map(); // imported file (.godot/imported/x.png-<md5>.ctex) → original path (x.png), from the .import files
+  const importText = new Map(); // original path (x.png) → its .import file as exported: written beside the restored file so Godot keeps its uid
   if (st.isDirectory()) { root = await requireDir(abs); const w = await walk(root, { maxFiles: 50000, ignore: new Set(['.git', 'node_modules']) });
+    treeFiles = w.files;
     for (const f of w.files) if (f.rel.endsWith('.remap')) { const t = await fs.readFile(f.abs, 'utf8').catch(() => ''); const m = t.match(/^path="res:\/\/([^"]+)"/m); if (m) remaps.set(m[1], f.rel.split(path.sep).join('/').replace(/\.remap$/, '')); }
-    for (const f of w.files) if (/\.(gdc|gde|scn|res|binary|material|mesh|tres|anim|shader)$/i.test(f.rel) || path.basename(f.rel) === 'project.binary') files.push({ rel: f.rel, abs: f.abs }); }
+    for (const f of w.files) if (f.rel.endsWith('.import') && f.size < 256 * 1024) { const t = await fs.readFile(f.abs, 'utf8').catch(() => ''); const imp = parseImportFile(t, f.rel); for (const p of imp.paths) if (imp.source) imports.set(p, imp.source); if (imp.source && t) importText.set(imp.source, t); }
+    for (const f of w.files) if (/\.(gdc|gde|scn|res|binary|material|mesh|tres|anim|shader)$/i.test(f.rel) || isRpyc(f.rel) || IMPORTED_RE.test(f.rel) || path.basename(f.rel) === 'project.binary') files.push({ rel: f.rel, abs: f.abs }); }
   else { root = path.dirname(abs); files.push({ rel: path.basename(abs), abs }); }
   const outDir = out ? path.resolve(out) : path.join(await workspaceDir('decoded'), path.basename(root).replace(/[^A-Za-z0-9._-]+/g, '_') || 'project');
-  const results = [], skipped = [];
+  const results = [], skipped = [], notConverted = [], translations = [];
+  const taken = new Set(); // output paths written by an imported resource (two platform variants share one original)
   let written = 0;
-  for (const f of files.slice(0, max)) {
+  const todo = files.slice(0, max);
+  // Translations go last: the candidate keys come from the caller and from the scripts, scenes and CSVs of this tree.
+  const wantKeys = todo.some(f => /\.translation$/i.test(f.rel));
+  const keyPool = new Set(keys ?? []);
+  const given = keyPool.size;
+  const addKeys = list => { for (const k of list) { if (keyPool.size >= MAX_KEYS) return; keyPool.add(k); } };
+  const save = async (destRel, data) => { const dest = safeJoin(outDir, destRel); await fs.mkdir(path.dirname(dest), { recursive: true }); await fs.writeFile(dest, data); written++; };
+  const convert = async (f, buf) => {
+    const rel = f.rel.split(path.sep).join('/');
+    const c = convertImported(buf, rel, { readRsrc, keys: keyPool });
+    if (c.notConverted) { notConverted.push({ file: f.rel, ...c.info, bytes: buf.length, reason: c.notConverted }); return; }
+    const source = imports.get(rel);
+    const dests = c.outputs.map(o => importedDest(rel, source, o.ext, o.part));
+    if (taken.has(dests[0])) { skipped.push({ file: f.rel, reason: `another imported variant of ${source ?? rel} was already converted to ${dests[0]}` }); return; }
+    for (let i = 0; i < dests.length; i++) { await save(dests[i], c.outputs[i].data); taken.add(dests[i]); }
+    // Restored under its original name: keep the exported .import beside it, so Godot re-imports it with the same uid
+    // and the scenes that name it by uid resolve without "invalid UID" warnings.
+    if (source && dests[0] === source && importText.has(source) && !taken.has(`${source}.import`)) { await save(`${source}.import`, importText.get(source)); taken.add(`${source}.import`); }
+    results.push({ file: f.rel, decoded: dests[0], ...(dests.length > 1 ? { also: dests.slice(1) } : {}), ...(source ? { original: `res://${source}` } : {}), ...c.info });
+    if (c.info.texts != null) translations.push({ file: f.rel, locale: c.info.locale, texts: c.info.texts, matched: c.info.matched, withoutKey: c.info.withoutKey });
+  };
+  const later = [];
+  for (const f of todo) {
     const buf = await fs.readFile(f.abs).catch(() => null);
     if (!buf) continue;
     const magic = buf.toString('latin1', 0, 4);
     try {
       let text, destRel, info = {};
-      if (magic === 'GDSC') { const r = decodeGdc(buf); text = r.source; destRel = f.rel.replace(/\.gdc$/i, '.gd'); info = { engine: r.engine, bytecodeVersion: r.bytecodeVersion, tokens: r.tokens, ...(r.compressed ? { compressed: true } : {}), ...(r.warnings.length ? { warnings: r.warnings.slice(0, 5) } : {}) }; }
+      if (magic === 'GDEC' || /\.gde$/i.test(f.rel)) { skipped.push({ file: f.rel, reason: 'encrypted: reported, never decrypted' }); continue; }
+      if (isImported(f.rel, magic)) { if (/\.translation$/i.test(f.rel)) later.push(f); else await convert(f, buf); continue; }
+      if (isRpyc(f.rel) || buf.toString('latin1', 0, 10) === 'RENPY RPC2') { const r = decodeRpycFile(buf, f.rel); text = r.text; destRel = r.destRel; info = r.info; } // Ren'Py compiled script → .rpy
+      else if (magic === 'GDSC') { const r = decodeGdc(buf); text = r.source; destRel = f.rel.replace(/\.gdc$/i, '.gd'); info = { engine: r.engine, bytecodeVersion: r.bytecodeVersion, tokens: r.tokens, ...(r.compressed ? { compressed: true } : {}), ...(r.warnings.length ? { warnings: r.warnings.slice(0, 5) } : {}) }; }
       else if (magic === 'RSRC' || magic === 'RSCC') { const r = readRsrc(buf); const t = rsrcToText(r); text = t.text; const orig = remaps.get(f.rel.split(path.sep).join('/')); destRel = orig ? orig.replace(/\.(tscn|tres|scn|res)$/i, t.ext) : f.rel.replace(/\.(scn|res)$/i, t.ext); if (destRel === f.rel) destRel += t.ext; info = { type: r.type, godot: `${r.major}.${r.minor}`, format: r.format, ...(t.nodes != null ? { nodes: t.nodes, connections: t.connections } : {}), resources: r.resources.length, external: r.ext.length }; }
       else if (magic === 'ECFG') { const r = decodeProjectBinary(buf); text = r.text; destRel = path.posix.join(path.posix.dirname(f.rel.split(path.sep).join('/')), 'project.godot'); info = { settings: r.settings, godot: r.major }; }
       else if (magic === 'GDPC') { skipped.push({ file: f.rel, reason: 'a pack: extract it with re_archive first, then decode the folder' }); continue; }
       else if (/^\[gd_(scene|resource)|^;|^extends|^@tool|^class_name|^shader_type/.test(buf.toString('utf8', 0, 64))) { skipped.push({ file: f.rel, reason: 'already text' }); continue; }
       else { skipped.push({ file: f.rel, reason: `not a Godot binary format (${JSON.stringify(magic)})` }); continue; }
-      const dest = path.join(outDir, destRel);
-      await fs.mkdir(path.dirname(dest), { recursive: true });
-      await fs.writeFile(dest, text);
-      written++;
+      await save(destRel, text);
+      if (wantKeys) addKeys(keysInText(text));
       results.push({ file: f.rel, decoded: destRel, ...info });
     } catch (e) { skipped.push({ file: f.rel, reason: e.message }); }
   }
+  if (later.length) {
+    for (const f of treeFiles) { // text scripts, scenes and translation CSVs that are already readable in the tree
+      if (keyPool.size >= MAX_KEYS) break;
+      if (!KEY_SOURCE_RE.test(f.rel) || f.size > 2 * 1024 * 1024) continue;
+      const t = await fs.readFile(f.abs, 'utf8').catch(() => '');
+      addKeys(/\.csv$/i.test(f.rel) ? keysInCsv(t) : keysInText(t));
+    }
+    for (const f of later) {
+      try { const buf = await fs.readFile(f.abs); await convert(f, buf); } catch (e) { skipped.push({ file: f.rel, reason: e.message }); }
+    }
+  }
   const byKind = {};
-  for (const r of results) byKind[r.decoded.split('.').pop()] = (byKind[r.decoded.split('.').pop()] ?? 0) + 1;
+  for (const r of results) for (const d of [r.decoded, ...(r.also ?? [])]) byKind[d.split('.').pop()] = (byKind[d.split('.').pop()] ?? 0) + 1;
+  const rpyc = results.filter(r => r.engine === "Ren'Py" && r.statements != null);
+  const renpy = rpyc.length ? summarizeRpyc(rpyc) : null;
+  const noKey = translations.reduce((a, t) => a + t.withoutKey, 0), allTexts = translations.reduce((a, t) => a + t.texts, 0);
   return {
-    source: root, out: outDir, decoded: written, byKind, files: results.slice(0, 500), skipped: skipped.slice(0, 200), truncated: files.length > max,
-    next: written ? `Open ${outDir} as a Godot project (project.godot was rebuilt if project.binary was present; textures stay .ctex/.stex imports — copy the original .import files or re-import). Comments and formatting are gone; names, constants and structure are exact. Run re_apicheck on the .gd files to confirm the Godot version, then re_graph/port_plan as usual.` : 'Nothing decoded: give a .gdc, .scn, .res or project.binary, or the folder re_archive extracted from the .pck.',
+    source: root, out: outDir, decoded: written, byKind, files: results.slice(0, 500), skipped: skipped.slice(0, 200),
+    ...(notConverted.length ? { notConverted: notConverted.slice(0, 200), notConvertedCount: notConverted.length } : {}),
+    ...(translations.length ? { translations: { files: translations.slice(0, 100), texts: allTexts, withoutKey: noKey, candidateKeys: { given, found: keyPool.size - given }, summary: `${noKey} of ${allTexts} translated texts have no key (the files store key hashes only); they are listed in the .unmatched.csv files.` } } : {}),
+    ...(renpy ? { renpy } : {}),
+    truncated: files.length > max,
+    next: renpy && renpy.files === results.length ? `${renpy.files} Ren'Py script(s) written as .rpy under ${outDir} (${renpy.statements} statements). Statements, dialogue, menus, screens and ATL are what the file stores; comments are gone and blank lines follow the stored line numbers. ${renpy.notDecompiled ? `${renpy.notDecompiled} node(s) had no known form and are comment lines "# <class> (not decompiled)" in the output: ${Object.entries(renpy.notDecompiledClasses).map(([k, v]) => `${k} ×${v}`).join(', ')}.` : 'Every node was decompiled.'}${skipped.length ? ` ${skipped.length} file(s) skipped, see skipped.` : ''} Run re_strings or re_graph on that folder next.`
+      : written ? `Open ${outDir} as a Godot project (project.godot was rebuilt if project.binary was present). Imported textures, audio and translations were written in their source formats${imports.size ? ' under their original names' : ''}${notConverted.length ? `; ${notConverted.length} could not be converted and are listed in notConverted with format and size (copy those files with their .import as they are)` : ''}. Comments and formatting are gone; names, constants and structure are exact. Run re_apicheck on the .gd files to confirm the Godot version, then re_graph/port_plan as usual.` : notConverted.length ? `Nothing converted: ${notConverted[0].reason}.` : "Nothing decoded: give a .gdc, .scn, .res, project.binary, an imported resource (.ctex, .stex, .sample, .oggvorbisstr, .mp3str, .translation) or a Ren'Py .rpyc/.rpymc, or the folder re_archive extracted from the .pck or .rpa.",
   };
 }

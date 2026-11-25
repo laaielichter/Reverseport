@@ -1,8 +1,8 @@
 {
   "name": "reverseport",
   "displayName": "ReversePort",
-  "version": "1.26.0",
-  "description": "Reverse engineer anything. Port it anywhere. One MCP server for agents: recon any project, exported game, binary or website (even without files), read Godot packs and Unity IL2CPP, decompile and trace native, .NET, Android, Electron and web targets with evidence, compare builds, keep proof cases with guard hooks, write clean-room rebuild specs, and port games and code between Godot, Unity, Unreal, three.js and languages with verified parity.",
+  "version": "1.27.0",
+  "description": "Reverse engineer anything. Port it anywhere. One MCP server for agents: recon any project, exported game, binary or website (even without files), read Godot, Unity, Unreal, Ren'Py and GameMaker builds and Android and iOS packages, work out unknown file formats from samples, flag text aimed at the agent, decompile and trace native, .NET, Android, Electron and web targets with evidence, compare builds, keep proof cases with guard hooks, write clean-room rebuild specs, and port games and code between Godot, Unity, Unreal, three.js and languages with verified parity.",
   "author": {
     "name": "ReversePort contributors"
   },
@@ -22,6 +22,11 @@
     "unity",
     "il2cpp",
     "unreal",
+    "renpy",
+    "gamemaker",
+    "apk",
+    "kaitai-struct",
+    "prompt-injection",
     "threejs",
     "ghidra",
     "ida-pro",

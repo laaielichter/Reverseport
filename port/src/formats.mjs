@@ -21,7 +21,7 @@ export const FORMATS = [
   { id: 'lua-bytecode', name: 'Lua bytecode', category: 'executable', test: (b, o) => at(b, o, [0x1b, 0x4c, 0x75, 0x61]) },
   { id: 'luajit-bytecode', name: 'LuaJIT bytecode', category: 'executable', test: (b, o) => at(b, o, [0x1b, 0x4c, 0x4a]) },
   { id: 'pyc', name: 'Python bytecode (.pyc)', category: 'executable', offsetZeroOnly: true, test: (b, o) => o === 0 && b.length > 16 && b[2] === 0x0d && b[3] === 0x0a && b.readUInt16LE(0) > 3000 && b.readUInt16LE(0) < 4000 },
-  { id: 'godot-pck', name: 'Godot resource pack (GDPC)', category: 'engine', test: (b, o) => str(b, o, 'GDPC') && u32le(b, o + 4) >= 0 && u32le(b, o + 4) <= 3 },
+  { id: 'godot-pck', name: 'Godot resource pack (GDPC)', category: 'engine', test: (b, o) => str(b, o, 'GDPC') && u32le(b, o + 4) >= 0 && u32le(b, o + 4) <= 4 },
   { id: 'godot-resource', name: 'Godot binary resource (RSRC)', category: 'engine', test: (b, o) => str(b, o, 'RSRC') },
   { id: 'godot-resource-compressed', name: 'Godot compressed resource (RSCC)', category: 'engine', test: (b, o) => str(b, o, 'RSCC') },
   { id: 'godot-ctex', name: 'Godot 4 compressed texture (GST2)', category: 'engine', test: (b, o) => str(b, o, 'GST2') },
@@ -50,6 +50,7 @@ export const FORMATS = [
   { id: 'bsa', name: 'Bethesda BSA archive', category: 'archive', test: (b, o) => str(b, o, 'BSA\0') && [103, 104, 105].includes(u32le(b, o + 4)) && u32le(b, o + 8) === 36 },
   { id: 'ba2', name: 'Bethesda BA2 archive', category: 'archive', test: (b, o) => str(b, o, 'BTDX') && ['GNRL', 'DX10', 'GNMF'].includes(b.toString('latin1', o + 8, o + 12)) },
   { id: 'renpy-rpa', name: "Ren'Py archive (RPA)", category: 'archive', test: (b, o) => str(b, o, 'RPA-3.0 ') || str(b, o, 'RPA-2.0 ') },
+  { id: 'renpy-rpyc', name: "Ren'Py compiled script (RPYC2; re_decode writes it back as .rpy)", category: 'engine', test: (b, o) => str(b, o, 'RENPY RPC2') },
   { id: 'asar', name: 'Electron archive (asar)', category: 'archive', offsetZeroOnly: true, test: (b, o) => o === 0 && u32le(b, 0) === 4 && str(b, 16, '{"files"') },
   { id: 'zip', name: 'ZIP archive (also apk/jar/ipa/docx/nupkg)', category: 'archive', test: (b, o) => at(b, o, [0x50, 0x4b, 3, 4]) || at(b, o, [0x50, 0x4b, 5, 6]) },
   { id: 'gzip', name: 'gzip', category: 'archive', test: (b, o) => at(b, o, [0x1f, 0x8b, 8]) && b[o + 3] < 0x20 },
@@ -108,7 +109,31 @@ export const FORMATS = [
   { id: 'spirv', name: 'SPIR-V shader', category: 'executable', test: (b, o) => (u32le(b, o) === 0x07230203 || u32be(b, o) === 0x07230203) && (b.length - o) % 4 === 0 },
   { id: 'dxbc', name: 'DirectX shader container (DXBC/DXIL)', category: 'executable', test: (b, o) => str(b, o, 'DXBC') },
   { id: 'ttc', name: 'TrueType collection (.ttc)', category: 'font', test: (b, o) => str(b, o, 'ttcf') && [0x00010000, 0x00020000].includes(u32be(b, o + 4)) },
+  // Mobile package metadata (mobile.mjs). Android chunks start with type (u16), header size (u16) and total size:
+  // RES_XML is type 3 with an 8-byte header, RES_TABLE type 2 with a 12-byte header (AOSP ResourceTypes.h).
+  { id: 'android-axml', name: 'Android binary XML (AndroidManifest.xml, compiled res/*.xml)', category: 'data', offsetZeroOnly: true, test: (b, o) => o === 0 && at(b, 0, [3, 0, 8, 0]) && u32le(b, 4) >= 8 },
+  { id: 'android-arsc', name: 'Android resource table (resources.arsc)', category: 'data', offsetZeroOnly: true, test: (b, o) => o === 0 && at(b, 0, [2, 0, 12, 0]) && u32le(b, 4) >= 12 && u32le(b, 8) >= 1 && u32le(b, 8) < 256 },
+  { id: 'bplist', name: 'Apple binary property list (bplist)', category: 'data', test: (b, o) => str(b, o, 'bplist0') },
 ];
+
+/**
+ * The name of the root element of an XML text, after an optional declaration, comments and a doctype; '' when there is
+ * none. One pass with indexOf: a pattern with a repeated comment group can take very long on a file full of comments.
+ */
+function rootElement(text, caseSensitive = false) {
+  let i = 0;
+  const skipSpace = () => { while (i < text.length && /\s/.test(text[i])) i++; };
+  skipSpace();
+  if (text.startsWith('<?xml', i)) { const end = text.indexOf('?>', i); if (end < 0) return ''; i = end + 2; }
+  for (;;) {
+    skipSpace();
+    if (text.startsWith('<!--', i)) { const end = text.indexOf('-->', i + 4); if (end < 0) return ''; i = end + 3; continue; }
+    if (text.slice(i, i + 9).toUpperCase() === '<!DOCTYPE') { const end = text.indexOf('>', i); if (end < 0) return ''; i = end + 1; continue; }
+    break;
+  }
+  const m = /^<([A-Za-z][\w:.-]*)[\s>/]/.exec(text.slice(i, i + 80));
+  return m ? (caseSensitive ? m[1] : m[1].toLowerCase()) : '';
+}
 
 const TEXT_KINDS = [
   { id: 'godot-scene', name: 'Godot text scene (.tscn)', re: /^\[gd_scene\b/ },
@@ -116,9 +141,17 @@ const TEXT_KINDS = [
   { id: 'godot-project', name: 'Godot project settings', re: /^; Engine configuration file/ },
   { id: 'unity-yaml', name: 'Unity YAML asset (scene/prefab/asset)', re: /^%YAML[^\n]*\n%TAG !u! tag:unity3d\.com/ },
   { id: 'yaml', name: 'YAML', re: /^(%YAML|---\s*\n)/ },
+  // SVG before XML: the root element decides, after an optional XML declaration, comments and a doctype.
+  { id: 'svg', name: 'SVG image', re: { test: t => rootElement(t) === 'svg' } },
+  { id: 'plist-xml', name: 'Apple XML property list', re: { test: t => rootElement(t, true) === 'plist' } },
   { id: 'xml', name: 'XML', re: /^\s*<\?xml/ },
   { id: 'html', name: 'HTML', re: /^\s*<!doctype html|^\s*<html/i },
+  // INI before JSON: both start with "[". A section line holds a bare name (no quotes, commas or brackets, and
+  // not a JSON literal such as [true]) and is followed by nothing, a comment, another section or key=value.
+  { id: 'ini', name: 'INI / config file (also Godot .import, .cfg)', re: /^\s*\[(?!\s*(?:true|false|null)\s*\])(?=[^\]\n]*[A-Za-z_])[^\]\n",[{}]+\][ \t]*(?:[;#][^\n]*)?\r?(?:$|\n\s*(?:$|[;#[]|[^\n=[\]{}",]+=))/ },
   { id: 'json', name: 'JSON', re: /^\s*[[{]/ },
+  // Valve KeyValues: a quoted root key, then an opening brace (appmanifest_*.acf, libraryfolders.vdf).
+  { id: 'vdf', name: 'Valve KeyValues text (VDF / ACF)', re: /^\s*(?:\/\/[^\n]*\n\s*)*"[^"\n]*"\s*(?:\/\/[^\n]*\n\s*)*\{/ },
   { id: 'obj', name: 'Wavefront OBJ (text model)', re: /^(#[^\n]*\n)*\s*(mtllib|o |v -?\d)/m },
   { id: 'shebang-script', name: 'Script (shebang)', re: /^#!/ },
 ];

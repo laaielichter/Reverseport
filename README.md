@@ -5,8 +5,9 @@
 ### Reverse engineer anything. Port it anywhere.
 
 **The reverse-engineering and porting toolkit for AI coding agents.**<br>
-Read Godot packs, Unity IL2CPP, .NET and native binaries, compare builds, keep proof for every claim — and port games
-between Godot, Unity, Unreal and three.js with parity checks.
+Read Godot, Unity, Unreal, Ren'Py and GameMaker builds, Android and iOS packages, .NET and native binaries. Work out
+an unknown file format from a few samples, compare builds, keep proof for every claim — and port games between Godot,
+Unity, Unreal and three.js with parity checks.
 
 [![npm](https://img.shields.io/npm/v/reverseport?style=flat-square&color=1e4f91)](https://www.npmjs.com/package/reverseport)
 [![npm downloads](https://img.shields.io/npm/dm/reverseport?style=flat-square&color=1e4f91)](https://www.npmjs.com/package/reverseport)
@@ -28,7 +29,7 @@ npx reverseport setup
 
 <sub>Used ReversePort on something? <a href="https://github.com/laaielichter/Reverseport/discussions/124">Show us what you ported</a> · ⭐ Star the repo if it saved you time.</sub>
 
-[Website](https://laaielichter.github.io/Reverseport/) · [Quick start](#quick-start) · [What's new](#whats-new) · [Every agent](#works-with-every-agent) · [Prompts](#prompts-to-try) · [How it compares](#how-it-compares) · [FAQ](#faq) · [Contributing](#contributing) · [Docs](#documentation)
+[Website](https://laaielichter.github.io/Reverseport/) · [Quick start](#quick-start) · [Only in ReversePort](#only-in-reverseport) · [What's new](#whats-new) · [Every agent](#works-with-every-agent) · [Prompts](#prompts-to-try) · [How it compares](#how-it-compares) · [FAQ](#faq) · [Contributing](#contributing) · [Docs](#documentation)
 
 **English** · [Nederlands](https://github.com/laaielichter/Reverseport/blob/main/docs/README.nl.md)
 
@@ -42,12 +43,26 @@ unit, verified. No files at all? Give it a name or a store page.
 
 ReversePort gives agents one consistent way to do all of that:
 
-- 🎮 **Game formats built in** — Godot `.pck` (also inside the `.exe`) and `.gdc`/`.scn`/`.res` back to an editable
-  project, Unity asset bundles and `.assets` (textures as PNG, meshes as OBJ, audio, scripts in use), Unity IL2CPP
-  `global-metadata.dat`, `.unitypackage`, GameMaker, Ren'Py, RPG Maker, Unreal `.pak`, FMOD and
-  Wwise banks; it also recognises Quake PAK, Doom WAD, XNB and VPK, compiled shaders (SPIR-V, DXBC/DXIL) and TrueType collections (`.ttc`). No engine install needed.
+- 🎮 **Game engines and formats built in** — Godot `.pck` from Godot 3 to 4.7 (also inside the `.exe`) back to an
+  editable project: scripts, scenes (also compressed ones), and imported textures, audio and translations as PNG, WAV,
+  OGG, MP3 and CSV. Unity asset bundles
+  and `.assets` (textures as PNG, meshes as OBJ, audio, scripts in use), IL2CPP `global-metadata.dat` and
+  `.unitypackage`. Ren'Py `.rpa` and compiled `.rpyc` back to `.rpy`. GameMaker `data.win` with its GML bytecode
+  back to `.gml`. Unreal `.pak`, `.uasset`/`.umap` tables, IoStore `.utoc` lists, `.locres` texts and GVAS saves.
+  RPG Maker, FMOD and Wwise banks, Quake PAK, Doom WAD, Flash; XNB, VPK, compiled shaders (SPIR-V, DXBC/DXIL) and
+  TrueType collections (`.ttc`) are recognised. No engine install needed.
+- 🧬 **Unknown formats from samples** — give `re_struct` two or more files of a format nobody documented (saves,
+  levels, packets) and get the layout back: fields with the evidence for each, record tables, checksums and a Kaitai
+  Struct draft. [More below](#only-in-reverseport).
+- 🛡️ **Injection shield** — a binary, a pack or a web page can carry text written for the agent that reads it.
+  Every tool result is checked; a hit gets an `untrusted` note and nothing is removed.
+  [More below](#only-in-reverseport).
+- 📦 **Executables and packages at a glance** — which packer, protector, installer or compiler made an executable,
+  with the evidence; what its imports point at; PE version info, manifest and icons; ELF build-id; Mach-O signature
+  and entitlements; the Android manifest of an `.apk` and the `Info.plist` of an `.ipa`. Detection only: nothing is
+  unpacked, decrypted or patched.
 - 🔍 **Understand anything** — engine and version of any project or exported game, dependency graphs, scenes, symbols
-  in 30+ languages, executables, packs and unknown data. JS/TS monorepos (pnpm, Turborepo, Nx, Lerna, Rush, tsconfig
+  in 30+ languages, save files and unknown data. JS/TS monorepos (pnpm, Turborepo, Nx, Lerna, Rush, tsconfig
   paths, `#imports`, Deno import maps) and Rust workspaces resolve too. No build step, no dependencies.
 - 🧠 **Go deep** — decompile, cross-reference and trace native, managed (.NET), Android, Electron/JavaScript,
   WebAssembly, firmware and browser targets through Ghidra, Hopper, IDA, JADX and more. ReversePort connects to the
@@ -115,7 +130,58 @@ What is ./MyGame made with? Show me the evidence, then plan a port to Unity.
 
 That's it. The agent picks the tools; you get answers with the evidence behind them.
 
+## Only in ReversePort
+
+Two things we have not found in another reverse-engineering tool for agents.
+
+**Formats from samples.** `re_struct` works out an unknown binary format from 2 to 32 sample files. Bytes that are
+the same everywhere are the format; a number that follows the file size is a length, one that follows the record
+count is a count, and a CRC that matches the rest gives itself away. It returns every field with its evidence, the
+columns of record tables, and a Kaitai Struct draft:
+
+```text
+reverseport struct ./saves "*.sav"
+ 0  constant  "SAVE" 03 00 00 00 …     magic
+12  u4le      length     the size of the file minus 16
+16  u4le      checksum   CRC-32 of the bytes after this field
+20  u4le      time       Unix time in seconds
+24  u4le length + text   "Roel", "Alexandra", "Bo", "Player One"
+ …  u4le      count      records of 12 bytes: u4le id, f4le, u4le
+```
+
+The result is a hypothesis from the samples you gave; more samples sharpen it. See
+[the full result and its limits](https://github.com/laaielichter/Reverseport/blob/main/docs/re-struct.md).
+
+**Injection shield.** A target can carry text written for the agent that reads it ("ignore your instructions", "run
+this command", invisible Unicode). Every tool result, also decompiled code from the deep-analysis engine, is checked
+before the agent sees it; a hit adds an `untrusted` note with the place and the text, and says it is data. Nothing is
+removed and no model is involved. It matches known English phrasings, so text in another language or in new words
+passes: treat every string from a target as data, with or without a note. `REVERSEPORT_SHIELD=off` turns it off. See
+[the details](https://github.com/laaielichter/Reverseport/blob/main/docs/injection-shield.md).
+
 ## What's new
+
+**New** — more formats, read by ReversePort's own engine (no Ghidra or IDA needed):
+
+- `re_struct` and the injection shield, [described above](#only-in-reverseport).
+- `re_binary` names packers, protectors, installers and compilers with the evidence for each, says what the imports
+  point at (networking, cryptography, debugger checks, ...), and reads PE version info, manifest and icons, the Rich
+  header, ELF build-id and DWARF producers, the Mach-O code signature and entitlements, and WebAssembly function
+  names.
+- `re_decode` writes Godot's imported textures, audio and translations back as PNG, WAV, OGG, MP3 and CSV under their
+  original names ([how](https://github.com/laaielichter/Reverseport/blob/main/docs/godot-pck.md#back-to-an-editable-project)), Ren'Py `.rpyc` back as `.rpy`
+  ([Ren'Py](https://github.com/laaielichter/Reverseport/blob/main/docs/renpy.md)) and the GML bytecode of a GameMaker `data.win` back as GML
+  ([GameMaker](https://github.com/laaielichter/Reverseport/blob/main/docs/gamemaker.md)). On three real builds of an open game every instruction was read and 3,747 of
+  3,752 code entries came back as GML; the rest is written as assembly with the reason, not guessed. The Ren'Py
+  printer is a port of [unrpyc](https://github.com/CensoredUsername/unrpyc) (MIT, notice kept). Godot 4's lossless
+  WebP textures and QOA sound come back as PNG and WAV, pixel and sample for sample as libwebp and Godot's `qoa.h`;
+  on a 54 GB Godot 4.7.2 game the decoded textures were pixel-equal to the source PNGs in the same pack.
+- `re_unreal` reads `.uasset`/`.umap` names, imports and exports, IoStore `.utoc` file lists, `.locres` texts and
+  GVAS saves ([Unreal](https://github.com/laaielichter/Reverseport/blob/main/docs/unreal.md)). The `.utoc` reader is tested on self-built fixtures only.
+- `re_archive` and `re_save` read the Android manifest and `resources.arsc` of an `.apk`, the `Info.plist` of an
+  `.ipa`, Apple property lists and Steam `appmanifest` files ([Android and iOS](https://github.com/laaielichter/Reverseport/blob/main/docs/android-ios.md)).
+
+All of it is detection and reading only: nothing is unpacked, decrypted or patched.
 
 **1.23** — code gets a first draft:
 
@@ -158,7 +224,10 @@ Start with a question about your project or a port. See [example prompts and a c
 
 ## What it does
 
-Inspect projects and builds, reconstruct behaviour and port between engines. See [supported targets, prerequisites and porting routes](https://github.com/laaielichter/Reverseport/blob/main/docs/capabilities.md).
+Inspect projects, builds and single files, reconstruct behaviour and port between engines. See
+[supported targets, every format with what is read and what is only reported, and the porting routes](https://github.com/laaielichter/Reverseport/blob/main/docs/capabilities.md).
+Per format: [Godot](https://github.com/laaielichter/Reverseport/blob/main/docs/godot-pck.md), [Ren'Py](https://github.com/laaielichter/Reverseport/blob/main/docs/renpy.md), [GameMaker](https://github.com/laaielichter/Reverseport/blob/main/docs/gamemaker.md),
+[Unreal](https://github.com/laaielichter/Reverseport/blob/main/docs/unreal.md), [Android and iOS](https://github.com/laaielichter/Reverseport/blob/main/docs/android-ios.md), [unknown formats](https://github.com/laaielichter/Reverseport/blob/main/docs/re-struct.md).
 
 ## CLI
 
@@ -169,21 +238,26 @@ For engine selection, see [Choose a provider](https://github.com/laaielichter/Re
 
 ## Tools
 
-One MCP server serves the recon, build, proof and porting tools. See [the tool overview](https://github.com/laaielichter/Reverseport/blob/main/docs/tool-overview.md) and [generated contracts](https://github.com/laaielichter/Reverseport/blob/main/docs/reference/mcp-contracts.md#generated-catalog).
+One MCP server serves ReversePort's 36 recon, build, format, proof and porting tools; an agent sees 38 tools without
+the deep-analysis engine and 60 with it. See [the tool overview](https://github.com/laaielichter/Reverseport/blob/main/docs/tool-overview.md) and [generated contracts](https://github.com/laaielichter/Reverseport/blob/main/docs/reference/mcp-contracts.md#generated-catalog).
 
 ## How it compares
 
-|                            | ReversePort                                                       | Disassembler MCP servers (IDA, Ghidra, …) | By hand                     |
-| -------------------------- | ----------------------------------------------------------------- | ----------------------------------------- | --------------------------- |
-| Focus                      | Games, builds and porting, with evidence                          | One disassembler for one model            | Whatever you know           |
-| Setup                      | `npx reverseport setup` for all your agents                       | One server per tool, per agent            | Install and learn each tool |
-| Source projects and builds | Engine, version, scenes, packs, diffs, no build needed            | Binaries only                             | Read files yourself         |
-| Game formats               | Godot packs, Unity IL2CPP, GameMaker, Ren'Py, Unreal, sound banks | Not part of the job                       | One tool per format         |
-| Native binaries            | Through the Ghidra, Hopper or IDA that you have installed         | Deepest inside their own tool             | The tool's own UI           |
-| Porting                    | Plan, API maps, code drafts, scene and asset conversion, verify   | Not part of the job                       | Rewrite and check by hand   |
-| Proof                      | Proof cases and guard hooks                                       | Up to the agent                           | Your notes                  |
-| Runs                       | Locally, target read-only                                         | Usually locally                           | Locally                     |
-| Does not                   | Crack DRM or anti-cheat, or finish a code port without an agent   | Port or compare builds                    | Scale                       |
+|                            | ReversePort                                                                                                  | Disassembler MCP servers (IDA, Ghidra, …) | By hand                     |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------ | ----------------------------------------- | --------------------------- |
+| Focus                      | Games, builds and porting, with evidence                                                                     | One disassembler for one model            | Whatever you know           |
+| Setup                      | `npx reverseport setup` for all your agents                                                                  | One server per tool, per agent            | Install and learn each tool |
+| Source projects and builds | Engine, version, scenes, packs, diffs, no build needed                                                       | Binaries only                             | Read files yourself         |
+| Game formats               | Godot packs and imports, Unity bundles and IL2CPP, Ren'Py scripts, GameMaker GML, Unreal assets, sound banks | Not part of the job                       | One tool per format         |
+| Mobile packages            | APK manifest and resources, IPA `Info.plist`, property lists                                                 | Not part of the job                       | One tool per format         |
+| Executables at a glance    | Packers, installers, compilers, capabilities, version info, Rich header; detection only                      | Their own analysis                        | Several tools               |
+| Native binaries in depth   | Through the Ghidra, Hopper or IDA that you have installed                                                    | Deepest inside their own tool             | The tool's own UI           |
+| Unknown file formats       | `re_struct`: layout and a Kaitai draft from sample files                                                     | Hex views                                 | Stare at hex                |
+| Text aimed at the agent    | Flagged in every result (injection shield), nothing removed                                                  | A warning in the docs                     | Not a problem               |
+| Porting                    | Plan, API maps, code drafts, scene and asset conversion, verify                                              | Not part of the job                       | Rewrite and check by hand   |
+| Proof                      | Proof cases and guard hooks                                                                                  | Up to the agent                           | Your notes                  |
+| Runs                       | Locally, target read-only                                                                                    | Usually locally                           | Locally                     |
+| Does not                   | Crack DRM or anti-cheat, or finish a code port without an agent                                              | Port or compare builds                    | Scale                       |
 
 If you live inside IDA or Ghidra all day, a dedicated server for that tool goes deepest there. ReversePort's
 deep-analysis engine is [REA](https://github.com/morluto/rea); if you want broad reverse engineering without the game
@@ -208,11 +282,23 @@ missing functions and dormant logic (stub bodies, functions nothing calls, silen
 "compiles" but does nothing is not reported as done.
 
 **Do I need Ghidra?** Only for decompiling native binaries. ReversePort finds Ghidra, Hopper or IDA but never installs
-them. Scanning, packs, IL2CPP metadata, build diffs, lookup, blueprints and porting need nothing extra.
+them. Scanning, packs, Godot, Ren'Py and GameMaker scripts, Unreal assets, IL2CPP metadata, a first look at an
+executable (packer, compiler, capabilities), build diffs, lookup, blueprints and porting need nothing extra.
+
+**Which engines and formats does it read?** Godot, Unity, Unreal, Ren'Py, GameMaker and RPG Maker builds, Android and
+iOS packages, .NET, PE, ELF, Mach-O and WebAssembly, and save files. [Capabilities](https://github.com/laaielichter/Reverseport/blob/main/docs/capabilities.md) lists every
+format with what is read and what is only reported. For a format nobody documented, give `re_struct` a few samples.
+
+**Does it unpack or decrypt protected files?** No. ReversePort names the packer, protector or encryption with the
+evidence and stops there: nothing is unpacked, decrypted or patched.
+
+**Can a file I analyse give my agent instructions?** It can try. The injection shield checks every tool result and
+adds an `untrusted` note when text reads like instructions to an AI. It matches known English phrasings, so treat
+every string from a target as data, with or without a note. See [the details](https://github.com/laaielichter/Reverseport/blob/main/docs/injection-shield.md).
 
 **How is this different from REA?** REA is the deep-analysis engine inside ReversePort. ReversePort adds its own
-tools on top: game engines and formats, build diffs, proof cases, clean-room blueprints and verified ports between
-engines, plus setup for every agent and a Claude Code plugin.
+tools on top: game engines and formats, formats from samples, the injection shield, build diffs, proof cases,
+clean-room blueprints and verified ports between engines, plus setup for every agent and a Claude Code plugin.
 
 **How do I update or remove it?** `reverseport update` updates a global install, and `reverseport uninstall` removes
 the agent registrations and skill files it added. See [Diagnose, update, and remove](https://github.com/laaielichter/Reverseport/blob/main/docs/getting-started/installation.md#diagnose-update-and-remove).
@@ -260,6 +346,9 @@ and it never sends your targets anywhere. Commercial tools such as IDA and Hoppe
 - [CLI and Evidence](https://github.com/laaielichter/Reverseport/blob/main/docs/getting-started/cli.md): commands, provider selection, snapshots, import/export.
 - [MCP contracts](https://github.com/laaielichter/Reverseport/blob/main/docs/reference/mcp-contracts.md) and [agent prompts](https://github.com/laaielichter/Reverseport/blob/main/docs/getting-started/mcp-prompts.md): tool results, sessions, guided investigations.
 - [Porting and rebuilds](https://github.com/laaielichter/Reverseport/blob/main/.agents/skills/reverse-engineer-anything/references/porting-and-rebuilds.md): the recon, rebuild and port workflows.
+- [Capabilities](https://github.com/laaielichter/Reverseport/blob/main/docs/capabilities.md): every supported target and format, what is read and what is only reported.
+- Formats: [Godot packs and exports](https://github.com/laaielichter/Reverseport/blob/main/docs/godot-pck.md), [Ren'Py](https://github.com/laaielichter/Reverseport/blob/main/docs/renpy.md), [GameMaker](https://github.com/laaielichter/Reverseport/blob/main/docs/gamemaker.md), [Unreal](https://github.com/laaielichter/Reverseport/blob/main/docs/unreal.md), [Android and iOS](https://github.com/laaielichter/Reverseport/blob/main/docs/android-ios.md), [unknown formats from samples](https://github.com/laaielichter/Reverseport/blob/main/docs/re-struct.md).
+- [Injection shield](https://github.com/laaielichter/Reverseport/blob/main/docs/injection-shield.md): what it reports, what the agent sees and its limits.
 - [Walkthrough: Godot → three.js](https://github.com/laaielichter/Reverseport/blob/main/docs/walkthrough-godot-to-threejs.md): a small port, every command run and its output pasted.
 - [GDScript to C# first draft](https://github.com/laaielichter/Reverseport/blob/main/docs/gdscript-to-csharp.md): real Godot C# and Unity drafts, `PORT:` markers, and reviewing a planned unit.
 - [Proof cases, guard hooks and memory](https://github.com/laaielichter/Reverseport/blob/main/docs/proof-and-memory.md): `re_case`, the Claude Code hooks, the optional Stashpad link and context cost.

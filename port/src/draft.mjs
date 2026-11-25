@@ -472,6 +472,25 @@ function interpolate(tok, args, ctx) {
   return `$"${parts.join('')}"`;
 }
 
+const isStringType = t => t === 'String' || t === 'StringName';
+const hasLength = t => isStringType(t) || /^Packed\w+Array$/.test(t ?? '');
+
+/** int(x) / float(x): GDScript parses a string and converts a number; C# needs a different form for each. */
+function exNumberConversion(name, args, a, ctx) {
+  const cast = `(${name})(${a.join(', ')})`;
+  if (args.length !== 1) return cast;
+  const type = inferType(args[0], ctx);
+  if (type === 'int' || type === 'float') return cast;
+  if (isStringType(type)) {
+    if (ctx.d !== 'unity') return `${wrap(args[0], a[0])}.${name === 'int' ? 'ToInt' : 'ToFloat'}()`;
+    return name === 'int' ? `int.Parse(${a[0]})` : `float.Parse(${a[0]}, System.Globalization.CultureInfo.InvariantCulture)`;
+  }
+  if (type === 'bool') return name === 'int' ? `(${a[0]} ? 1 : 0)` : `(${a[0]} ? 1f : 0f)`;
+  const parse = ctx.d === 'unity' ? `${name}.Parse(...)` : `.${name === 'int' ? 'ToInt' : 'ToFloat'}()`;
+  ctx.mark(`${name}(): the cast only compiles for a number; a string needs parsing (${parse}) and a bool needs ? 1 : 0`);
+  return cast;
+}
+
 function inferType(e, ctx) {
   if (!e) return null;
   switch (e.k) {
@@ -509,10 +528,18 @@ function inferType(e, ctx) {
         if (['str', 'String'].includes(f.v)) return 'String';
         if (f.v === 'get_node' && e.args[0]?.k === 'str') return nodeType(e.args[0].tok.body, ctx);
         if (f.v === 'int' || f.v === 'float' || f.v === 'bool') return f.v;
+        if (f.v === 'len' && e.args.length === 1) return 'int';
         if (/^[A-Z]/.test(f.v) && !isConstName(f.v)) return f.v;
         return ctx.members.get(f.v)?.returns ?? null;
       }
       if (f.k === 'attr' && f.name === 'new' && f.e.k === 'name') return f.e.v;
+      if (f.k === 'attr' && f.name === 'size' && !e.args.length) return 'int';
+      if (f.k === 'attr' && f.name === 'length' && !e.args.length) {
+        // length() counts characters on a string and measures a vector.
+        const base = inferType(f.e, ctx);
+        return isStringType(base) ? 'int' : STRUCT_TYPES.has(base) ? 'float' : null;
+      }
+      if (f.k === 'attr' && f.name === 'substr' && isStringType(inferType(f.e, ctx))) return 'String';
       return null;
     }
     default: return null;
@@ -588,9 +615,15 @@ function exCallName(name, args, e, ctx) {
     if (d === 'unity') { ctx.mark(`${name}(${lit ?? '…'}): use a serialized reference assigned in the inspector, or Resources.Load`); return `Resources.Load<${lit && /\.(tscn|scn)$/.test(lit) ? 'GameObject' : 'UnityEngine.Object'}>(${list})`; }
     return lit ? `GD.Load<${resourceType(lit)}>(${list})` : `GD.Load(${list})`;
   }
-  if (name === 'int' || name === 'float' || name === 'bool') return name === 'bool' ? `(${list} != default)` : `(${name})(${list})`;
+  if (name === 'bool') return `(${list} != default)`;
+  if (name === 'int' || name === 'float') return exNumberConversion(name, args, a, ctx);
   if (name === 'str' || name === 'String') { if (args.length === 1) return d === 'unity' ? `${wrap(args[0], a[0])}.ToString()` : `GD.Str(${list})`; return d === 'unity' ? `string.Concat(${list})` : `GD.Str(${list})`; }
-  if (name === 'len') { ctx.mark('len(): .Count for collections, .Length for strings and arrays'); return `${wrap(args[0], a[0])}.Count`; }
+  if (name === 'len' && args.length === 1) {
+    const type = inferType(args[0], ctx);
+    if (hasLength(type)) return `${wrap(args[0], a[0])}.Length`;
+    if (type !== 'Array' && type !== 'Dictionary' && !/^(Array|Dictionary)\[/.test(type ?? '')) ctx.mark('len(): .Count for collections, .Length for strings and arrays');
+    return `${wrap(args[0], a[0])}.Count`;
+  }
   if (name === 'assert') return `System.Diagnostics.Debug.Assert(${list})`;
   if (name === 'deg_to_rad' && d === 'unity') return `(${a[0]} * Mathf.Deg2Rad)`;
   if (name === 'rad_to_deg' && d === 'unity') return `(${a[0]} * Mathf.Rad2Deg)`;
@@ -719,6 +752,12 @@ function exAttr(e, ctx, call) {
   if (call) {
     const list = a();
     if (name === 'size' && !args.length) return `${b}.${/^Packed\w+Array$/.test(inferType(base, ctx) ?? '') ? 'Length' : 'Count'}`;
+    if (name === 'length' && !args.length) {
+      const type = inferType(base, ctx);
+      if (isStringType(type)) return `${b}.Length`;
+      if (type == null) ctx.mark('length(): .Length (a property, no brackets) for a string; a vector keeps the method');
+    }
+    if (name === 'substr' && d === 'unity' && args.length >= 1 && args.length <= 2 && isStringType(inferType(base, ctx))) return `${b}.Substring(${list.join(', ')})`;
     if ((name === 'append' || name === 'push_back') && args.length === 1) return `${b}.Add(${list[0]})`;
     if (name === 'has' && args.length === 1) { ctx.mark('has(): Contains for arrays, ContainsKey for dictionaries'); return `${b}.Contains(${list[0]})`; }
     if (name === 'keys' && !args.length) return `${b}.Keys`;
@@ -835,6 +874,19 @@ function splitTop(text, sep) {
   }
   out.push(cur);
   return out.map(x => x.trim()).filter(Boolean);
+}
+/** Split a match pattern at its top-level "when": { pat, guard } (guard is null without one). */
+function splitGuard(pattern) {
+  let depth = 0;
+  for (let i = 0; i < pattern.length; i++) {
+    const c = pattern[i];
+    if (c === '"' || c === "'") { i = readString(pattern, i).end - 1; continue; }
+    if ('([{'.includes(c)) depth++; else if (')]}'.includes(c)) depth--;
+    if (depth === 0 && pattern.startsWith('when', i) && !/\w/.test(pattern[i - 1] ?? ' ') && !/\w/.test(pattern[i + 4] ?? ' ')) {
+      return { pat: pattern.slice(0, i).trim(), guard: pattern.slice(i + 4).trim() };
+    }
+  }
+  return { pat: pattern.trim(), guard: null };
 }
 const csComment = c => (c ? c.replace(/^##\s?/, '/// ').replace(/^#\s?(?=region\b|endregion\b)/, '#').replace(/^#(?!region|endregion)\s?/, '// ') : '');
 
@@ -1017,7 +1069,9 @@ class Emitter {
   match(n, ind) {
     const ctx = this.ctx;
     const { head } = this.header(n);
-    this.push(ind, `switch (${ex(parseExpr(head.slice(5)), ctx)})`);
+    const subject = parseExpr(head.slice(5));
+    const subjectType = inferType(subject, ctx);
+    this.push(ind, `switch (${ex(subject, ctx)})`);
     this.push(ind, '{');
     for (const arm of n.children) {
       if (arm.blank) continue;
@@ -1026,19 +1080,34 @@ class Emitter {
         const at = headerColon(arm.text);
         if (at === -1) throw new DraftError('bad match arm');
         const pattern = arm.text.slice(0, at).trim(), inline = arm.text.slice(at + 1).trim();
-        if (/^(var\b|\[|\{)|\bwhen\b|\.\./.test(pattern)) { ctx.mark(`match pattern "${pattern}" (binding, array, dictionary or guard): write this case by hand`); this.push(ind + 1, 'default:'); }
-        else {
-          const alts = [];
-          let depth = 0, cur = '';
-          for (const c of pattern) { if ('([{'.includes(c)) depth++; else if (')]}'.includes(c)) depth--; if (c === ',' && depth === 0) { alts.push(cur); cur = ''; } else cur += c; }
-          alts.push(cur);
-          for (const alt of alts) this.push(ind + 1, alt.trim() === '_' ? 'default:' : `case ${ex(parseExpr(alt), ctx)}:`);
+        const { pat, guard } = splitGuard(pattern);
+        const alts = splitTop(pat, ',');
+        if (!alts.length) throw new DraftError('bad match arm');
+        // Array, dictionary and rest patterns have no mechanical C# form. The arm is drafted, then commented out,
+        // so the switch still compiles (no second default:) and the marker says what to write by hand.
+        const byHand = alts.some(alt => /^[[{]|\.\./.test(alt));
+        const first = this.out.length;
+        if (byHand) {
+          ctx.mark(`match pattern "${pattern}" (array, dictionary or rest): write this case by hand; its body is commented out`);
+          for (const m of pat.matchAll(/\bvar\s+(\w+)/g)) this.declareLocal(m[1], null);
+          this.push(ind + 1, `case ${pattern}:`);
+        } else {
+          const labels = [];
+          for (const alt of alts) {
+            const bind = /^var\s+(\w+)$/.exec(alt);
+            if (bind) { this.declareLocal(bind[1], subjectType); labels.push(`var ${camel(bind[1])}`); }
+            else if (alt === '_') labels.push(guard ? 'var _' : null);
+            else labels.push(ex(parseExpr(alt), ctx));
+          }
+          const when = guard ? ` when ${ex(parseExpr(guard), ctx)}` : '';
+          for (const label of labels) this.push(ind + 1, label === null ? 'default:' : `case ${label}${when}:`);
         }
         const start = this.out.length;
         if (inline) this.block([{ text: inline, comment: '', line: arm.line, children: [] }], ind + 2);
         this.block(arm.children, ind + 2);
         const last = this.out.slice(start).filter(l => l.code && !l.code.startsWith('//')).at(-1)?.code ?? '';
         if (!/^(return\b|break;|continue;|throw\b)/.test(last) || this.out.at(-1).ind > ind + 2) this.push(ind + 2, 'break;');
+        if (byHand) for (const l of this.out.slice(first)) if (l.code) l.code = `// ${l.code}`;
       });
     }
     this.push(ind, '}');

@@ -16,6 +16,7 @@ import { fileURLToPath } from 'node:url';
 import { tools as localToolDefs, callTool, coerceArgs, VERSION } from './tools.mjs';
 import { errorPayload, closest, portableSchema } from './agent.mjs';
 import { RPError } from './util.mjs';
+import { shieldMcpResult } from './shield.mjs';
 import { budgetValue, budgetMcpResult, toolOutputLink, readToolOutput, TOOL_OUTPUT_URI } from './budget.mjs';
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -58,7 +59,7 @@ export const CORE_ENGINE_TOOLS = [
 const INSTRUCTION_LINES = [
   'ReversePort: reverse engineer anything, port it anywhere. It runs on this machine, never modifies the targets it reads, and writes output to new folders. re_lookup reads public web pages; runtime-observation tools run only the target you name.',
   'Projects and exported games: re_scan {path} (engine, version, entry points) → re_graph → re_symbols / re_scene; re_report writes ARCHITECTURE.md.',
-  'Files at a glance: re_binary (executables), re_archive (Godot .pck also inside an .exe, zip/apk/jar, asar; action:"extract" to unpack), re_probe (unknown data), re_compare (two builds).',
+  'Files at a glance: re_binary (executables), re_archive (Godot .pck also inside an .exe, zip/apk/jar, asar; action:"extract" to unpack), re_probe (unknown data), re_struct (an unknown format from 2+ sample files), re_compare (two builds).',
   'Compiled code in depth (engine): open_binary → search_procedures / search_strings → analyze_function or procedure_pseudo_code, xrefs, procedure_callers → close_binary. .NET: inspect_managed_artifact. Android code: inspect_android_package. Electron/JS: analyze_javascript_application. Open browser page: list_browser_targets. Large engine results: pass detail:"summary" and page with inspect_analysis_view. If an engine tool refuses, binary_session {} says why and how to fix it. More engine tools (also ones engine prompts mention): engine_tools {query} to find, engine_call {tool, arguments} to use.',
   'No files: re_lookup {query|url|github} → re_blueprint (clean-room rebuild spec with parameters to measure). Port: port_map → port_plan → port_unit → write the code → port_write (scenes: port_scene) → port_verify; the loop is built so any model can do it one unit at a time — leave PORT: markers rather than guess. Results with an obvious next step carry next/nextCall with the exact call. Use port_convert for every transform.',
   'Several small steps: run_batch {calls:[{tool, arguments, select}]} runs them in one call; select keeps only the fields you need.',
@@ -505,7 +506,7 @@ export function createRelay(hooks = {}, options = {}) {
     const input = coerceArgs(schema, dropDisallowedNulls(schema, args ?? {}));
     const res = await engine.forward('tools/call', { name, arguments: input, ...(meta ? { _meta: meta } : {}) }, clientKey);
     if (!res.error && !res.result?.structuredContent?.error?.code?.startsWith?.('ENGINE_')) state.restarts = 0; // a working call resets the restart budget
-    return res.error ? toolError(Object.assign(new Error(res.error.message), { code: 'TOOL_FAILED', details: { rpc: res.error } })) : budgetMcpResult(name, res.result);
+    return res.error ? toolError(Object.assign(new Error(res.error.message), { code: 'TOOL_FAILED', details: { rpc: res.error } })) : budgetMcpResult(name, shieldMcpResult(name, res.result));
   }
 
   async function runLocal(name, args) {
