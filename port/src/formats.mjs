@@ -50,6 +50,7 @@ export const FORMATS = [
   { id: 'bsa', name: 'Bethesda BSA archive', category: 'archive', test: (b, o) => str(b, o, 'BSA\0') && [103, 104, 105].includes(u32le(b, o + 4)) && u32le(b, o + 8) === 36 },
   { id: 'ba2', name: 'Bethesda BA2 archive', category: 'archive', test: (b, o) => str(b, o, 'BTDX') && ['GNRL', 'DX10', 'GNMF'].includes(b.toString('latin1', o + 8, o + 12)) },
   { id: 'renpy-rpa', name: "Ren'Py archive (RPA)", category: 'archive', test: (b, o) => str(b, o, 'RPA-3.0 ') || str(b, o, 'RPA-2.0 ') },
+  { id: 'renpy-rpyc', name: "Ren'Py compiled script (RPYC2; re_decode writes it back as .rpy)", category: 'engine', test: (b, o) => str(b, o, 'RENPY RPC2') },
   { id: 'asar', name: 'Electron archive (asar)', category: 'archive', offsetZeroOnly: true, test: (b, o) => o === 0 && u32le(b, 0) === 4 && str(b, 16, '{"files"') },
   { id: 'zip', name: 'ZIP archive (also apk/jar/ipa/docx/nupkg)', category: 'archive', test: (b, o) => at(b, o, [0x50, 0x4b, 3, 4]) || at(b, o, [0x50, 0x4b, 5, 6]) },
   { id: 'gzip', name: 'gzip', category: 'archive', test: (b, o) => at(b, o, [0x1f, 0x8b, 8]) && b[o + 3] < 0x20 },

@@ -708,3 +708,199 @@ export function buildWasmWithNames({ moduleName = 'demo', functions = { 0: 'host
   const prod = Buffer.concat([Buffer.from([fields.length]), ...fields.map(([f, vals]) => Buffer.concat([str(f), Buffer.from([vals.length]), ...vals.map(([n, ver]) => Buffer.concat([str(n), str(ver)]))]))]);
   return Buffer.concat([buildWasm(), wasmCustomSection('name', names), wasmCustomSection('producers', prod)]);
 }
+
+// ---------------------------------------------------------------- Python pickle (protocol 2) and Ren'Py .rpyc, written by hand
+// Stand-ins for what Python's pickle module writes, for node shapes no real test file covers. No memo, no shared references.
+const pk = (...parts) => Buffer.concat(parts.map(p => (Buffer.isBuffer(p) ? p : Buffer.from(p))));
+const pkU32 = n => { const b = Buffer.alloc(4); b.writeUInt32LE(n >>> 0); return b; };
+const PK = Symbol('pickle');
+export const py = {
+  /** Class instance: GLOBAL, EMPTY_TUPLE, NEWOBJ, state, BUILD. state is a plain object (dict) or any other value (__setstate__ argument). */
+  obj: (cls, state = {}) => ({ [PK]: () => pk(py.global(cls)[PK](), [0x29, 0x81], pickleValue(state), [0x62]) }),
+  /** cls(*args) through NEWOBJ, e.g. a str subclass. */
+  newobj: (cls, args, state) => ({ [PK]: () => pk(py.global(cls)[PK](), pickleValue(py.tuple(args)), [0x81], ...(state === undefined ? [] : [pickleValue(state), [0x62]])) }),
+  reduce: (fn, args) => ({ [PK]: () => pk(py.global(fn)[PK](), pickleValue(py.tuple(args)), [0x52]) }),
+  global: name => ({ [PK]: () => { const i = name.lastIndexOf('.'); return pk([0x63], Buffer.from(`${name.slice(0, i)}\n${name.slice(i + 1)}\n`, 'latin1')); } }),
+  tuple: items => ({ [PK]: () => pk([0x28], ...items.map(pickleValue), [0x74]) }),
+  set: items => ({ [PK]: () => pk(py.global('__builtin__.set')[PK](), [0x5d, 0x28], ...items.map(pickleValue), [0x65, 0x85, 0x52]) }),
+  /** Python 2 str (SHORT_BINSTRING / BINSTRING). */
+  str2: s => ({ [PK]: () => { const b = Buffer.from(s, 'latin1'); return b.length < 256 ? pk([0x55, b.length], b) : pk([0x54], pkU32(b.length), b); } }),
+  /** renpy.ast.PyExpr: a str subclass created with (text, filename, linenumber). */
+  expr: (text, line = 1, cls = 'renpy.ast.PyExpr') => py.newobj(cls, [text, 'game/script.rpy', line]),
+  /** renpy.ast.PyCode: __setstate__((1, source, (file, line), mode)). */
+  code: (source, line = 1, mode = 'exec') => py.obj('renpy.ast.PyCode', py.tuple([1, source, py.tuple(['game/script.rpy', line]), mode])),
+};
+export function pickleValue(v) {
+  if (v === null || v === undefined) return Buffer.from([0x4e]);
+  if (v[PK]) return v[PK]();
+  if (v === true) return Buffer.from([0x88]);
+  if (v === false) return Buffer.from([0x89]);
+  if (typeof v === 'number' && Number.isInteger(v) && v >= -0x80000000 && v <= 0x7fffffff) { const b = Buffer.alloc(5); b[0] = 0x4a; b.writeInt32LE(v, 1); return b; }
+  if (typeof v === 'number') { const b = Buffer.alloc(9); b[0] = 0x47; b.writeDoubleBE(v, 1); return b; }
+  if (typeof v === 'bigint') { const bytes = []; let x = v; for (;;) { const byte = Number(x & 0xffn); bytes.push(byte); x >>= 8n; if ((x === 0n && !(byte & 0x80)) || (x === -1n && byte & 0x80)) break; } return pk([0x8a, bytes.length], bytes); }
+  if (typeof v === 'string') { const b = Buffer.from(v, 'utf8'); return pk([0x58], pkU32(b.length), b); }
+  if (Buffer.isBuffer(v)) return pk([0x42], pkU32(v.length), v);
+  if (Array.isArray(v)) return pk([0x5d, 0x28], ...v.map(pickleValue), [0x65]);
+  const pairs = v instanceof Map ? [...v] : Object.entries(v);
+  return pk([0x7d, 0x28], ...pairs.flatMap(([k, x]) => [pickleValue(k), pickleValue(x)]), [0x75]);
+}
+export const buildPickle = (value, protocol = 2) => pk([0x80, protocol], pickleValue(value), [0x2e]);
+/** A Ren'Py compiled script: RPYC2 (slot 1 = zlib pickle of (data, stmts)), or the legacy file without header. */
+export function buildRpyc(stmts, { data = { version: 5003000, key: 'unlocked' }, legacy = false, slot = 1 } = {}) {
+  const blob = zlib.deflateSync(buildPickle(py.tuple([data, stmts])));
+  if (legacy) return blob;
+  const header = Buffer.alloc(10 + 24);
+  header.write('RENPY RPC2', 0, 'latin1');
+  header.writeUInt32LE(slot, 10); header.writeUInt32LE(header.length, 14); header.writeUInt32LE(blob.length, 18);
+  return Buffer.concat([header, blob]);
+}
+
+// ---------------------------------------------------------------- GameMaker data.win with GML bytecode (self-built)
+// A tiny assembler for GML assembly text in UndertaleModTool's notation, and a writer for the code-related chunks
+// (GEN8, SCPT, GLOB, OBJT, ROOM, CODE, VARI, FUNC, STRG). No game file is involved: everything is built here.
+const GML_T = { d: 0, f: 1, i: 2, l: 3, b: 4, v: 5, s: 6, e: 15 };
+const GML_OPS = { conv: 0x07, mul: 0x08, div: 0x09, rem: 0x0a, mod: 0x0b, add: 0x0c, sub: 0x0d, and: 0x0e, or: 0x0f, xor: 0x10, neg: 0x11, not: 0x12, shl: 0x13, shr: 0x14, cmp: 0x15, pop: 0x45, pushi: 0x84, dup: 0x86, callv: 0x99, ret: 0x9c, exit: 0x9d, popz: 0x9e, b: 0xb6, bt: 0xb7, bf: 0xb8, pushenv: 0xba, popenv: 0xbb, push: 0xc0, pushloc: 0xc1, pushglb: 0xc2, pushbltn: 0xc3, call: 0xd9, break: 0xff };
+const GML_OLD_OPS = { conv: 0x03, mul: 0x04, div: 0x05, rem: 0x06, mod: 0x07, add: 0x08, sub: 0x09, and: 0x0a, or: 0x0b, xor: 0x0c, neg: 0x0d, not: 0x0e, shl: 0x0f, shr: 0x10, pop: 0x41, dup: 0x82, ret: 0x9d, exit: 0x9e, popz: 0x9f, b: 0xb7, bt: 0xb8, bf: 0xb9, pushenv: 0xbb, popenv: 0xbc, push: 0xc0, pushi: 0xc0, pushloc: 0xc0, pushglb: 0xc0, pushbltn: 0xc0, call: 0xda, break: 0xff };
+const GML_INST = { self: -1, other: -2, all: -3, noone: -4, global: -5, builtin: -6, local: -7, stacktop: -9, arg: -15, static: -16 };
+const GML_REF = { array: 0x00, stacktop: 0x80, normal: 0xa0, instance: 0xe0, arraypushaf: 0x10, arraypopaf: 0x90 };
+const GML_CMP = { LT: 1, LTE: 2, EQ: 3, NEQ: 4, GTE: 5, GT: 6 };
+const GML_BREAK = { chkindex: -1, pushaf: -2, popaf: -3, pushac: -4, setowner: -5, isstaticok: -6, setstatic: -7, savearef: -8, restorearef: -9, chknullish: -10, pushref: -11 };
+const GML_GOTO = new Set(['b', 'bt', 'bf', 'pushenv', 'popenv']);
+
+/** Assembles GML assembly text. Returns { bytes, refs: [{ at, kind: 'var'|'func'|'str', name, inst, ref }], labels }. */
+export function assembleGml(text, { bytecode = 16 } = {}) {
+  const old = bytecode <= 14;
+  const lines = text.split('\n').map(l => l.replace(/\s+;.*$/, '').trim()).filter(Boolean);
+  const parsed = [], labels = {};
+  let at = 0;
+  for (const line of lines) {
+    if (line.startsWith('>')) continue; // marks a function inside the entry in disassembly
+    if (line.startsWith(':')) { labels[line.slice(1)] = at; continue; }
+    const m = /^([a-z]+)((?:\.[a-z])*)\s*(.*)$/.exec(line);
+    if (!m) throw new Error(`bad assembly line: ${line}`);
+    const types = m[2].split('.').filter(Boolean);
+    const ins = { op: m[1], t: types, arg: m[3], at };
+    if (ins.op in GML_BREAK) { ins.ext = GML_BREAK[ins.op]; ins.op = 'break'; }
+    if (ins.op === 'raw') ins.size = 4;
+    else if (ins.op === 'pop') ins.size = types[0] === 'e' ? 4 : 8;
+    else if (ins.op.startsWith('push') && ins.op !== 'pushenv') ins.size = { d: 12, l: 12, e: 4 }[types[0]] ?? 8;
+    else if (ins.op === 'call' || (ins.op === 'break' && types[0] === 'i')) ins.size = 8;
+    else ins.size = 4;
+    parsed.push(ins);
+    at += ins.size;
+  }
+  labels.end = labels['[end]'] = at;
+  const bytes = Buffer.alloc(at), refs = [];
+  const variable = (ins, operand) => {
+    const v = /^(?:(-?\d+|self|other|all|noone|global|builtin|local|stacktop|arg|static)\.)?(?:\[(\w+)\](\w+)\.)?([\w$@]+)$/.exec(operand);
+    if (!v) throw new Error(`bad variable operand: ${operand}`);
+    const inst = v[1] == null ? 0 : v[1] in GML_INST ? GML_INST[v[1]] : Number(v[1]);
+    refs.push({ at: ins.at, kind: 'var', name: v[4], inst: v[3] ? GML_INST[v[3]] : inst, ref: GML_REF[v[2] ?? 'normal'] });
+    return inst & 0xffff;
+  };
+  for (const ins of parsed) {
+    const p = ins.at, [a, b] = ins.t.map(t => GML_T[t]);
+    if (ins.op === 'raw') { bytes.writeUInt32LE(Number(ins.arg) >>> 0, p); continue; }
+    let kind = (old ? GML_OLD_OPS : GML_OPS)[ins.op];
+    if (ins.op === 'cmp') kind = old ? 0x10 + GML_CMP[ins.arg] : 0x15;
+    if (kind == null) throw new Error(`${ins.op} does not exist in bytecode ${bytecode}`);
+    let word;
+    if (GML_GOTO.has(ins.op)) {
+      if (ins.arg === '<drop>') word = 0xf00000;
+      else { if (!(ins.arg in labels)) throw new Error(`unknown label ${ins.arg}`); word = ((labels[ins.arg] - p) / 4) & (old ? 0xffffff : 0x7fffff); }
+    } else if (ins.op === 'cmp') word = (b << 20) | (a << 16) | (old ? 0 : GML_CMP[ins.arg] << 8);
+    else if (ins.op === 'pop') {
+      if (ins.t[0] === 'e') word = (b << 20) | (a << 16) | Number(ins.arg);
+      else word = (b << 20) | (a << 16) | variable(ins, ins.arg);
+    } else if (ins.op.startsWith('push')) {
+      word = a << 16;
+      const t = ins.t[0];
+      if (t === 'e') word |= Number(ins.arg) & 0xffff;
+      else if (t === 'd') bytes.writeDoubleLE(Number(ins.arg), p + 4);
+      else if (t === 'l') bytes.writeBigInt64LE(BigInt(ins.arg), p + 4);
+      else if (t === 'v') word |= variable(ins, ins.arg);
+      else if (t === 's') refs.push({ at: p, kind: 'str', name: JSON.parse(ins.arg.replace(/@\d+$/, '')) });
+      else if (ins.arg.startsWith('[function]')) refs.push({ at: p, kind: 'func', name: ins.arg.slice(10) });
+      else if (ins.arg.startsWith('[variable]')) refs.push({ at: p, kind: 'var', name: ins.arg.slice(10), inst: -1, ref: 0 });
+      else bytes.writeInt32LE(Number(ins.arg), p + 4);
+    } else if (ins.op === 'call') {
+      const c = /^(.+)\(argc=(\d+)\)$/.exec(ins.arg);
+      word = (a << 16) | Number(c[2]);
+      refs.push({ at: p, kind: 'func', name: c[1] });
+    } else if (ins.op === 'break') {
+      word = (a << 16) | ((ins.ext ?? Number(ins.arg)) & 0xffff);
+      if (ins.t[0] === 'i') { if (/^-?\d+$/.test(ins.arg)) bytes.writeInt32LE(Number(ins.arg), p + 4); else refs.push({ at: p, kind: 'func', name: ins.arg }); }
+    } else word = ((b ?? 0) << 20) | (a << 16) | (ins.op === 'dup' || ins.op === 'callv' ? Number(ins.arg.split(' ')[0]) | (ins.arg.includes(' ') ? ((Number(ins.arg.split(' ')[1]) & 0x7f) | 0x80) << 8 : 0) : 0); // the second dup operand (swap size) is stored with bit 7 set
+    bytes.writeUInt32LE(((kind << 24) | word) >>> 0, p);
+  }
+  return { bytes, refs, labels };
+}
+
+/**
+ * A GameMaker data file (FORM) with GML bytecode. code: [{ name, asm, locals, args }] or, for a function inside
+ * another entry (2.3+), { name, parent: <index>, label, args, locals }. scripts: [{ name, code, isConstructor }],
+ * objects: [{ name, events: [{ type, subtype, code }] }], rooms: [{ name, code, instances: [{ id, code }] }],
+ * globalInit: [code index]. yyc: 'empty' (CODE/VARI/FUNC present but empty) or 'missing'.
+ */
+export function buildGameMakerCodeData({ bytecode = 16, major = bytecode >= 17 ? 2 : 1, name = 'TinyGame', code = [], scripts = [], objects = [], rooms = [], globalInit = [], functionRefPlus4 = bytecode >= 17, managed = false, yyc = null } = {}) {
+  const out = Buffer.alloc(1 << 18);
+  let pos = 0;
+  const u32 = v => { out.writeUInt32LE(v >>> 0, pos); pos += 4; };
+  const f32 = v => { out.writeFloatLE(v, pos); pos += 4; };
+  const strings = [], stringFix = [];
+  const strId = s => { let i = strings.indexOf(s); if (i < 0) { i = strings.length; strings.push(s); } return i; };
+  const str = s => { stringFix.push([pos, strId(s)]); u32(0); };
+  const chunk = (id, body) => { out.write(id, pos, 'latin1'); pos += 4; const lenAt = pos; pos += 4; body(); out.writeUInt32LE(pos - lenAt - 4, lenAt); };
+  const ptrList = (items, write) => { u32(items.length); const table = pos; pos += 4 * items.length; items.forEach((item, i) => { out.writeUInt32LE(pos, table + 4 * i); write(item); }); };
+  out.write('FORM', 0, 'latin1'); pos = 8;
+  chunk('GEN8', () => { const start = pos; out[pos + 1] = bytecode; pos += 4; str(`${name}.gmx`); str('Default'); u32(100000); u32(10000000); u32(1); pos += 16; str(name); u32(major); u32(bytecode >= 17 ? 3 : 4); u32(0); u32(1); u32(640); u32(480); pos = start + 0x64; str(name); pos = start + 0x84; });
+  chunk('SCPT', () => ptrList(scripts, s => { str(s.name); u32(s.isConstructor ? (s.code | 0x80000000) >>> 0 : s.code); }));
+  if (globalInit.length) chunk('GLOB', () => { u32(globalInit.length); globalInit.forEach(u32); });
+  chunk('OBJT', () => ptrList(objects, o => {
+    str(o.name); u32(-1); u32(1); if (managed) u32(0); u32(0); u32(0); u32(0); u32(-100); u32(-1); u32(0); u32(0); u32(0); f32(0.5); f32(0.1); u32(0); f32(0.1); f32(0.1); u32(0); f32(0.2); u32(1); u32(0);
+    const byType = Array.from({ length: 12 }, (_, type) => (o.events ?? []).filter(e => e.type === type));
+    ptrList(byType, list => ptrList(list, e => { u32(e.subtype ?? 0); ptrList([e], a => { u32(1); u32(603); u32(7); u32(0); u32(0); u32(1); u32(2); str(''); u32(a.code); u32(1); u32(-1); u32(0); u32(0); u32(0); }); }));
+  }));
+  chunk('ROOM', () => ptrList(rooms, r => {
+    const start = pos;
+    str(r.name); str(''); u32(640); u32(480); u32(30); u32(0); u32(0); u32(1); u32(r.code ?? -1); u32(0);
+    const lists = pos; pos = start + 88;
+    const empty = pos; u32(0);
+    const instancesAt = pos;
+    ptrList(r.instances ?? [], inst => { u32(0); u32(0); u32(0); u32(inst.id); u32(inst.code); f32(1); f32(1); u32(0xffffffff); f32(0); if (bytecode >= 16) u32(-1); });
+    [empty, empty, instancesAt, empty].forEach((ptr, i) => out.writeUInt32LE(ptr, lists + 4 * i));
+  }));
+  const variables = new Map(), functions = new Map(), stringRefs = [];
+  const note = (map, key, make, address) => { if (!map.has(key)) map.set(key, { ...make, uses: [] }); map.get(key).uses.push(address); };
+  if (yyc === 'empty') for (const id of ['CODE', 'VARI', 'FUNC']) chunk(id, () => {});
+  else if (yyc !== 'missing') {
+    const roots = code.map(c => (c.parent == null ? assembleGml(c.asm, { bytecode }) : null));
+    chunk('CODE', () => {
+      const place = (asm, address) => { asm.bytes.copy(out, address); for (const r of asm.refs) { if (r.kind === 'str') stringRefs.push([address + r.at + 4, r.name]); else if (r.kind === 'var') note(variables, `${r.inst}.${r.name}`, { name: r.name, inst: r.inst }, { at: address + r.at, ref: r.ref }); else note(functions, r.name, { name: r.name }, { at: address + r.at, ref: 0 }); } };
+      if (bytecode <= 14) ptrList(code, (c, i) => { const asm = roots[code.indexOf(c)]; str(c.name); u32(asm.bytes.length); place(asm, pos); pos += asm.bytes.length; });
+      else {
+        u32(code.length); const table = pos; pos += 4 * code.length;
+        const blobs = roots.map(asm => { if (!asm) return null; const address = pos; place(asm, address); pos += asm.bytes.length; return address; });
+        code.forEach((c, i) => {
+          out.writeUInt32LE(pos, table + 4 * i);
+          const root = c.parent ?? i, asm = roots[root];
+          str(c.name); u32(asm.bytes.length); out.writeUInt16LE(c.locals ?? 0, pos); out.writeUInt16LE(c.args ?? 0, pos + 2); pos += 4;
+          out.writeInt32LE(blobs[root] - pos, pos); pos += 4; u32(c.parent == null ? 0 : asm.labels[c.label]);
+        });
+      }
+    });
+    // reference chains: each use holds the distance to the next one; the last holds the name's string id
+    const chain = (item, nameId) => item.uses.forEach((u, i) => { const next = item.uses[i + 1]; out.writeInt32LE(((next ? next.at - u.at : nameId) & 0x07ffffff) | (u.ref << 24), u.at + 4); });
+    chunk('VARI', () => { if (bytecode >= 15) { u32(variables.size); u32(variables.size); u32(4); } for (const v of variables.values()) { chain(v, strId(v.name)); str(v.name); if (bytecode >= 15) { u32(v.inst); u32(0); } u32(v.uses.length); u32(v.uses[0].at); } });
+    chunk('FUNC', () => { if (bytecode >= 15) u32(functions.size); for (const f of functions.values()) { chain(f, strId(f.name)); str(f.name); u32(f.uses.length); u32(f.uses[0].at + (functionRefPlus4 ? 4 : 0)); } if (bytecode >= 15) u32(0); });
+  }
+  for (const [, s] of stringRefs) strId(s);
+  chunk('STRG', () => {
+    const at = [];
+    ptrList(strings, s => { const b = Buffer.from(s, 'utf8'); u32(b.length); at.push(pos); b.copy(out, pos); pos += b.length + 1; });
+    for (const [where, id] of stringFix) out.writeUInt32LE(at[id], where);
+    for (const [where, s] of stringRefs) out.writeUInt32LE(strings.indexOf(s), where);
+  });
+  out.writeUInt32LE(pos - 8, 4);
+  return out.subarray(0, pos);
+}

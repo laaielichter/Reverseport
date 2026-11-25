@@ -204,6 +204,9 @@ Things you used to need a separate tool for, now read by ReversePort's own engin
   function names.
 - **Godot exports** (`re_decode`): imported textures back to PNG, audio back to WAV, OGG and MP3, translations back
   to CSV, each under its original name.
+- **Ren'Py and GameMaker** (`re_decode`): compiled `.rpyc` scripts back to `.rpy` text, and the GML bytecode of a
+  `data.win` back to GML, laid out like a project. On three real builds of an open game every instruction was read
+  and 3,747 of 3,752 code entries came back as GML; the rest is written as assembly with the reason, not guessed.
 - **Unreal** (`re_unreal`): `.uasset`/`.umap` names, imports and exports, IoStore `.utoc` file lists, `.locres` texts
   and GVAS saves.
 - **Mobile and Steam** (`re_archive`, `re_save`): the Android manifest and `resources.arsc` of an `.apk`, the

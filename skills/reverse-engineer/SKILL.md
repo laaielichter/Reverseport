@@ -54,6 +54,8 @@ re_binary {file, strings:{match:"/http|\\.dll|res:\\/\\//i", limit:300}}
 re_archive {file}                      → Godot .pck (also inside the .exe), Unity bundles/.assets, zip/apk/jar, tar.gz/.unitypackage, asar
 re_probe {file, offset?}               → hex view, entropy map, embedded files, record strides
 re_extract {file, offset, length?}     → carve an embedded PNG/WAV/glb/ZIP into the workspace
+re_decode {path}                       → Godot .gdc/.scn/.ctex/.sample/.translation, Ren'Py .rpyc → .rpy,
+                                         GameMaker data.win → .gml (unsure entries stay assembly)
 re_unreal {file}                       → Unreal .uasset/.umap names, imports, exports; .utoc file list; .locres texts; GVAS save
 re_struct {files:[a,b,c]} or {path, match:"*.sav"} → the layout of an unknown format from 2+ samples: constants,
                                          lengths, record counts + columns, checksums, text, and a Kaitai .ksy draft

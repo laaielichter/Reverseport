@@ -10,22 +10,97 @@ import { RPError, readAt } from './util.mjs';
 import { lzmaDecode } from './decompress.mjs';
 
 // ------------------------------------------------------------------------------------------------ Ren'Py RPA
-/** Minimal Python pickle reader for the shapes Ren'Py's index uses (dict of str → list of tuples of int/bytes). */
-export function unpickle(buf) {
+/** A Python object rebuilt from a pickle as plain data: its class path, constructor arguments and state. Nothing is ever called. */
+export class PyObj {
+  constructor(cls, args) { this.$class = cls; if (args !== undefined) this.$args = args; }
+  toString() { return this.$str ?? `<${this.$class}>`; }
+}
+const PY_SKIP_ATTR = k => k === '__proto__' || k[0] === '$' || k === 'toString' || k === 'constructor';
+const pyText = b => { const s = b.toString('utf8'); return s.includes('�') ? b.toString('latin1') : s; };
+const pyInt = v => (v >= -9007199254740991n && v <= 9007199254740991n ? Number(v) : v);
+const PY_LIST_RE = /(^|\.)(RevertableList|list)$/, PY_DICT_RE = /(^|\.)(RevertableDict|dict|OrderedDict|defaultdict)$/, PY_SET_RE = /(^|\.)(RevertableSet|set|frozenset)$/;
+const PY_STR_RE = /(^|\.)PyExpr$/, PY_TUPLE_RE = /^renpy\.lexer\.GroupedLine$/;
+
+/** Builds the stand-in for `cls(*args)` (NEWOBJ / REDUCE on a class): containers stay containers, everything else is a PyObj. */
+function pyNew(cls, args) {
+  if (PY_STR_RE.test(cls)) { const o = new PyObj(cls); const a = Array.isArray(args) ? args : []; o.$str = String(a[0] ?? ''); o.filename = a[1] ?? null; o.linenumber = typeof a[2] === 'number' ? a[2] : null; return o; }
+  if (PY_LIST_RE.test(cls)) return Array.isArray(args?.[0]) ? [...args[0]] : [];
+  if (PY_DICT_RE.test(cls)) { const m = new Map(); if (Array.isArray(args?.[0])) for (const kv of args[0]) if (Array.isArray(kv)) m.set(kv[0], kv[1]); else if (args?.[0] instanceof Map) for (const [k, v] of args[0]) m.set(k, v); return m; }
+  if (PY_SET_RE.test(cls)) return new Set(Array.isArray(args?.[0]) ? args[0] : args?.[0] instanceof Set ? args[0] : []);
+  if (PY_TUPLE_RE.test(cls)) return Array.isArray(args) ? [...args] : [];
+  return new PyObj(cls, args);
+}
+
+/** REDUCE: `callable(*args)` for the handful of constructors pickles of plain data use; anything else is kept as a described PyObj. */
+function pyReduce(fn, args) {
+  const name = fn?.__global__;
+  if (!name) return new PyObj('(not a global)', args);
+  const a = Array.isArray(args) ? args : [];
+  if (/^copy_?reg\._reconstructor$/.test(name)) { // (cls, base, state): old-style object creation
+    const cls = a[0]?.__global__ ?? '(unknown)', base = a[1]?.__global__ ?? '';
+    const o = pyNew(cls, /(^|\.)object$/.test(base) ? [] : [a[2]]);
+    if (o instanceof PyObj && !/(^|\.)object$/.test(base) && typeof a[2] === 'string') o.$str = a[2];
+    return o;
+  }
+  if (/^copy_?reg\.__newobj__$/.test(name)) return pyNew(a[0]?.__global__ ?? '(unknown)', a.slice(1));
+  if (name === '_codecs.encode') return Buffer.from(String(a[0] ?? ''), /utf/i.test(String(a[1])) ? 'utf8' : 'latin1');
+  if (/^(__builtin__|builtins)\.(bytearray|bytes)$/.test(name)) return Buffer.isBuffer(a[0]) ? a[0] : Buffer.from(Array.isArray(a[0]) ? a[0] : String(a[0] ?? ''), 'latin1');
+  if (/^(__builtin__|builtins)\.(str|unicode)$/.test(name)) return String(a[0] ?? '');
+  if (/^(__builtin__|builtins)\.(int|long|float|bool)$/.test(name)) return a[0] ?? 0;
+  if (/^(__builtin__|builtins)\.tuple$/.test(name)) return Array.isArray(a[0]) ? [...a[0]] : [];
+  if (/^(__builtin__|builtins|collections)\./.test(name) && (PY_LIST_RE.test(name) || PY_DICT_RE.test(name) || PY_SET_RE.test(name))) return pyNew(name, a);
+  return pyNew(name, a);
+}
+
+/** BUILD: `obj.__setstate__(state)` or `obj.__dict__.update(state)` as data. */
+function pyBuild(obj, state) {
+  const assign = m => { for (const [k, v] of m) { const key = String(k); if (PY_SKIP_ATTR(key)) (obj.$extra ??= new Map()).set(key, v); else obj[key] = v; } };
+  if (obj instanceof Set) { const src = Array.isArray(state) ? state[0] : state; if (src instanceof Map) for (const k of src.keys()) obj.add(k); else if (src instanceof Set || Array.isArray(src)) for (const k of src) obj.add(k); return; }
+  if (!(obj instanceof PyObj)) return; // a list/dict subclass with instance attributes: the attributes are not part of the data
+  if (state instanceof Map) return assign(state);
+  if (Array.isArray(state) && state.length === 2 && (state[0] === null || state[0] instanceof Map) && (state[1] === null || state[1] instanceof Map)) { if (state[0]) assign(state[0]); if (state[1]) assign(state[1]); return; }
+  obj.$state = state;
+}
+
+/**
+ * Python pickle reader (protocols 0-5), data only: no opcode ever imports or calls anything.
+ * Default mode keeps the shapes Ren'Py's RPA index uses (dicts as plain objects, Python 2 str as bytes).
+ * With { objects: true } it rebuilds object graphs for compiled scripts: dicts are Maps (keys keep their type and order),
+ * Python 2 str is text, sets are Sets, tuples and lists are arrays, and class instances are PyObj values carrying
+ * $class (e.g. "renpy.ast.Say") with their state as properties (or $state when the class has its own __setstate__).
+ * info, when given, receives { protocol, py2Strings (Python 2 str opcodes seen), globals (Set of class paths named) }.
+ */
+export function unpickle(buf, { objects = false, info = null } = {}) {
   const stack = [], memo = new Map();
   let marks = [];
-  let p = 0;
-  const u8 = () => buf[p++], i32 = () => { const v = buf.readInt32LE(p); p += 4; return v; }, u32 = () => { const v = buf.readUInt32LE(p); p += 4; return v; };
-  const bytesN = n => { const b = buf.subarray(p, p + n); p += n; return b; };
+  let p = 0, proto = 0;
+  const need = n => { if (!(n >= 0) || p + n > buf.length) throw new RPError('BAD_FORMAT', 'pickle ended early'); };
+  const u8 = () => { need(1); return buf[p++]; }, i32 = () => { need(4); const v = buf.readInt32LE(p); p += 4; return v; }, u32 = () => { need(4); const v = buf.readUInt32LE(p); p += 4; return v; };
+  const u64 = () => { need(8); const v = Number(buf.readBigUInt64LE(p)); p += 8; return v; };
+  const bytesN = n => { need(n); const b = buf.subarray(p, p + n); p += n; return b; };
+  const line = () => { const e = buf.indexOf(0x0a, p); if (e < 0) throw new RPError('BAD_FORMAT', 'pickle ended early'); const s = buf.toString('latin1', p, e); p = e + 1; return s; };
   const mark = () => { marks.push(stack.length); };
-  const popMark = () => { const i = marks.pop(); const items = stack.splice(i); return items; };
+  const popMark = () => { if (!marks.length) throw new RPError('BAD_FORMAT', 'pickle MARK missing'); return stack.splice(marks.pop()); };
+  const pop = () => { if (!stack.length) throw new RPError('BAD_FORMAT', 'pickle stack empty'); return stack.pop(); };
+  const top = () => { if (!stack.length) throw new RPError('BAD_FORMAT', 'pickle stack empty'); return stack.at(-1); };
+  const long = b => { let v = 0n; for (let i = b.length - 1; i >= 0; i--) v = (v << 8n) | BigInt(b[i]); if (b.length && b[b.length - 1] & 0x80) v -= 1n << BigInt(8 * b.length); return objects ? pyInt(v) : Number(v); };
+  const str2 = b => { if (info) info.py2Strings = true; return objects ? pyText(b) : b; }; // Python 2 str
+  const global = name => { if (info) (info.globals ??= new Set()).add(name); return { __global__: name }; };
+  const newDict = () => (objects ? new Map() : {});
+  const setItem = (d, k, v) => {
+    if (d instanceof Map) d.set(k, v);
+    else if (d instanceof PyObj) (d.$dict ??= new Map()).set(k, v);
+    else if (d && typeof d === 'object' && !Array.isArray(d) && !(d instanceof Set)) { const key = String(k); if (key !== '__proto__') d[key] = v; }
+  };
+  const append = (l, items) => { if (Array.isArray(l)) for (const it of items) l.push(it); else if (l instanceof PyObj) (l.$items ??= []).push(...items); else if (l instanceof Set) for (const it of items) l.add(it); };
+  const escapes = s => s.replace(/\\(x[0-9a-fA-F]{2}|u[0-9a-fA-F]{4}|U[0-9a-fA-F]{8}|[0-7]{1,3}|.)/g, (m, e) => (e[0] === 'x' || e[0] === 'u' || e[0] === 'U' ? String.fromCodePoint(parseInt(e.slice(1), 16)) : /^[0-7]/.test(e) ? String.fromCharCode(parseInt(e, 8)) : ({ n: '\n', t: '\t', r: '\r', '\\': '\\', "'": "'", '"': '"' })[e] ?? m));
   for (let guard = 0; guard < 50_000_000; guard++) {
     if (p >= buf.length) throw new RPError('BAD_FORMAT', 'pickle ended early');
     const op = u8();
     switch (op) {
-      case 0x80: p++; break; // PROTO
-      case 0x2e: return stack.pop(); // STOP
-      case 0x7d: stack.push({}); break; // EMPTY_DICT
+      case 0x80: proto = u8(); if (info) info.protocol = proto; break; // PROTO
+      case 0x2e: return pop(); // STOP
+      case 0x7d: stack.push(newDict()); break; // EMPTY_DICT
       case 0x5d: stack.push([]); break; // EMPTY_LIST
       case 0x29: stack.push([]); break; // EMPTY_TUPLE
       case 0x28: mark(); break; // MARK
@@ -33,49 +108,72 @@ export function unpickle(buf) {
       case 0x88: stack.push(true); break; case 0x89: stack.push(false); break;
       case 0x4a: stack.push(i32()); break; // BININT
       case 0x4b: stack.push(u8()); break; // BININT1
-      case 0x4d: { stack.push(buf.readUInt16LE(p)); p += 2; break; } // BININT2
-      case 0x8a: { const n = u8(); const b = bytesN(n); let v = 0n; for (let i = n - 1; i >= 0; i--) v = (v << 8n) | BigInt(b[i]); if (n && b[n - 1] & 0x80) v -= 1n << BigInt(8 * n); stack.push(Number(v)); break; } // LONG1
-      case 0x8b: { const n = u32(); const b = bytesN(n); let v = 0n; for (let i = n - 1; i >= 0; i--) v = (v << 8n) | BigInt(b[i]); stack.push(Number(v)); break; } // LONG4
-      case 0x4c: { const e = buf.indexOf(0x0a, p); stack.push(Number(buf.toString('latin1', p, e).replace(/L$/, ''))); p = e + 1; break; } // LONG
-      case 0x49: { const e = buf.indexOf(0x0a, p); stack.push(Number(buf.toString('latin1', p, e))); p = e + 1; break; } // INT
-      case 0x47: { stack.push(buf.readDoubleBE(p)); p += 8; break; } // BINFLOAT
-      case 0x58: { const n = u32(); stack.push(bytesN(n).toString('utf8')); break; } // BINUNICODE
-      case 0x8c: { const n = u8(); stack.push(bytesN(n).toString('utf8')); break; } // SHORT_BINUNICODE
-      case 0x8d: { const n = Number(buf.readBigUInt64LE(p)); p += 8; stack.push(bytesN(n).toString('utf8')); break; } // BINUNICODE8
-      case 0x54: { const n = u32(); stack.push(bytesN(n)); break; } // BINSTRING (bytes)
-      case 0x55: { const n = u8(); stack.push(bytesN(n)); break; } // SHORT_BINSTRING
-      case 0x42: { const n = u32(); stack.push(bytesN(n)); break; } // BINBYTES
-      case 0x43: { const n = u8(); stack.push(bytesN(n)); break; } // SHORT_BINBYTES
-      case 0x8e: { const n = Number(buf.readBigUInt64LE(p)); p += 8; stack.push(bytesN(n)); break; } // BINBYTES8
-      case 0x53: { const e = buf.indexOf(0x0a, p); const s = buf.toString('latin1', p, e); p = e + 1; stack.push(Buffer.from(s.replace(/^['"]|['"]$/g, ''), 'latin1')); break; } // STRING
-      case 0x56: { const e = buf.indexOf(0x0a, p); stack.push(buf.toString('latin1', p, e)); p = e + 1; break; } // UNICODE
-      case 0x71: memo.set(u8(), stack.at(-1)); break; // BINPUT
-      case 0x72: memo.set(u32(), stack.at(-1)); break; // LONG_BINPUT
-      case 0x94: memo.set(memo.size, stack.at(-1)); break; // MEMOIZE
-      case 0x70: { const e = buf.indexOf(0x0a, p); memo.set(Number(buf.toString('latin1', p, e)), stack.at(-1)); p = e + 1; break; } // PUT
+      case 0x4d: { need(2); stack.push(buf.readUInt16LE(p)); p += 2; break; } // BININT2
+      case 0x8a: stack.push(long(bytesN(u8()))); break; // LONG1
+      case 0x8b: stack.push(long(bytesN(u32()))); break; // LONG4
+      case 0x4c: { const s = line().replace(/L$/, ''); stack.push(objects && /^-?\d+$/.test(s) ? pyInt(BigInt(s)) : Number(s)); break; } // LONG
+      case 0x49: { const s = line(); stack.push(objects && s === '01' ? true : objects && s === '00' ? false : Number(s)); break; } // INT
+      case 0x46: stack.push(Number(line())); break; // FLOAT
+      case 0x47: { need(8); stack.push(buf.readDoubleBE(p)); p += 8; break; } // BINFLOAT
+      case 0x58: stack.push(bytesN(u32()).toString('utf8')); break; // BINUNICODE
+      case 0x8c: stack.push(bytesN(u8()).toString('utf8')); break; // SHORT_BINUNICODE
+      case 0x8d: stack.push(bytesN(u64()).toString('utf8')); break; // BINUNICODE8
+      case 0x54: stack.push(str2(bytesN(u32()))); break; // BINSTRING (Python 2 str)
+      case 0x55: stack.push(str2(bytesN(u8()))); break; // SHORT_BINSTRING
+      case 0x42: stack.push(bytesN(u32())); break; // BINBYTES
+      case 0x43: stack.push(bytesN(u8())); break; // SHORT_BINBYTES
+      case 0x8e: stack.push(bytesN(u64())); break; // BINBYTES8
+      case 0x96: stack.push(Buffer.from(bytesN(u64()))); break; // BYTEARRAY8
+      case 0x53: { const s = line().replace(/^['"]|['"]$/g, ''); stack.push(objects ? pyText(Buffer.from(escapes(s), 'latin1')) : Buffer.from(s, 'latin1')); break; } // STRING
+      case 0x56: { const s = line(); stack.push(objects ? escapes(s) : s); break; } // UNICODE
+      case 0x71: memo.set(u8(), top()); break; // BINPUT
+      case 0x72: memo.set(u32(), top()); break; // LONG_BINPUT
+      case 0x94: memo.set(memo.size, top()); break; // MEMOIZE
+      case 0x70: memo.set(Number(line()), top()); break; // PUT
       case 0x68: stack.push(memo.get(u8())); break; // BINGET
       case 0x6a: stack.push(memo.get(u32())); break; // LONG_BINGET
-      case 0x67: { const e = buf.indexOf(0x0a, p); stack.push(memo.get(Number(buf.toString('latin1', p, e)))); p = e + 1; break; } // GET
+      case 0x67: stack.push(memo.get(Number(line()))); break; // GET
       case 0x74: stack.push(popMark()); break; // TUPLE
-      case 0x85: stack.push([stack.pop()]); break; // TUPLE1
-      case 0x86: { const b = stack.pop(), a = stack.pop(); stack.push([a, b]); break; } // TUPLE2
-      case 0x87: { const c = stack.pop(), b = stack.pop(), a = stack.pop(); stack.push([a, b, c]); break; } // TUPLE3
+      case 0x85: stack.push([pop()]); break; // TUPLE1
+      case 0x86: { const b = pop(), a = pop(); stack.push([a, b]); break; } // TUPLE2
+      case 0x87: { const c = pop(), b = pop(), a = pop(); stack.push([a, b, c]); break; } // TUPLE3
       case 0x6c: stack.push(popMark()); break; // LIST
-      case 0x61: { const v = stack.pop(); stack.at(-1).push(v); break; } // APPEND
-      case 0x65: { const items = popMark(); stack.at(-1).push(...items); break; } // APPENDS
-      case 0x64: { const items = popMark(); const d = {}; for (let i = 0; i < items.length; i += 2) d[String(items[i])] = items[i + 1]; stack.push(d); break; } // DICT
-      case 0x73: { const v = stack.pop(), k = stack.pop(); stack.at(-1)[String(k)] = v; break; } // SETITEM
-      case 0x75: { const items = popMark(); const d = stack.at(-1); for (let i = 0; i < items.length; i += 2) d[String(items[i])] = items[i + 1]; break; } // SETITEMS
-      case 0x30: stack.pop(); break; // POP
+      case 0x61: { const v = pop(); if (objects) append(top(), [v]); else top().push(v); break; } // APPEND
+      case 0x65: { const items = popMark(); if (objects) append(top(), items); else top().push(...items); break; } // APPENDS
+      case 0x64: { const items = popMark(); const d = newDict(); for (let i = 0; i + 1 < items.length; i += 2) setItem(d, items[i], items[i + 1]); stack.push(d); break; } // DICT
+      case 0x73: { const v = pop(), k = pop(); setItem(top(), k, v); break; } // SETITEM
+      case 0x75: { const items = popMark(); const d = top(); for (let i = 0; i + 1 < items.length; i += 2) setItem(d, items[i], items[i + 1]); break; } // SETITEMS
+      case 0x30: pop(); break; // POP
       case 0x31: popMark(); break; // POP_MARK
-      case 0x32: stack.push(stack.at(-1)); break; // DUP
-      case 0x95: p += 8; break; // FRAME
+      case 0x32: stack.push(top()); break; // DUP
+      case 0x95: need(8); p += 8; break; // FRAME
       case 0x8f: stack.push(new Set()); break; // EMPTY_SET
-      case 0x90: { const items = popMark(); for (const it of items) stack.at(-1).add(it); break; } // ADDITEMS
+      case 0x90: { const items = popMark(); append(top(), items); break; } // ADDITEMS
       case 0x91: stack.push(new Set(popMark())); break; // FROZENSET
-      case 0x63: { const e1 = buf.indexOf(0x0a, p); const e2 = buf.indexOf(0x0a, e1 + 1); stack.push({ __global__: `${buf.toString('latin1', p, e1)}.${buf.toString('latin1', e1 + 1, e2)}` }); p = e2 + 1; break; } // GLOBAL
-      case 0x93: { const n = stack.pop(), m = stack.pop(); stack.push({ __global__: `${m}.${n}` }); break; } // STACK_GLOBAL
-      case 0x52: case 0x81: case 0x62: case 0x4f: { const arg = stack.pop(); const cls = stack.pop(); stack.push({ __object__: cls?.__global__ ?? cls, args: arg }); break; } // REDUCE / NEWOBJ / BUILD / OBJ (approximate)
+      case 0x63: { const m = line(), n = line(); stack.push(global(`${m}.${n}`)); break; } // GLOBAL
+      case 0x93: { const n = pop(), m = pop(); stack.push(global(`${m}.${n}`)); break; } // STACK_GLOBAL
+      case 0x82: stack.push({ __global__: `copyreg.extension.${u8()}` }); break; // EXT1: the extension registry is not in the file
+      case 0x83: { need(2); stack.push({ __global__: `copyreg.extension.${buf.readUInt16LE(p)}` }); p += 2; break; } // EXT2
+      case 0x84: stack.push({ __global__: `copyreg.extension.${u32()}` }); break; // EXT4
+      case 0x50: stack.push(objects ? new PyObj('(persistent id)', [line()]) : null); break; // PERSID
+      case 0x51: { const id = pop(); stack.push(objects ? new PyObj('(persistent id)', [id]) : null); break; } // BINPERSID
+      case 0x97: stack.push(null); break; // NEXT_BUFFER (out-of-band data is not in the file)
+      case 0x98: break; // READONLY_BUFFER
+      case 0x52: case 0x81: case 0x62: case 0x4f: case 0x92: case 0x69: { // REDUCE / NEWOBJ / BUILD / OBJ / NEWOBJ_EX / INST
+        if (!objects) { // approximate, enough to skip over such values in an index
+          if (op === 0x4f) { const items = popMark(); stack.push({ __object__: items[0]?.__global__ ?? items[0], args: items.slice(1) }); break; }
+          if (op === 0x69) { const m = line(), n = line(); stack.push({ __object__: `${m}.${n}`, args: popMark() }); break; }
+          if (op === 0x92) pop();
+          const arg = pop(); const cls = pop(); stack.push({ __object__: cls?.__global__ ?? cls, args: arg }); break;
+        }
+        if (op === 0x52) { const args = pop(), fn = pop(); stack.push(pyReduce(fn, args)); }
+        else if (op === 0x81) { const args = pop(), cls = pop(); stack.push(pyNew(cls?.__global__ ?? '(not a global)', args)); }
+        else if (op === 0x92) { const kw = pop(), args = pop(), cls = pop(); const o = pyNew(cls?.__global__ ?? '(not a global)', args); if (o instanceof PyObj && kw instanceof Map && kw.size) o.$kwargs = kw; stack.push(o); }
+        else if (op === 0x4f) { const items = popMark(); stack.push(pyNew(items[0]?.__global__ ?? '(not a global)', items.slice(1))); }
+        else if (op === 0x69) { const m = line(), n = line(); stack.push(pyNew(`${m}.${n}`, popMark())); }
+        else { const state = pop(); pyBuild(top(), state); }
+        break;
+      }
       default: throw new RPError('BAD_FORMAT', `pickle opcode 0x${op.toString(16)} not supported at ${p - 1}`);
     }
   }
@@ -110,7 +208,8 @@ export async function readRpa(abs, size) {
   }
   entries.sort((a, b) => a.path.localeCompare(b.path));
   const rpyc = entries.filter(e => /\.rpyc$/i.test(e.path)).length, rpy = entries.filter(e => /\.rpy$/i.test(e.path)).length;
-  return { format: 'renpy-rpa', rpaVersion: version, keyed: !!key, entries, renpy: { compiledScripts: rpyc, sourceScripts: rpy, note: rpyc && !rpy ? '.rpyc files are compiled Ren\'Py AST (RPYC2 slots of pickled nodes); the original .rpy source is not inside. Dialogue and menu text can still be pulled with re_strings on extracted .rpyc (string scan) or from the game\'s tl/ folder.' : rpy ? 'source .rpy scripts are inside: extract them and run re_strings/re_graph on the folder.' : 'no scripts in this archive (images/audio/fonts).' } };
+  return { format: 'renpy-rpa', rpaVersion: version, keyed: !!key, entries, renpy: { compiledScripts: rpyc, sourceScripts: rpy, note: rpyc && !rpy ? '.rpyc files are compiled Ren\'Py AST (RPYC2 slots of pickled nodes); the original .rpy source is not inside. Extract them and run re_decode on the folder to get .rpy text back (statements, dialogue, menus, screens and ATL; comments are gone).' : rpy ? 'source .rpy scripts are inside: extract them and run re_strings/re_graph on the folder.' : 'no scripts in this archive (images/audio/fonts).' },
+    ...(rpyc ? { next: `${rpyc} compiled script(s) (.rpyc) inside: extract (action "extract"), then re_decode {path: <the extracted folder>} writes them back as .rpy text.` } : {}) };
 }
 
 // ------------------------------------------------------------------------------------------------ GameMaker data.win
@@ -132,7 +231,7 @@ export async function readGameMaker(abs, size) {
     p += 8 + len;
   }
   const strgAt = new Map();
-  const readString = async ptr => { if (!ptr || ptr + 4 > size) return null; if (strgAt.has(ptr)) return strgAt.get(ptr); const b = await readAt(abs, ptr - 4, 4); const n = b.readUInt32LE(0); if (n > 4096) return null; const s = (await readAt(abs, ptr, n)).toString('utf8'); strgAt.set(ptr, s); return s; };
+  const readString = async ptr => { if (ptr < 4 || ptr + 4 > size) return null; if (strgAt.has(ptr)) return strgAt.get(ptr); const b = await readAt(abs, ptr - 4, 4); const n = b.readUInt32LE(0); if (n > 4096) return null; const s = (await readAt(abs, ptr, n)).toString('utf8'); strgAt.set(ptr, s); return s; };
   const listOf = async name => { const c = chunkIndex.get(name); if (!c || c.size < 4) return []; const b = await readAt(abs, c.offset, Math.min(c.size, 4 + 4 * 200000)); const n = b.readUInt32LE(0); const out = []; for (let i = 0; i < Math.min(n, 200000) && 4 + 4 * i + 4 <= b.length; i++) out.push(b.readUInt32LE(4 + 4 * i)); return out; };
   const namesOf = async (chunk, nameOffsetInRecord = 0) => { const ptrs = await listOf(chunk); const names = []; for (const ptr of ptrs.slice(0, 5000)) { if (!ptr || ptr + nameOffsetInRecord + 4 > size) continue; const rec = await readAt(abs, ptr + nameOffsetInRecord, 4); const s = await readString(rec.readUInt32LE(0)); if (s) names.push(s); } return names; };
   const info = {};
@@ -140,11 +239,18 @@ export async function readGameMaker(abs, size) {
   if (gen8) {
     const g = await readAt(abs, gen8.offset, Math.min(gen8.size, 128));
     info.bytecodeVersion = g[1];
-    info.name = await readString(g.readUInt32LE(4));
-    info.displayName = await readString(g.readUInt32LE(0x2c));
-    info.version = `${g.readUInt32LE(0x30)}.${g.readUInt32LE(0x34)}.${g.readUInt32LE(0x38)}.${g.readUInt32LE(0x3c)}`;
-    info.windowSize = [g.readUInt32LE(0x40), g.readUInt32LE(0x44)];
-    info.gameMakerFamily = info.bytecodeVersion >= 17 ? 'GameMaker Studio 2.3+ / GameMaker 2022+' : info.bytecodeVersion >= 15 ? 'GameMaker Studio 2' : 'GameMaker: Studio 1.x';
+    // GEN8 after the flags and bytecode version: file name 0x04, config 0x08, ids, GUID 0x18, name 0x28, version
+    // 0x2c-0x38 (major, minor, release, build), default window 0x3c/0x40, flags, licence, timestamp 0x5c,
+    // display name 0x64 (layout as UndertaleModTool's UndertaleGeneralInfo reads it).
+    const str4 = async at => (at + 4 <= g.length ? readString(g.readUInt32LE(at)) : undefined);
+    info.name = (await str4(0x28)) || (await str4(4));
+    info.displayName = await str4(0x64);
+    if (g.length >= 0x44) {
+      info.version = `${g.readUInt32LE(0x2c)}.${g.readUInt32LE(0x30)}.${g.readUInt32LE(0x34)}.${g.readUInt32LE(0x38)}`;
+      info.windowSize = [g.readUInt32LE(0x3c), g.readUInt32LE(0x40)];
+    }
+    // Bytecode 15 came with GameMaker: Studio 1.4, 16 with its last releases and GameMaker Studio 2, 17 with 2.3.
+    info.gameMakerFamily = info.bytecodeVersion >= 17 ? 'GameMaker Studio 2.3+ / GameMaker 2022+' : info.bytecodeVersion === 16 ? 'GameMaker: Studio 1.4 (late) or GameMaker Studio 2' : info.bytecodeVersion === 15 ? 'GameMaker: Studio 1.4' : 'GameMaker: Studio 1.x';
   }
   const entries = [];
   // Texture sheets: each TXTR record points at an embedded PNG (or QOI/BZ2 in newer runtimes).
@@ -184,11 +290,13 @@ export async function readGameMaker(abs, size) {
   const strg = chunkIndex.get('STRG');
   let stringCount = 0;
   if (strg) stringCount = (await readAt(abs, strg.offset, 4)).readUInt32LE(0);
-  const code = chunkIndex.get('CODE');
-  const codeEntries = code ? (await readAt(abs, code.offset, 4)).readUInt32LE(0) : 0;
+  // Code: a YYC build compiled the GML to native code and ships no CODE chunk (or an empty one).
+  const countOf = async name => { const c = chunkIndex.get(name); return c && c.size >= 4 ? (await readAt(abs, c.offset, 4)).readUInt32LE(0) : 0; };
+  const codeEntries = await countOf('CODE');
+  const yyc = codeEntries === 0;
   return {
-    format: 'gamemaker-data', entries, chunks: chunks.map(c => ({ name: c.name, meaning: c.meaning, size: c.size })), game: info, counts: { strings: stringCount, codeEntries, ...Object.fromEntries(Object.entries(names).map(([k, v]) => [k, v.length])) }, names: Object.fromEntries(Object.entries(names).map(([k, v]) => [k, v.slice(0, 300)])),
-    note: 'Textures and audio are stored in the clear and extract as PNG/QOI and WAV/OGG (names from SOND). GML is VM bytecode in CODE; the strings, object, script and room names above are the map for a rebuild (re_blueprint) — port behaviour from them, not from decompiled code.',
+    format: 'gamemaker-data', entries, chunks: chunks.map(c => ({ name: c.name, meaning: c.meaning, size: c.size })), game: { ...info, ...(yyc ? { yyc: true } : {}) }, ...(yyc ? { yyc: true } : {}), counts: { strings: stringCount, ...Object.fromEntries(Object.entries(names).map(([k, v]) => [k, v.length])), codeEntries, scripts: await countOf('SCPT'), objects: await countOf('OBJT') }, names: Object.fromEntries(Object.entries(names).map(([k, v]) => [k, v.slice(0, 300)])),
+    note: `Textures and audio are stored in the clear and extract as PNG/QOI and WAV/OGG (names from SOND). ${yyc ? 'This is a YYC build: the GML was compiled to native code, so there is no bytecode to read (yyc: true); the strings and the object, script and room names above are what is left of the logic' : `GML is VM bytecode in CODE (${codeEntries} entries): re_decode on this file writes one .gml per script, object event and room creation code (assembly where the decompiler is not sure)`}. The names above are the map for a rebuild (re_blueprint).`,
   };
 }
 
