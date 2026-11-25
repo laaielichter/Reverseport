@@ -108,6 +108,11 @@ export const FORMATS = [
   { id: 'spirv', name: 'SPIR-V shader', category: 'executable', test: (b, o) => (u32le(b, o) === 0x07230203 || u32be(b, o) === 0x07230203) && (b.length - o) % 4 === 0 },
   { id: 'dxbc', name: 'DirectX shader container (DXBC/DXIL)', category: 'executable', test: (b, o) => str(b, o, 'DXBC') },
   { id: 'ttc', name: 'TrueType collection (.ttc)', category: 'font', test: (b, o) => str(b, o, 'ttcf') && [0x00010000, 0x00020000].includes(u32be(b, o + 4)) },
+  // Mobile package metadata (mobile.mjs). Android chunks start with type (u16), header size (u16) and total size:
+  // RES_XML is type 3 with an 8-byte header, RES_TABLE type 2 with a 12-byte header (AOSP ResourceTypes.h).
+  { id: 'android-axml', name: 'Android binary XML (AndroidManifest.xml, compiled res/*.xml)', category: 'data', offsetZeroOnly: true, test: (b, o) => o === 0 && at(b, 0, [3, 0, 8, 0]) && u32le(b, 4) >= 8 },
+  { id: 'android-arsc', name: 'Android resource table (resources.arsc)', category: 'data', offsetZeroOnly: true, test: (b, o) => o === 0 && at(b, 0, [2, 0, 12, 0]) && u32le(b, 4) >= 12 && u32le(b, 8) >= 1 && u32le(b, 8) < 256 },
+  { id: 'bplist', name: 'Apple binary property list (bplist)', category: 'data', test: (b, o) => str(b, o, 'bplist0') },
 ];
 
 const TEXT_KINDS = [
@@ -118,12 +123,15 @@ const TEXT_KINDS = [
   { id: 'yaml', name: 'YAML', re: /^(%YAML|---\s*\n)/ },
   // SVG before XML: the root element decides, after an optional XML declaration, comments and a doctype.
   { id: 'svg', name: 'SVG image', re: /^\s*(?:<\?xml[^>]*\?>\s*)?(?:<!--[\s\S]*?-->\s*|<!DOCTYPE[^>]*>\s*)*<svg[\s>]/i },
+  { id: 'plist-xml', name: 'Apple XML property list', re: /^\s*(?:<\?xml[^>]*\?>\s*)?(?:<!--[\s\S]*?-->\s*|<!DOCTYPE[^>]*>\s*)*<plist[\s>]/ },
   { id: 'xml', name: 'XML', re: /^\s*<\?xml/ },
   { id: 'html', name: 'HTML', re: /^\s*<!doctype html|^\s*<html/i },
   // INI before JSON: both start with "[". A section line holds a bare name (no quotes, commas or brackets, and
   // not a JSON literal such as [true]) and is followed by nothing, a comment, another section or key=value.
   { id: 'ini', name: 'INI / config file (also Godot .import, .cfg)', re: /^\s*\[(?!\s*(?:true|false|null)\s*\])(?=[^\]\n]*[A-Za-z_])[^\]\n",[{}]+\][ \t]*(?:[;#][^\n]*)?\r?(?:$|\n\s*(?:$|[;#[]|[^\n=[\]{}",]+=))/ },
   { id: 'json', name: 'JSON', re: /^\s*[[{]/ },
+  // Valve KeyValues: a quoted root key, then an opening brace (appmanifest_*.acf, libraryfolders.vdf).
+  { id: 'vdf', name: 'Valve KeyValues text (VDF / ACF)', re: /^\s*(?:\/\/[^\n]*\n\s*)*"[^"\n]*"\s*(?:\/\/[^\n]*\n\s*)*\{/ },
   { id: 'obj', name: 'Wavefront OBJ (text model)', re: /^(#[^\n]*\n)*\s*(mtllib|o |v -?\d)/m },
   { id: 'shebang-script', name: 'Script (shebang)', re: /^#!/ },
 ];

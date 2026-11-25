@@ -1,6 +1,6 @@
 // re_save: what is in a save file, how is it protected, and what would a port need to keep?
 // Layers are peeled only where the format is open (gzip/zlib, base64, LZ-String as RPG Maker uses it, JSON, XML,
-// INI/ConfigFile, Godot store_var). Encrypted or obfuscated content is reported, never decoded (project rule).
+// INI/ConfigFile, Godot store_var, Apple property lists, Valve VDF/ACF). Encrypted or obfuscated content is reported, never decoded (project rule).
 // Checksums are recognised by recomputing them over the obvious payloads. With two saves of the same game the
 // tool lists the fields that changed, which is how an agent finds "the gold" or "the position" without guessing.
 // action:"schema" writes a JSON schema plus GDScript and C# data classes to port the save format with.
@@ -12,6 +12,8 @@ import { RPError, requireFile, limit, entropy, isText, toPosix } from './util.mj
 import { workspaceDir } from './workspace.mjs';
 import { identify, strideGuess } from './formats.mjs';
 import { extractStrings } from './binary.mjs';
+import { isBinaryPlist, parseBinaryPlist, isXmlPlist, parseXmlPlist } from './mobile.mjs';
+import { looksLikeVdf, parseVdf, vdfSummary } from './vdf.mjs';
 
 // ------------------------------------------------------------------------------------------------ small codecs
 const CRC_TABLE = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
@@ -136,6 +138,8 @@ export function peel(buf, name = '') {
       try { bytes = kind.id === 'gzip' ? zlib.gunzipSync(bytes) : zlib.inflateSync(bytes); layers.push(kind.id === 'gzip' ? 'gzip' : 'zlib'); continue; } catch { stop = 'compressed data did not inflate'; break; }
     }
     if (kind.id === 'zip') { layers.push('zip'); stop = 'zip container: use re_archive to list and extract the entries, then re_save on each'; break; }
+    // Apple property lists (Unity PlayerPrefs on macOS, Info.plist). A damaged one stops with the parser's reason.
+    if (isBinaryPlist(bytes)) { layers.push('bplist'); try { data = parseBinaryPlist(bytes); } catch (e) { if (!(e instanceof RPError)) throw e; stop = e.message; } break; }
     if (!isText(head)) {
       const gv = (() => { try { return godotVariant(bytes, 0); } catch { return null; } })();
       if (gv && gv.end === bytes.length && typeof gv.value === 'object') { layers.push('godot-store_var'); data = gv.value; break; }
@@ -161,6 +165,8 @@ export function peel(buf, name = '') {
     }
     const j = tryJson(trimmed);
     if (j !== undefined) { layers.push('json'); data = j; break; }
+    if (isXmlPlist(trimmed)) { layers.push('plist-xml'); try { data = parseXmlPlist(trimmed); } catch (e) { if (!(e instanceof RPError)) throw e; stop = e.message; } break; }
+    if (looksLikeVdf(trimmed)) { layers.push('vdf'); try { data = parseVdf(trimmed); } catch (e) { if (!(e instanceof RPError)) throw e; stop = e.message; } break; }
     if (/^\s*<\?xml|^\s*<[A-Za-z]/.test(trimmed)) { const x = parseXml(trimmed); if (x) { layers.push('xml'); data = x; break; } }
     if (/^\s*\[[^\]]+\]\s*$/m.test(trimmed) && /^[^=\n]+=/m.test(trimmed)) { layers.push('ini'); data = parseIni(trimmed); break; }
     if (/^[^=\n]+=[^\n]*$/m.test(trimmed) && trimmed.split('\n').filter(l => l.includes('=')).length >= 2) { layers.push('key=value'); data = parseIni(trimmed); break; }
@@ -185,6 +191,14 @@ export function flatten(value, prefix = '', out = [], depth = 0) {
   if (Array.isArray(value)) {
     out.push({ path: prefix || '$', type: 'array', length: value.length, ...(value.length && typeof value[0] !== 'object' ? { sample: value.slice(0, 5) } : {}) });
     if (value.length && typeof value[0] === 'object' && value[0] !== null) flatten(value[0], `${prefix}[0]`, out, depth + 1);
+    return out;
+  }
+  if (value && typeof value === 'object' && typeof value.$plist_type === 'string') {
+    // Property-list values JSON cannot hold (mobile.mjs): one field each, not a sub-object.
+    const entry = { path: prefix || '$', type: value.$plist_type, sample: value.$plist_type === 'data' ? `${Buffer.from(value.base64 ?? '', 'base64').length} bytes` : value.iso8601 ?? value.decimal ?? value.value ?? null };
+    const role = roleOf(prefix.split(/[.[]/).filter(Boolean).at(-1) ?? '');
+    if (role) entry.role = role;
+    out.push(entry);
     return out;
   }
   if (value && typeof value === 'object') { for (const [k, v] of Object.entries(value)) flatten(v, prefix ? `${prefix}.${k}` : k, out, depth + 1); return out; }
@@ -234,6 +248,7 @@ function diffData(a, b, prefix = '', out = []) {
     for (let i = 0; i < Math.min(a.length, b.length, 200); i++) diffData(a[i], b[i], `${prefix}[${i}]`, out);
     return out;
   }
+  if (a?.$plist_type && b?.$plist_type) { if (JSON.stringify(a) !== JSON.stringify(b)) out.push({ path: prefix || '$', before: a, after: b }); return out; }
   if (a && b && typeof a === 'object' && typeof b === 'object') {
     for (const k of new Set([...Object.keys(a), ...Object.keys(b)])) {
       const p = prefix ? `${prefix}.${k}` : k;
@@ -248,6 +263,7 @@ function diffData(a, b, prefix = '', out = []) {
 // ------------------------------------------------------------------------------------------------ schema + classes
 function schemaOf(value) {
   if (Array.isArray(value)) return { type: 'array', items: value.length ? schemaOf(value[0]) : {} };
+  if (value?.$plist_type) return value.$plist_type === 'date' ? { type: 'string', format: 'date-time' } : value.$plist_type === 'data' ? { type: 'string', contentEncoding: 'base64' } : { type: 'integer' };
   if (value && typeof value === 'object') { const props = {}; for (const [k, v] of Object.entries(value)) props[k] = schemaOf(v); return { type: 'object', properties: props, required: Object.keys(props) }; }
   if (value === null) return { type: 'null' };
   if (typeof value === 'number') return { type: Number.isInteger(value) ? 'integer' : 'number' };
@@ -289,6 +305,8 @@ export async function saveTool({ file, compare, action = 'inspect', out, limit: 
     result.checksums = findChecksums(peeled.data, peeled.text, null);
     const versions = fields.filter(f => f.role === 'version').map(f => `${f.path}=${f.sample}`);
     if (versions.length) result.version = versions;
+    const steam = peeled.layers.at(-1) === 'vdf' ? vdfSummary(peeled.data) : null;
+    if (steam) result.steam = steam;
   } else {
     const inner = peeled.bytes;
     result.checksums = findChecksums({}, null, inner);
@@ -309,7 +327,7 @@ export async function saveTool({ file, compare, action = 'inspect', out, limit: 
     }
   }
   if (action === 'schema') {
-    if (peeled.data === undefined) throw new RPError('INVALID_ARGUMENT', 'schema needs a decodable save (JSON, XML, INI, Godot store_var, or those inside gzip/base64/LZ-String).');
+    if (peeled.data === undefined) throw new RPError('INVALID_ARGUMENT', 'schema needs a decodable save (JSON, XML, INI, Godot store_var, an Apple property list, Valve VDF/ACF, or those inside gzip/base64/LZ-String).');
     const schema = { $schema: 'https://json-schema.org/draft/2020-12/schema', title: path.basename(abs), ...schemaOf(peeled.data) };
     const dir = out ? path.resolve(out) : await workspaceDir('saves');
     await fs.mkdir(dir, { recursive: true });

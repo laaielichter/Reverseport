@@ -16,6 +16,7 @@ import { parsePE, parseELF } from './binary.mjs';
 import { safeJoin, workspaceDir, extractionName } from './workspace.mjs';
 import { readRpa, readGameMaker, readFmodBank, readFsb5, readWwiseBank, readUnrealPak, readQuakePak, readDoomWad, readSwf, readUnityWebData, readEmscriptenData, swfLzmaBody } from './gamearchives.mjs';
 import { readUnityBundle, readUnityAssets, looksLikeSerializedFile } from './unity.mjs';
+import { parseAxml, manifestSummary, parseArsc, parsePlist, infoPlistSummary, nativeLibsFromEntries } from './mobile.mjs';
 
 const MAX_ENTRIES = 2_000_000;
 
@@ -152,6 +153,52 @@ async function zipDataStart(abs, entry) {
   return entry.localHeader + 30 + h.readUInt16LE(26) + h.readUInt16LE(28);
 }
 
+/** One zip entry in memory, for the small metadata files (manifest, resource table, Info.plist). */
+async function readZipEntry(abs, entry, maxBytes) {
+  if (entry.encrypted) throw new RPError('BAD_FORMAT', `${entry.path} is encrypted`);
+  if (![0, 8].includes(entry.method)) throw new RPError('BAD_FORMAT', `${entry.path} uses compression method ${entry.method}, which is not read`);
+  if (entry.size > maxBytes || entry.compressedSize > maxBytes) throw new RPError('TOO_LARGE', `${entry.path} is ${entry.size} bytes, over the ${Math.round(maxBytes / MiB)} MiB that is read into memory`);
+  const raw = await readAt(abs, await zipDataStart(abs, entry), entry.compressedSize);
+  try { return entry.method === 8 ? zlib.inflateRawSync(raw, { maxOutputLength: maxBytes }) : raw; }
+  catch (e) { throw new RPError('BAD_FORMAT', `${entry.path} did not inflate (${e.code ?? e.message})`); }
+}
+
+const MANIFEST_XML_MAX = MiB;
+/** apk → android summary, ipa → ios summary. A file that cannot be read is reported inside the block, never thrown. */
+async function mobileInfo(arc, { manifest, resourceStrings }) {
+  const out = {};
+  const am = arc.entries.find(e => e.path === 'AndroidManifest.xml');
+  if (am) {
+    try {
+      const buf = await readZipEntry(arc.abs, am, 32 * MiB);
+      if (buf.length >= 4 && buf.readUInt16LE(0) === 3) {
+        const axml = parseAxml(buf);
+        const notes = [];
+        let table = null;
+        const arsc = arc.entries.find(e => e.path === 'resources.arsc');
+        if (arsc) { try { table = parseArsc(await readZipEntry(arc.abs, arsc, 256 * MiB), { limit: Math.max(0, Math.min(5000, resourceStrings ?? 0)) }); } catch (e) { if (!(e instanceof RPError)) throw e; notes.push(`resources.arsc not read: ${e.message}`); } }
+        const android = manifestSummary(axml.root, { resolve: table?.resolve });
+        android.nativeLibs = nativeLibsFromEntries(arc.entries.map(e => e.path));
+        android.dexFiles = arc.entries.filter(e => /^classes\d*\.dex$/.test(e.path)).length;
+        if (table) android.resources = { packages: table.packages, globalStrings: table.globalStrings, ...(table.strings ? { strings: table.strings, stringsTotal: table.stringsTotal } : {}) };
+        if (manifest) { android.manifestXml = axml.xml.slice(0, MANIFEST_XML_MAX); if (axml.xml.length > MANIFEST_XML_MAX) android.manifestXmlTruncated = true; }
+        if (notes.length) android.notes = notes;
+        out.android = android;
+      } else if (/\.(apk|apks|xapk)$/i.test(arc.abs)) out.android = { error: 'AndroidManifest.xml is not Android binary XML (plain text or protobuf, as in an .aab).' };
+    } catch (e) { if (!(e instanceof RPError)) throw e; out.android = { error: e.message }; }
+  }
+  const plistEntry = arc.entries.find(e => /^Payload\/[^/]+\.app\/Info\.plist$/.test(e.path));
+  if (plistEntry) {
+    try {
+      const info = parsePlist(await readZipEntry(arc.abs, plistEntry, 16 * MiB));
+      const app = plistEntry.path.slice(0, -'/Info.plist'.length);
+      const frameworks = [...new Set(arc.entries.map(e => /^Payload\/[^/]+\.app\/Frameworks\/([^/]+?)(?:\.framework\/|\.dylib$)/.exec(e.path)?.[1]).filter(Boolean))].sort();
+      out.ios = { app, ...infoPlistSummary(info), ...(frameworks.length ? { frameworks: frameworks.slice(0, 60) } : {}), ...(manifest ? { infoPlist: info } : {}) };
+    } catch (e) { if (!(e instanceof RPError)) throw e; out.ios = { error: e.message }; }
+  }
+  return out;
+}
+
 // ---------------------------------------------------------------- tar / tar.gz (streaming)
 async function walkTar(abs, gz, onEntry) {
   let buf = Buffer.alloc(0), state = 'header', remaining = 0, pad = 0, current = null, longName = null, pax = null, sink = null, done = false;
@@ -268,7 +315,7 @@ class Md5Pass extends Transform {
   _transform(chunk, _enc, cb) { this.hash.update(chunk); cb(null, chunk); }
 }
 
-export async function archiveTool({ file, action = 'list', match, limit = 500, out, maxBytes } = {}) {
+export async function archiveTool({ file, action = 'list', match, limit = 500, out, maxBytes, manifest = false, resourceStrings = 0 } = {}) {
   const arc = await openArchive(file);
   const want = compileMatcher(match);
   const selected = arc.entries.filter(e => want(e.path));
@@ -281,7 +328,8 @@ export async function archiveTool({ file, action = 'list', match, limit = 500, o
   const topTypes = Object.entries(byExt).sort((a, b) => b[1].bytes - a[1].bytes).slice(0, 25).map(([ext, v]) => ({ ext, ...v }));
   const max = Math.max(1, Math.min(20000, limit));
   if (action === 'list') {
-    return { ...summary, totalEntries: arc.entries.length, matching: selected.length, totalBytes: counted.reduce((s, e) => s + (e.size ?? 0), 0), types: topTypes, entries: selected.slice(0, max).map(({ localHeader, method, produce, prefix, derived, ...e }) => e), truncated: selected.length > max };
+    const mobile = arc.format === 'zip' ? await mobileInfo(arc, { manifest, resourceStrings }) : {};
+    return { ...summary, ...mobile, totalEntries: arc.entries.length, matching: selected.length, totalBytes: counted.reduce((s, e) => s + (e.size ?? 0), 0), types: topTypes, entries: selected.slice(0, max).map(({ localHeader, method, produce, prefix, derived, ...e }) => e), truncated: selected.length > max };
   }
   if (action !== 'extract') throw new RPError('INVALID_ARGUMENT', 'action must be "list" or "extract".');
   if (!arc.entries.length && ['unityfs', 'unity-bundle', 'unreal-pak'].includes(arc.format)) throw new RPError('UNSUPPORTED_ARCHIVE', summary.note ?? 'nothing to extract');
