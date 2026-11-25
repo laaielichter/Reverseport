@@ -303,7 +303,7 @@ body.demo-only .demo-stage .term-body { min-height: 0; height: 676px; }
             <li><strong>Injection shield:</strong> every tool result is checked for text aimed at the agent. <a href="#shield">See below.</a></li>
             <li><strong>Executables:</strong> <code>re_binary</code> names packers, protectors, installers and compilers with the evidence, and says what the imports point at.</li>
             <li><strong>Ren'Py and GameMaker:</strong> <code>re_decode</code> writes <code>.rpyc</code> back as <code>.rpy</code> and GML bytecode back as <code>.gml</code>.</li>
-            <li><strong>Godot imports, Unreal, Android, iOS:</strong> textures and audio back to PNG, WAV, OGG and MP3; <code>.uasset</code> tables; the manifest of an <code>.apk</code>.</li>
+            <li><strong>Godot imports, Unreal, Android, iOS:</strong> textures and audio back to PNG, WAV, OGG and MP3, also Godot 4.7's WebP textures and QOA sound; <code>.uasset</code> tables; the manifest of an <code>.apk</code>.</li>
           </ul>
         </div>
         <div>
@@ -418,7 +418,7 @@ body.demo-only .demo-stage .term-body { min-height: 0; height: 676px; }
         <table class="routes">
           <thead><tr><th scope="col">Target</th><th scope="col">Read</th><th scope="col">Only reported</th></tr></thead>
           <tbody>
-            <tr><th scope="row">Godot</th><td><code>.pck</code>, also inside the <code>.exe</code>; scripts, scenes and resources back to an editable project; imported textures, audio and translations back to PNG, WAV, OGG, MP3 and CSV</td><td>Encrypted packs and scripts; Basis Universal, ASTC and BPTC textures</td></tr>
+            <tr><th scope="row">Godot</th><td><code>.pck</code> from Godot 3 to 4.7, also inside the <code>.exe</code>; scripts, scenes (also compressed) and resources back to an editable project; imported textures (lossless WebP included), audio (QOA included) and translations back to PNG, WAV, OGG, MP3 and CSV</td><td>Encrypted packs and scripts; Basis Universal, ASTC and BPTC textures; lossy WebP stays <code>.webp</code></td></tr>
             <tr><th scope="row">Unity</th><td>Asset bundles and <code>.assets</code>: textures as PNG, meshes as OBJ, audio, scripts in use; IL2CPP <code>global-metadata.dat</code> to a C# skeleton</td><td>Encrypted bundles and metadata</td></tr>
             <tr><th scope="row">Unreal</th><td><code>.pak</code> v1–v11; <code>.uasset</code>/<code>.umap</code> names, imports and exports; IoStore <code>.utoc</code> file lists; <code>.locres</code> texts; GVAS saves</td><td>Property bodies; encrypted or Oodle-compressed data</td></tr>
             <tr><th scope="row">Ren'Py</th><td><code>.rpa</code> archives; compiled <code>.rpyc</code> back to <code>.rpy</code> (Ren'Py 6.99–8.x)</td><td>Node classes the printer does not know, as counted comment lines</td></tr>
