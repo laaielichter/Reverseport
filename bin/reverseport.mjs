@@ -15,7 +15,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const VERSION = JSON.parse(readFileSync(path.join(REPO, 'package.json'), 'utf8')).version;
 const PORT_COMMANDS = new Set([
-  'scan', 'graph', 'symbols', 'scene', 'binary', 'bin', 'archive', 'pck', 'probe', 'struct', 'extract', 'carve', 'diff',
+  'scan', 'graph', 'symbols', 'scene', 'binary', 'bin', 'archive', 'pck', 'probe', 'struct', 'unreal', 'uasset', 'extract', 'carve', 'diff',
   'compare-builds', 'report', 'lookup', 'recon', 'web', 'blueprint', 'rebuild', 'map', 'convert', 'plan', 'unit',
   'write', 'draft', 'port-scene', 'copy-assets', 'status', 'verify', 'case', 'proof', 'tools', 'serve', 'describe', 'feedback',
   'connect', 'skills', 'refs', 'guids', 'strings', 'i18n', 'l10n', 'apicheck', 'api', 'upgrade', 'godot3to4', 'save',

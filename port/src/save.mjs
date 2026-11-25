@@ -14,6 +14,7 @@ import { identify, strideGuess } from './formats.mjs';
 import { extractStrings } from './binary.mjs';
 import { isBinaryPlist, parseBinaryPlist, isXmlPlist, parseXmlPlist } from './mobile.mjs';
 import { looksLikeVdf, parseVdf, vdfSummary } from './vdf.mjs';
+import { readGvas } from './unreal.mjs';
 
 // ------------------------------------------------------------------------------------------------ small codecs
 const CRC_TABLE = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
@@ -139,6 +140,8 @@ export function peel(buf, name = '') {
     }
     if (kind.id === 'zip') { layers.push('zip'); stop = 'zip container: use re_archive to list and extract the entries, then re_save on each'; break; }
     // Apple property lists (Unity PlayerPrefs on macOS, Info.plist). A damaged one stops with the parser's reason.
+    // Unreal save game: a header and tagged properties.
+    if (bytes.length >= 4 && bytes.subarray(0, 4).toString('latin1') === 'GVAS') { layers.push('gvas'); try { const g = readGvas(bytes); data = g.properties; if (g.partial) stop = `Unreal save read in part: ${g.partial.reason}`; } catch (e) { if (!(e instanceof RPError)) throw e; stop = e.message; } break; }
     if (isBinaryPlist(bytes)) { layers.push('bplist'); try { data = parseBinaryPlist(bytes); } catch (e) { if (!(e instanceof RPError)) throw e; stop = e.message; } break; }
     if (!isText(head)) {
       const gv = (() => { try { return godotVariant(bytes, 0); } catch { return null; } })();
