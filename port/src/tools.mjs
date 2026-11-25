@@ -25,6 +25,7 @@ import { portTraceTool } from './trace.mjs';
 import { decodeTool } from './godotbin.mjs';
 import { il2cppTool } from './il2cpp.mjs';
 import { portRpgMakerTool } from './rpgmaker.mjs';
+import { shieldValue } from './shield.mjs';
 
 /** One version for the whole package: the root package.json. */
 export const VERSION = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')).version;
@@ -193,7 +194,8 @@ export async function callTool(name, args = {}) {
   const adjusted = {};
   const input = coerce(tool.inputSchema, args ?? {}, adjusted, '');
   validate(tool.inputSchema, input);
-  const result = await handlers[name](input);
+  // Text the target carries for an AI to read is named before the agent reads the result (shield.mjs).
+  const result = shieldValue(name, await handlers[name](input));
   return Object.keys(adjusted).length && result && typeof result === 'object' && !Array.isArray(result) ? { adjusted, ...result } : result;
 }
 
