@@ -852,7 +852,9 @@ export async function inspectBinary({ file, strings = {}, names = {}, maxTypes =
   const meaningful = t => (t.match(/[A-Za-z0-9 ._\/:\\-]/g)?.length ?? 0) / t.length >= 0.75
     && (/[a-z]{5,}/.test(t) && /[aeiou][^aeiou\s]|[^aeiou\s][aeiou]/i.test(t) || constantName(t) || /\.(dll|so|dylib|exe|pck|json|png|wasm|js)\b/i.test(t));
   const shown = all.items.filter(s => s.text.length >= minLen && want(s.text) && (strings.raw || strings.match || meaningful(s.text)));
-  const hintText = all.items.map(s => s.text).join('\n') + '\n' + (info?.imports ?? []).flatMap(i => [i.library, ...(i.libraries ?? [])]).join('\n');
+  // Version info is read exactly (any size of file); strings only from the first strings.maxMB.
+  const versionText = Object.values(info?.resources?.version?.strings ?? {}).join('\n');
+  const hintText = all.items.map(s => s.text).join('\n') + '\n' + (info?.imports ?? []).flatMap(i => [i.library, ...(i.libraries ?? [])]).join('\n') + (versionText ? `\n${versionText}` : '');
   if (subject && ['pe', 'elf', 'macho'].includes(subject.format) && !subject.error) {
     const detectInfo = { ...subject, imports: fullImports };
     const overlayOffset = subject === info && subject.lastSectionEnd && subject.lastSectionEnd < buf.length ? subject.lastSectionEnd : undefined;

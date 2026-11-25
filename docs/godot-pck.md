@@ -157,19 +157,22 @@ from the directory metadata retention budget and format validity.
 The sections above describe the deep-analysis engine's `inspect-artifact`, which keeps Evidence and decodes nothing.
 ReversePort's own tools go further, without Godot installed:
 
-1. `re_archive` lists and extracts the pack (also when it sits inside the exported `.exe`), MD5-checked.
+1. `re_archive` lists and extracts the pack (pack formats 1 to 4, Godot 3 to 4.7; also when it sits inside the
+   exported `.exe`), MD5-checked. Removal markers and delta patches (format 4) are listed but not extracted as files,
+   and a sparse bundle is listed with its files left next to the pack.
 2. `re_decode` on the extracted folder turns what the export stores back into files you can edit.
 
-| In the export                                       | Written by `re_decode`                                                                    | Reported and left                 |
-| --------------------------------------------------- | ----------------------------------------------------------------------------------------- | --------------------------------- |
-| `.gdc` (Godot 3 bytecode v10–13, Godot 4.3+ tokens) | `.gd` with indentation                                                                    | Encrypted scripts (`.gde`)        |
-| `.scn`, `.res`, `project.binary`                    | `.tscn`, `.tres`, `project.godot`                                                         |                                   |
-| `.ctex`, `.stex` textures                           | PNG: stored PNG and WebP copied as they are; raw 8-bit, DXT1/5, RGTC and ETC/ETC2 decoded | Basis Universal, ASTC and BPTC    |
-| `.sample`                                           | WAV (PCM, IMA ADPCM decoded, loop points kept)                                            |                                   |
-| `.oggvorbisstr`, `.oggstr`, `.mp3str`               | OGG, MP3                                                                                  |                                   |
-| `.translation`                                      | CSV for the keys that can be matched                                                      | Texts without a key, listed apart |
+| In the export                                            | Written by `re_decode`                                                                      | Reported and left                                          |
+| -------------------------------------------------------- | ------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| `.gdc` (Godot 3 bytecode v10–13, Godot 4.3+ tokens)      | `.gd` with indentation                                                                      | Encrypted scripts (`.gde`)                                 |
+| `.scn`, `.res` (also compressed, RSCC), `project.binary` | `.tscn`, `.tres`, `project.godot`                                                           | RSCC with FastLZ                                           |
+| `.ctex`, `.stex` textures                                | PNG: stored PNG copied, lossless WebP decoded; raw 8-bit, DXT1/5, RGTC and ETC/ETC2 decoded | Basis Universal, ASTC and BPTC; lossy WebP kept as `.webp` |
+| `.sample`                                                | WAV (PCM, IMA ADPCM and QOA decoded, loop points kept)                                      |                                                            |
+| `.oggvorbisstr`, `.oggstr`, `.mp3str`                    | OGG, MP3                                                                                    |                                                            |
+| `.translation`                                           | CSV for the keys that can be matched                                                        | Texts without a key, listed apart                          |
 
-In a folder, the `.import` files give every converted file its original name and place. Translation keys are stored
+In a folder, the `.import` files give every converted file its original name and place, and are written beside it, so
+Godot re-imports it with the same uid and the scenes that name it by uid open without warnings. Translation keys are stored
 as hashes: `re_decode` takes candidate keys from the scripts, scenes and CSV files in the folder, and from `keys` when
 you give them.
 
@@ -213,6 +216,8 @@ one imported sound), trimmed to the key fields:
 Limits:
 
 - Names, constants and structure are exact; comments and the original formatting are not in an export.
-- The import readers (textures, audio, translations) are tested on self-built fixtures only.
+- The import readers are tested on self-built fixtures and on a Godot 4.7.2 export (`port/test/fixtures/godot-4.7-export`:
+  a lossless WebP texture, QOA and Vorbis sound); the WebP and QOA decoders give the same pixels and samples as libwebp
+  and Godot's `qoa.h`. Translations are tested on self-built fixtures only.
 - A converted texture or sound is what the export stored, which can be a lossy copy of the original file.
 - Encrypted packs and scripts are reported, never decrypted.

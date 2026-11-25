@@ -130,7 +130,7 @@ test('.ctex with DXT1 and DXT5 blocks decodes through texture.mjs', async () => 
   await b.done();
 });
 
-test('.ctex with a WebP payload: the embedded file is written as .webp, not re-encoded', async () => {
+test('.ctex with a WebP payload that does not decode as lossless: the embedded file is written as .webp, as stored', async () => {
   const body = Buffer.from('WEBPVP8L\x04\x00\x00\x00abcd', 'latin1');
   const webp = Buffer.concat([Buffer.from('RIFF'), Buffer.from([body.length, 0, 0, 0]), body]);
   const t = await decodeOne('photo.ctex', buildCtex({ width: 8, height: 8, dataFormat: 2, payloads: [webp] }));
@@ -210,7 +210,7 @@ test('.sample 8-bit (Godot 3 AudioStreamSample, defaults left out): signed sampl
   await t.done();
 });
 
-test('.sample IMA ADPCM is decoded to 16-bit PCM; QOA is reported', async () => {
+test('.sample IMA ADPCM is decoded to 16-bit PCM; QOA data that does not decode is reported', async () => {
   // Nibbles 7, 0 (low nibble first): step 7 → +11 (index 8, step 16), then nibble 0 → +2.
   assert.deepEqual([...new Int16Array(decodeGodotAdpcm(Buffer.from([0x07]), false).buffer.slice(0, 4))], [11, 13]);
   const t = await decodeOne('a.sample', buildSample({ data: Buffer.from([0x07, 0x8f]), format: 2 }));

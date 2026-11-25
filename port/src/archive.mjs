@@ -72,18 +72,22 @@ export async function readPck(abs, size) {
     const r = new Reader(fh, where.start + 4);
     const version = await r.u32();
     const godot = `${await r.u32()}.${await r.u32()}.${await r.u32()}`;
-    if (version < 1 || version > 3) throw new RPError('UNSUPPORTED_VERSION', `Godot pack format version ${version} is not supported (1–3 are).`);
+    // Pack format 4 (Godot 4.5+) keeps the version 3 header and directory; it adds a 32-byte salt after the
+    // directory offset when an encrypted directory belongs to a sparse bundle, and the per-file flag "delta"
+    // (a patch against the same file in an earlier pack). See core/io/file_access_pack.cpp in Godot 4.7.
+    if (version < 1 || version > 4) throw new RPError('UNSUPPORTED_VERSION', `Godot pack format version ${version} is not supported (1–4 are).`);
     let flags = 0, base = 0;
     if (version >= 2) {
       flags = await r.u32();
       base = await r.u64();
-      if (version === 3) { const dir = await r.u64(); r.pos = where.start + dir; r.buf = Buffer.alloc(0); }
+      if (version >= 3) { const dir = await r.u64(); r.pos = where.start + dir; r.buf = Buffer.alloc(0); }
       else await r.bytes(64);
     } else await r.bytes(64);
     // Offsets are relative to the file base; whether that base counts from the pack start or from the
     // start of the containing file changed between Godot versions, so both readings are checked.
-    const bases = version === 1 ? [where.start, 0] : version === 3 || flags & 2 ? [where.start + base] : [where.start + base, base];
-    const info = { format: 'godot-pck', packVersion: version, godotVersion: godot, start: where.start, embedded: where.embedded, ...(where.via ? { embeddedVia: where.via } : {}), encryptedDirectory: !!(flags & 1), sparseBundle: !!(flags & 4) };
+    const bases = version === 1 ? [where.start, 0] : version >= 3 || flags & 2 ? [where.start + base] : [where.start + base, base];
+    const sparse = !!(flags & 4);
+    const info = { format: 'godot-pck', packVersion: version, godotVersion: godot, start: where.start, embedded: where.embedded, ...(where.via ? { embeddedVia: where.via } : {}), encryptedDirectory: !!(flags & 1), sparseBundle: sparse };
     if (flags & 1) return { ...info, entries: [], note: 'The file list is encrypted. ReversePort does not decrypt packs; use the project source or an unencrypted export.' };
     const count = await r.u32();
     if (count > MAX_ENTRIES) throw new RPError('BAD_FORMAT', `Implausible file count ${count}`);
@@ -99,9 +103,17 @@ export async function readPck(abs, size) {
       const eflags = version >= 2 ? await r.u32() : 0;
       raw.push({ path: p, rel, size: fsize, md5, eflags });
     }
-    const fileBase = [...new Set(bases)].find(b => raw.every(e => b + e.rel + e.size <= size));
+    // A sparse bundle keeps every file as its own file next to the pack; the directory offsets are not file positions.
+    const inPack = sparse ? [] : raw.filter(e => !(e.eflags & 2));
+    const fileBase = [...new Set(bases)].find(b => inPack.every(e => b + e.rel + e.size <= size));
     if (fileBase === undefined) throw new RPError('BAD_FORMAT', 'Pack entries point outside the file (damaged or unsupported layout).');
-    const entries = raw.map(e => ({ path: e.path, offset: fileBase + e.rel, size: e.size, md5: e.md5, ...(e.eflags & 1 ? { encrypted: true } : {}), ...(e.eflags & 2 ? { removal: true } : {}) }));
+    const entries = raw.map(e => ({
+      path: e.path, offset: fileBase + e.rel, size: e.size, md5: e.md5,
+      ...(e.eflags & 1 ? { encrypted: true } : {}),
+      ...(e.eflags & 2 ? { removal: true, extractable: false, skipReason: 'removal marker: this pack deletes the file, it holds no data' } : {}),
+      ...(e.eflags & 4 ? { delta: true, extractable: false, skipReason: 'delta patch against the same file in an earlier pack: not a whole file' } : {}),
+      ...(sparse && !(e.eflags & 2) ? { extractable: false, skipReason: 'sparse bundle: the file is stored separately next to the pack, not inside it' } : {}),
+    }));
     return { ...info, entries };
   } finally { await fh.close(); }
 }
@@ -320,7 +332,7 @@ export async function archiveTool({ file, action = 'list', match, limit = 500, o
   const want = compileMatcher(match);
   const selected = arc.entries.filter(e => want(e.path));
   const summary = { format: arc.format, file: arc.abs, size: arc.size };
-  for (const k of ['packVersion', 'godotVersion', 'embedded', 'embeddedVia', 'start', 'encryptedDirectory', 'unityVersion', 'unityRevision', 'compression', 'pakVersion', 'wadType', 'bundleFormat', 'note', 'rpaVersion', 'keyed', 'renpy', 'chunks', 'game', 'yyc', 'counts', 'names', 'fsb', 'events', 'buses', 'vcas', 'bankVersion', 'bankId', 'objects', 'objectCount', 'namedIds', 'mountPoint', 'encryptedIndex', 'encryptionKeyGuid', 'compressionMethods', 'unreal', 'swfVersion', 'stage', 'tags', 'actionScript', 'documentClass', 'symbolClasses', 'frameLabels', 'classes', 'identifierStrings', 'loader', 'packageSize', 'engine', 'unity', 'blockCompression', 'blockInfoCompression', 'blocks', 'encrypted', 'signature', 'assets', 'next']) if (arc[k] !== undefined) summary[k] = arc[k];
+  for (const k of ['packVersion', 'godotVersion', 'embedded', 'embeddedVia', 'start', 'encryptedDirectory', 'sparseBundle', 'unityVersion', 'unityRevision', 'compression', 'pakVersion', 'wadType', 'bundleFormat', 'note', 'rpaVersion', 'keyed', 'renpy', 'chunks', 'game', 'yyc', 'counts', 'names', 'fsb', 'events', 'buses', 'vcas', 'bankVersion', 'bankId', 'objects', 'objectCount', 'namedIds', 'mountPoint', 'encryptedIndex', 'encryptionKeyGuid', 'compressionMethods', 'unreal', 'swfVersion', 'stage', 'tags', 'actionScript', 'documentClass', 'symbolClasses', 'frameLabels', 'classes', 'identifierStrings', 'loader', 'packageSize', 'engine', 'unity', 'blockCompression', 'blockInfoCompression', 'blocks', 'encrypted', 'signature', 'assets', 'next']) if (arc[k] !== undefined) summary[k] = arc[k];
   const byExt = {};
   // Unity objects are views of the serialized files (counted in assets.classes): totals and types count the files.
   const counted = arc.entries.some(e => !e.derived) ? arc.entries.filter(e => !e.derived) : arc.entries;
@@ -342,7 +354,7 @@ export async function archiveTool({ file, action = 'list', match, limit = 500, o
   const allow = new Set(plan.map(e => e.path));
   const canWrite = e => {
     if (e.encrypted) { skipped.push({ path: e.path, reason: 'encrypted — not decrypted' }); return false; }
-    if (e.extractable === false) { skipped.push({ path: e.path, reason: e.compressionMethod ? `${e.compressionMethod}-compressed entry: only stored and Zlib entries are extracted` : 'not extractable' }); return false; }
+    if (e.extractable === false) { skipped.push({ path: e.path, reason: e.skipReason ?? (e.compressionMethod ? `${e.compressionMethod}-compressed entry: only stored and Zlib entries are extracted` : 'not extractable') }); return false; }
     if (e.size == null) { skipped.push({ path: e.path, reason: 'size unknown (not in the directory index)' }); return false; }
     if (e.inflated) { skipped.push({ path: e.path, reason: 'inside a compressed SWF body: extract from the inflated FWS copy (written as swf-inflated.swf)' }); return false; }
     if (e.unpacked) { skipped.push({ path: e.path, reason: 'stored outside the asar (app.asar.unpacked)' }); return false; }

@@ -119,6 +119,11 @@ export function detectTools({ format, info, buf, text, overlayOffset }) {
   add('Nuitka', 'compiler', [...str(/NUITKA_ONEFILE_PARENT/), ...str(/__nuitka_binary_dir/)]);
   add('Electron', 'runtime', [...str(/ELECTRON_RUN_AS_NODE/), ...str(/\belectron\.asar\b/), ...ver(/^Electron$/)]);
   add('NW.js', 'runtime', [...lib(/^nw(_elf)?\.dll$/i), ...str(/\bnode-webkit\b/)]);
+  // Godot: the export template's version info (FileDescription/ProductName "Godot Engine"), the "pck" section of an
+  // embedded pack (PE and ELF), a pack appended after the last section, or the engine's own version string.
+  const godotVersion = /Godot Engine v?(\d+\.\d+(?:\.\d+)?)/.exec(text)?.[1] ?? /(\d+\.\d+(?:\.\d+)?)\.(?:stable|beta\d*|rc\d*|dev\d*)\.(?:mono\.)?(?:official|custom_build)/.exec(text)?.[1]
+    ?? (Object.values(versionStrings).some(v => /^Godot Engine$/.test(v)) ? /^(\d+\.\d+(?:\.\d+)?)/.exec(versionStrings.FileVersion ?? versionStrings.ProductVersion ?? '')?.[1] : undefined);
+  add('Godot Engine', 'runtime', [...ver(/^Godot Engine$/), ...sec(/^pck$/), ...overlayStarts('GDPC', 'a Godot pack (GDPC)'), ...str(/Godot Engine v\d+\.\d+[^\n]{0,40}/), ...str(/\d+\.\d+(?:\.\d+)?\.(?:stable|beta\d*|rc\d*|dev\d*)\.(?:mono\.)?(?:official|custom_build)/)], godotVersion);
 
   if (format === 'pe') {
     add('ASPack', 'packer', sec(/^\.aspack$/).length ? [...sec(/^\.aspack$/), ...sec(/^\.adata$/)] : []);

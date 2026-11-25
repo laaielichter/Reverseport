@@ -10,7 +10,7 @@ const { archiveTool } = await import('../src/archive.mjs');
 
 const FILES = { 'res://project.godot': 'config_version=5\n', 'res://player.gd': 'extends CharacterBody3D\nfunc _ready():\n\tpass\n', 'res://scenes/main.tscn': '[gd_scene format=3]\n[node name="Main" type="Node3D"]\n' };
 
-for (const [version, opts] of [[1, { godot: [3, 5, 2] }], [2, {}], [3, { godot: [4, 5, 0], stripRes: true }]]) {
+for (const [version, opts] of [[1, { godot: [3, 5, 2] }], [2, {}], [3, { godot: [4, 4, 0], stripRes: true }], [4, { godot: [4, 7, 2], stripRes: true }]]) {
   test(`Godot pack format v${version}: list and extract with MD5 check`, async () => {
     const file = path.join(dir, `game-v${version}.pck`);
     await fs.writeFile(file, buildPck(FILES, { version, ...opts }));
@@ -40,6 +40,35 @@ test('Godot pack embedded in the executable (v2 relative base and v3)', async ()
     assert.equal(x.extracted, 3);
     assert.equal(await fs.readFile(path.join(dir, `emb-${version}`, 'scenes', 'main.tscn'), 'utf8'), FILES['res://scenes/main.tscn']);
   }
+});
+
+test('Godot pack format v4: removal markers and delta patches are listed but not extracted as files', async () => {
+  const files = { ...FILES, 'res://old.gd': '', 'res://big.tres': 'PATCH' };
+  const file = path.join(dir, 'patch-v4.pck');
+  await fs.writeFile(file, buildPck(files, { version: 4, godot: [4, 7, 2], entryFlags: { 'res://old.gd': 2, 'res://big.tres': 4 } }));
+  const list = await archiveTool({ file });
+  assert.equal(list.packVersion, 4);
+  assert.equal(list.entries.find(e => e.path === 'res://old.gd').removal, true);
+  assert.equal(list.entries.find(e => e.path === 'res://big.tres').delta, true);
+  const out = path.join(dir, 'out-patch-v4');
+  const x = await archiveTool({ file, action: 'extract', out });
+  assert.equal(x.extracted, 3);
+  const reasons = Object.fromEntries(x.skipped.map(s => [s.path, s.reason]));
+  assert.match(reasons['res://old.gd'], /removal/);
+  assert.match(reasons['res://big.tres'], /delta/);
+  await assert.rejects(fs.access(path.join(out, 'big.tres')));
+});
+
+test('sparse bundle: entries are listed, extraction says the files live next to the pack', async () => {
+  const file = path.join(dir, 'sparse-v4.pck');
+  await fs.writeFile(file, buildPck(FILES, { version: 4, godot: [4, 7, 2], packFlags: 4 }));
+  const list = await archiveTool({ file });
+  assert.equal(list.sparseBundle, true);
+  assert.equal(list.totalEntries, 3);
+  const x = await archiveTool({ file, action: 'extract', out: path.join(dir, 'out-sparse') });
+  assert.equal(x.extracted, 0);
+  assert.equal(x.skipped.length, 3);
+  assert.match(x.skipped[0].reason, /sparse bundle/);
 });
 
 test('encrypted pack directory is reported, not decrypted', async () => {

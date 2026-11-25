@@ -1,4 +1,4 @@
-// Test helpers: build small but real binary fixtures in memory (Godot packs v1/v2/v3, embedded packs,
+// Test helpers: build small but real binary fixtures in memory (Godot packs v1/v2/v3/v4, embedded packs,
 // a .NET assembly, IL2CPP metadata, ZIP, asar) so the tests need no downloads and no external tools.
 import fs from 'node:fs/promises';
 import os from 'node:os';
@@ -11,25 +11,27 @@ export async function tempDir(prefix = 'rp-test-') { return fs.mkdtemp(path.join
 const u32 = n => { const b = Buffer.alloc(4); b.writeUInt32LE(n); return b; };
 const u64 = n => { const b = Buffer.alloc(8); b.writeBigUInt64LE(BigInt(n)); return b; };
 
-/** Godot pack. version 1 (Godot 3), 2 (Godot 4.0–4.3), 3 (Godot 4.4+: directory at dir_offset). */
-export function buildPck(files, { version = 2, godot = [4, 3, 0], stripRes = false } = {}) {
-  const entries = Object.entries(files).map(([p, content]) => ({ path: p, data: Buffer.from(content) }));
+/** Godot pack. version 1 (Godot 3), 2 (Godot 4.0–4.3), 3 (Godot 4.4: directory at dir_offset), 4 (Godot 4.5+: as 3,
+ * plus the per-file "delta" flag). `entryFlags` maps a path to its per-file flags (1 encrypted, 2 removal, 4 delta);
+ * `packFlags` is OR-ed into the header flags of version 3 and 4 (4 = sparse bundle). */
+export function buildPck(files, { version = 2, godot = [4, 3, 0], stripRes = false, entryFlags = {}, packFlags = 0 } = {}) {
+  const entries = Object.entries(files).map(([p, content]) => ({ path: p, data: Buffer.from(content), flags: entryFlags[p] ?? 0 }));
   const header = [Buffer.from('GDPC'), u32(version), u32(godot[0]), u32(godot[1]), u32(godot[2])];
   const dirEntry = (e, ofs) => {
     const raw = Buffer.from(stripRes ? e.path.replace(/^res:\/\//, '') : e.path);
     const pad = (4 - (raw.length % 4)) % 4;
     const parts = [u32(raw.length + pad), raw, Buffer.alloc(pad), u64(ofs), u64(e.data.length), crypto.createHash('md5').update(e.data).digest()];
-    if (version >= 2) parts.push(u32(0));
+    if (version >= 2) parts.push(u32(e.flags));
     return Buffer.concat(parts);
   };
-  if (version === 3) {
+  if (version >= 3) {
     // header | file data | directory
     const headerLen = 4 * 5 + 4 + 8 + 8 + 64;
     let ofs = 0;
     const offsets = entries.map(e => { const o = ofs; ofs += e.data.length; return o; });
     const data = Buffer.concat(entries.map(e => e.data));
     const dir = Buffer.concat([u32(entries.length), ...entries.map((e, i) => dirEntry(e, offsets[i]))]);
-    return Buffer.concat([...header, u32(2), u64(headerLen), u64(headerLen + data.length), Buffer.alloc(64), data, dir]);
+    return Buffer.concat([...header, u32(2 | packFlags), u64(headerLen), u64(headerLen + data.length), Buffer.alloc(64), data, dir]);
   }
   const fixed = 4 * 5 + (version >= 2 ? 4 + 8 : 0) + 64;
   const dirLen = 4 + entries.reduce((s, e) => s + dirEntry(e, 0).length, 0);

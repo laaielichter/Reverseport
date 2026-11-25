@@ -1,0 +1,17 @@
+[gd_scene format=3]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_dh11i"]
+albedo_color = Color(0.5, 0.25, 0.125, 1)
+roughness = 0.75
+
+[sub_resource type="BoxMesh" id="BoxMesh_3ii2j"]
+material = SubResource("StandardMaterial3D_dh11i")
+size = Vector3(2, 1, 3)
+
+[node name="Rots" type="Node3D" unique_id=236324208]
+
+[node name="Mesh" type="MeshInstance3D" parent="." unique_id=670203974]
+mesh = SubResource("BoxMesh_3ii2j")
+
+[node name="Lamp" type="OmniLight3D" parent="." unique_id=373963007 groups=["lampen"]]
+omni_range = 7.5
