@@ -13,8 +13,13 @@ Everything the agent can do, you can do from the shell. Results are JSON.
 ```bash
 reverseport scan ./MyGame                        # engine, languages, entry points
 reverseport lookup "Some Game"                   # no files: engine, stack, structure, remakes
-reverseport binary ./Build/Game.exe              # sections, imports, .NET types, strings, hints
+reverseport binary ./Build/Game.exe              # sections, imports, strings; packer, installer, compiler; capabilities
 reverseport archive ./Build/Game.pck --action extract --match "*.gd"
+reverseport archive ./game.apk                   # also .ipa: the manifest or Info.plist summary comes with the list
+reverseport decode ./extracted                   # Godot export, Ren'Py .rpyc or GameMaker data.win back to text
+reverseport unreal ./Content/SM_Crate.uasset     # Unreal .uasset/.umap, .utoc, .locres, GVAS .sav
+reverseport struct ./saves "*.sav"               # an unknown format from 2 to 32 sample files
+reverseport save ./slot1.sav ./slot2.sav         # layers, fields, checksums; diff of two saves
 reverseport diff ./Build-43 ./Build-44           # what changed between builds
 reverseport analyze /Applications/Notes.app      # deep analysis: open and summarize a binary/app
 reverseport decompile /path/to/binary 0x1000      # pseudocode (Ghidra, Hopper or IDA)
@@ -28,6 +33,34 @@ reverseport help                                 # overview · reverseport port 
 
 Install the command for regular use with `npm install --global reverseport`, or run any of these through
 `npx reverseport@latest …`. In a checkout, use `./bin/reverseport.mjs`.
+
+### Formats and unknown data
+
+`reverseport port help` lists every command of ReversePort's own engine, and `reverseport describe <tool>` prints
+one tool's full schema. Options are the tool's arguments: `--key value`, with a dot for nested ones
+(`--strings.match "*.dll"`).
+
+| Command                          | Tool         | Options                                                                                                                                                                                   |
+| -------------------------------- | ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `struct <folder> [match]`        | `re_struct`  | `--files a.sav,b.sav` instead of a folder; `--maxKB N` KiB of each sample to read (default 1024)                                                                                          |
+| `unreal <file>` (alias `uasset`) | `re_unreal`  | `--match` names, paths or keys; `--limit N` entries per list (default 50)                                                                                                                 |
+| `decode <folder\|file>`          | `re_decode`  | `--out <folder>`; `--limit N`; `--keys '["MENU_START"]'` candidate keys for `.translation` files; GameMaker: `--match <name>` and `--asm` (also write GML assembly for every entry)       |
+| `archive <file>`                 | `re_archive` | `--action extract`, `--match`, `--limit`, `--out`; `.apk`/`.ipa`: `--manifest` adds the decoded manifest or the whole `Info.plist`; `.apk`: `--resource-strings N` lists string resources |
+| `binary <file>`                  | `re_binary`  | `--strings.match`, `--strings.limit`, `--names.match`; `--resources.strings true` also lists the PE string tables, `--resources.limit N`                                                  |
+| `save <file> [other]`            | `re_save`    | A second file diffs two saves; `--action schema` writes a JSON schema and data classes. Reads GVAS, Apple property lists and Steam VDF/ACF too                                            |
+
+```bash
+reverseport struct --files slot1.sav,slot2.sav,slot3.sav   # fields with evidence, record columns, a Kaitai .ksy draft
+reverseport decode ./data.win --match obj_player --asm     # GameMaker: only the player's events, with assembly
+reverseport archive ./game.apk --manifest --resource-strings 50
+reverseport unreal ./Game.locres --match Menu
+```
+
+Each has a page with a real result: [unknown formats from samples](../re-struct.md), [Ren'Py](../renpy.md),
+[GameMaker](../gamemaker.md), [Unreal](../unreal.md), [Android and iOS](../android-ios.md) and
+[Godot exports](../godot-pck.md#back-to-an-editable-project).
+
+Every result is checked by the [injection shield](../injection-shield.md); `REVERSEPORT_SHIELD=off` turns it off.
 
 ## Run a command
 

@@ -4,8 +4,9 @@ type: software
 title: "ReversePort"
 abstract: >-
   Reverse engineering and porting toolkit for AI coding agents: an MCP server, CLI, skills and Claude Code plugin
-  that read Godot packs, Unity IL2CPP, .NET and native binaries, compare builds, keep proof cases, and port games
-  between Godot, Unity, Unreal, three.js and languages with parity checks.
+  that read Godot, Unity, Unreal, Ren'Py and GameMaker builds, Android and iOS packages, .NET and native binaries,
+  work out unknown file formats from samples, compare builds, keep proof cases, and port games between Godot, Unity,
+  Unreal, three.js and languages with parity checks.
 authors:
   - name: "ReversePort contributors"
 version: 1.26.0 # x-release-please-version
@@ -21,3 +22,8 @@ keywords:
   - Unity
   - IL2CPP
   - decompiler
+  - Unreal
+  - Ren'Py
+  - GameMaker
+  - file format inference
+  - prompt injection

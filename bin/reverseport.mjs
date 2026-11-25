@@ -15,7 +15,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const VERSION = JSON.parse(readFileSync(path.join(REPO, 'package.json'), 'utf8')).version;
 const PORT_COMMANDS = new Set([
-  'scan', 'graph', 'symbols', 'scene', 'binary', 'bin', 'archive', 'pck', 'probe', 'struct', 'unreal', 'uasset', 'extract', 'carve', 'diff',
+  'scan', 'graph', 'symbols', 'scene', 'binary', 'bin', 'archive', 'pck', 'probe', 'struct', 'format', 'unreal', 'uasset', 'extract', 'carve', 'diff',
   'compare-builds', 'report', 'lookup', 'recon', 'web', 'blueprint', 'rebuild', 'map', 'convert', 'plan', 'unit',
   'write', 'draft', 'port-scene', 'copy-assets', 'status', 'verify', 'case', 'proof', 'tools', 'serve', 'describe', 'feedback',
   'connect', 'skills', 'refs', 'guids', 'strings', 'i18n', 'l10n', 'apicheck', 'api', 'upgrade', 'godot3to4', 'save',
@@ -62,12 +62,14 @@ Start
 Understand anything (no build needed)
   reverseport scan <folder>          engine + version, languages, entry points — projects and exported games
   reverseport lookup "<name>"        no files: engine, stack, structure, remakes from public sources (--url, --github)
-  reverseport binary <file>          PE/.NET/ELF/Mach-O/wasm/class/dex at a glance
-  reverseport archive <file>         Godot .pck (also inside .exe), zip/apk/jar, tar.gz, asar — list or extract
+  reverseport binary <file>          PE/.NET/ELF/Mach-O/wasm/class/dex: packer, installer, compiler, capabilities, version info
+  reverseport archive <file>         Godot .pck (also inside .exe), zip/apk/ipa/jar, tar.gz, asar — list or extract
+  reverseport struct <folder> [match]  an unknown binary format from 2+ sample files: fields, counts, checksums, .ksy
+  reverseport unreal <file>          Unreal .uasset/.umap tables, IoStore .utoc lists, .locres texts, GVAS saves
   reverseport diff <a> <b>           what changed between two builds, packs or binaries
   reverseport refs <unity-project>   broken Unity GUID references, duplicate and missing .meta files
   reverseport strings <folder>       extract translatable text (.pot/.csv); --action apply writes a translated copy
-  reverseport decode <folder|file>   Godot export → .gd/.tscn/.tres/project.godot (after re_archive extract)
+  reverseport decode <folder|file>   Godot export → .gd/.tscn/.tres, textures → PNG, audio → WAV/OGG; Ren'Py .rpyc → .rpy; GameMaker data.win → .gml
   reverseport il2cpp <global-metadata.dat>  Unity IL2CPP: classes, methods, literals, C# skeleton
   reverseport apicheck <file|folder> Godot 3 names, invented members, too-new classes; --engine godot@4.3
   reverseport upgrade <godot3-project> Godot 3 → 4 as a copy; --action apply --out <folder>; lists what needs a human
@@ -110,13 +112,14 @@ function fail(code, message, action, exitCode) {
 }
 
 async function runEngine(args) {
+  // A command neither engine has is answered here, by this command's name, whether or not the engine is built.
+  const known = engineCommands();
+  const cmd = args[0];
+  if (known && cmd && !cmd.startsWith('-') && !known.has(cmd)) {
+    const near = suggestion(cmd, [...PORT_COMMANDS, ...known]);
+    return fail('UNKNOWN_COMMAND', `Unknown command "${cmd}".${near ? ` Did you mean "${near}"?` : ''}`, 'Run `reverseport help` for the commands.', 2);
+  }
   if (!engineBuilt()) {
-    const known = engineCommands();
-    const cmd = args[0];
-    if (known && cmd && !cmd.startsWith('-') && !known.has(cmd)) {
-      const near = suggestion(cmd, [...PORT_COMMANDS, ...known]);
-      return fail('UNKNOWN_COMMAND', `Unknown command "${cmd}".${near ? ` Did you mean "${near}"?` : ''}`, 'Run `reverseport help` for the commands.', 2);
-    }
     return fail('ENGINE_UNAVAILABLE', !cmd || cmd.startsWith('-') ? 'The deep-analysis engine commands need the built engine, which is not built in this copy.' : `"${cmd}" is a deep-analysis engine command and the engine is not built in this copy.`, 'Ask the user first, then `npx -y reverseport@latest setup`, or in this checkout `npm ci && npm run build`. ReversePort\'s own commands work without it.', 1);
   }
   // In-process, so agent registrations written by `setup` point at this command (process.argv[1]).

@@ -33,7 +33,18 @@ routes in the main skill and cite their Evidence.
 - Godot packs can sit inside the `.exe`: `re_archive {file}` lists them; add
   `action: "extract", match: "*.gd"` to extract. Encrypted packs are reported,
   never opened. Exported packs hold .gdc, binary .scn/.res and project.binary:
-  `re_decode {path: <extracted folder>}` writes an editable project back.
+  `re_decode {path: <extracted folder>}` writes an editable project back,
+  with imported textures, audio and translations as PNG, WAV, OGG, MP3 and CSV.
+- Ren'Py: `re_archive` extracts the `.rpa`, `re_decode` writes `.rpyc` back
+  as `.rpy`. GameMaker: `re_decode` on `data.win` writes GML per script,
+  object event and room; unsure entries stay assembly with the reason.
+- Unreal: `re_archive` for `.pak`; `re_unreal` for `.uasset`/`.umap` names,
+  imports and exports, `.utoc` file lists, `.locres` texts and GVAS saves.
+- `.apk` and `.ipa`: `re_archive` adds the decoded manifest or `Info.plist`.
+- An unknown format with 2+ sample files: `re_struct` returns fields with
+  evidence and a Kaitai `.ksy` draft; it is a hypothesis from those samples.
+- `re_binary` also names packers, protectors, installers and compilers with
+  the evidence. Detection only: nothing is unpacked, decrypted or patched.
 - `re_binary` reads PE (with .NET types and methods), ELF, Mach-O, wasm, Java
   class and dex files; `Assembly-CSharp.dll` shows a Unity game's scripts.
 - `re_compare {a, b}` diffs folders, packs or binaries. Report changes grouped

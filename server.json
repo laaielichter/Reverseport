@@ -2,7 +2,7 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.laaielichter/reverseport",
   "title": "ReversePort",
-  "description": "Reverse engineer and port apps and games: Godot, Unity IL2CPP, .NET, binaries, with parity checks.",
+  "description": "Reverse engineer and port games and apps: Godot, Unity, Unreal, Ren'Py, GameMaker, .NET, binaries.",
   "websiteUrl": "https://laaielichter.github.io/Reverseport/",
   "repository": {
     "url": "https://github.com/laaielichter/reverseport",
