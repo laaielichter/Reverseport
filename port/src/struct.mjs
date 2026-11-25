@@ -75,10 +75,15 @@ function relation(samples, cur, int) {
       }
     }
   }
-  // 2000-01-01 … 2040-01-01, in seconds or milliseconds
+  // A date between 2000 and tomorrow, in seconds or milliseconds. A fifth of all 32-bit values is such a date, so
+  // random bytes pass by chance; the samples must also lie close together: within one year for two samples, three
+  // years for three or four, ten for more.
+  const near = samples.length >= 5 ? 10 : samples.length >= 3 ? 3 : 1;
+  const dates = (unit, lo, hi) => vals.every(v => v >= lo && v < hi) && Math.max(...vals) - Math.min(...vals) <= near * 366 * 86400 * unit;
+  const tomorrow = Date.now() / 1000 + 86400;
   const asText = samples.every((s, i) => printable(s.buf.subarray(cur[i], cur[i] + w)));
-  if (w === 4 && !asText && vals.every(v => v >= 946684800 && v < 2208988800)) return { vals, role: 'time', note: 'Unix time in seconds (every sample is a date between 2000 and 2040)' };
-  if (w === 8 && vals.every(v => v >= 946684800000 && v < 2208988800000)) return { vals, role: 'time', note: 'Unix time in milliseconds (every sample is a date between 2000 and 2040)' };
+  if (w === 4 && !asText && dates(1, 946684800, tomorrow)) return { vals, role: 'time', note: 'Unix time in seconds (every sample is a date after 2000, and the dates lie close together)' };
+  if (w === 8 && dates(1000, 946684800000, tomorrow * 1000)) return { vals, role: 'time', note: 'Unix time in milliseconds (every sample is a date after 2000, and the dates lie close together)' };
   // a place in the file where every sample has the same bytes
   if (w >= 4 && vals.every((v, i) => v > cur[i] + w && v + 4 <= samples[i].buf.length)) {
     const at = samples.map((s, i) => s.buf.subarray(vals[i], vals[i] + 4));
@@ -268,8 +273,9 @@ export function inferStruct(samples) {
       const reachesEnd = span >= room;
       const block = Buffer.concat(samples.map((s, i) => s.buf.subarray(cur[i], cur[i] + Math.min(span, 4096))));
       const e = entropy(block);
-      // A short block cannot reach 8 bits per byte: compare with what its length allows.
-      const dense = e >= 0.9 * Math.min(8, Math.log2(block.length));
+      // A short block cannot reach 8 bits per byte: n random bytes give about log2(n) - 0.7 bits (measured), text
+      // stays under 5 and base64 near 6.
+      const dense = e >= Math.min(7, Math.log2(block.length) - 1.1);
       if (reachesEnd) {
         stopped = { offset: offsetOf(), entropy: e, note: `from here the samples differ to the end (${dense ? 'high entropy: compressed or encrypted data' : e < 5 ? 'low entropy: text or sparse records' : 'mixed data: records or media'}). Fields inside it need samples that differ in one known thing.` };
         break;

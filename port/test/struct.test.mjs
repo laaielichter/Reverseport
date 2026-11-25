@@ -10,6 +10,8 @@ import { structTool } from '../src/struct.mjs';
 import { callTool } from '../src/tools.mjs';
 
 const u32 = n => { const b = Buffer.alloc(4); b.writeUInt32LE(n >>> 0); return b; };
+/** Bytes that look random and are the same in every run. */
+const noise = (seed, n) => { const out = []; for (let i = 0; out.length < n; i++) out.push(...crypto.createHash('sha256').update(`${seed}:${i}`).digest()); return Buffer.from(out.slice(0, n)); };
 const u32be = n => { const b = Buffer.alloc(4); b.writeUInt32BE(n >>> 0); return b; };
 
 /** "SAVE", version, reserved | body size | CRC-32 of the body | time, name, count, 12-byte records. */
@@ -61,9 +63,9 @@ test('re_struct: big-endian length in front of text, a NUL-ended text, and a SHA
     return Buffer.concat([head, crypto.createHash('sha256').update(head).digest()]);
   };
   const files = await write(dir, {
-    'one.lvl': make('Harbour', 'ann', crypto.randomBytes(40)),
-    'two.lvl': make('The long road north', 'bartholomew', crypto.randomBytes(90)),
-    'three.lvl': make('Pit', 'cy', crypto.randomBytes(64)),
+    'one.lvl': make('Harbour', 'ann', noise('one', 40)),
+    'two.lvl': make('The long road north', 'bartholomew', noise('two', 90)),
+    'three.lvl': make('Pit', 'cy', noise('three', 64)),
   });
   const r = await structTool({ files });
   assert.equal(r.fields[0].role, 'magic');
