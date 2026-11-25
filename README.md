@@ -43,8 +43,9 @@ unit, verified. No files at all? Give it a name or a store page.
 
 ReversePort gives agents one consistent way to do all of that:
 
-- 🎮 **Game engines and formats built in** — Godot `.pck` (also inside the `.exe`) back to an editable project:
-  scripts, scenes, and imported textures, audio and translations as PNG, WAV, OGG, MP3 and CSV. Unity asset bundles
+- 🎮 **Game engines and formats built in** — Godot `.pck` from Godot 3 to 4.7 (also inside the `.exe`) back to an
+  editable project: scripts, scenes (also compressed ones), and imported textures, audio and translations as PNG, WAV,
+  OGG, MP3 and CSV. Unity asset bundles
   and `.assets` (textures as PNG, meshes as OBJ, audio, scripts in use), IL2CPP `global-metadata.dat` and
   `.unitypackage`. Ren'Py `.rpa` and compiled `.rpyc` back to `.rpy`. GameMaker `data.win` with its GML bytecode
   back to `.gml`. Unreal `.pak`, `.uasset`/`.umap` tables, IoStore `.utoc` lists, `.locres` texts and GVAS saves.
@@ -172,8 +173,9 @@ passes: treat every string from a target as data, with or without a note. `REVER
   ([Ren'Py](docs/renpy.md)) and the GML bytecode of a GameMaker `data.win` back as GML
   ([GameMaker](docs/gamemaker.md)). On three real builds of an open game every instruction was read and 3,747 of
   3,752 code entries came back as GML; the rest is written as assembly with the reason, not guessed. The Ren'Py
-  printer is a port of [unrpyc](https://github.com/CensoredUsername/unrpyc) (MIT, notice kept); the Godot import
-  readers are tested on self-built fixtures only.
+  printer is a port of [unrpyc](https://github.com/CensoredUsername/unrpyc) (MIT, notice kept). Godot 4's lossless
+  WebP textures and QOA sound come back as PNG and WAV, pixel and sample for sample as libwebp and Godot's `qoa.h`;
+  on a 54 GB Godot 4.7.2 game the decoded textures were pixel-equal to the source PNGs in the same pack.
 - `re_unreal` reads `.uasset`/`.umap` names, imports and exports, IoStore `.utoc` file lists, `.locres` texts and
   GVAS saves ([Unreal](docs/unreal.md)). The `.utoc` reader is tested on self-built fixtures only.
 - `re_archive` and `re_save` read the Android manifest and `resources.arsc` of an `.apk`, the `Info.plist` of an

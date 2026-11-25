@@ -23,7 +23,7 @@ Iets gemaakt of geport met ReversePort? [Laat zien wat je hebt gedaan](https://g
 
 ## Wat het kan
 
-- **Game-engines en formaten** — Godot `.pck` (ook in de `.exe`) terug naar een bewerkbaar project: scripts, scènes
+- **Game-engines en formaten** — Godot `.pck` van Godot 3 tot 4.7 (ook in de `.exe`) terug naar een bewerkbaar project: scripts, scènes
   en geïmporteerde textures, audio en vertalingen als PNG, WAV, OGG, MP3 en CSV. Unity asset bundles, `.assets` en
   IL2CPP-metadata. Ren'Py `.rpa` en gecompileerde `.rpyc` terug naar `.rpy`. GameMaker `data.win` met de GML-bytecode
   terug naar `.gml`. Unreal `.pak`, `.uasset`/`.umap`, IoStore `.utoc`, `.locres` en GVAS-saves. Zonder de engine te
