@@ -21,7 +21,7 @@ export const FORMATS = [
   { id: 'lua-bytecode', name: 'Lua bytecode', category: 'executable', test: (b, o) => at(b, o, [0x1b, 0x4c, 0x75, 0x61]) },
   { id: 'luajit-bytecode', name: 'LuaJIT bytecode', category: 'executable', test: (b, o) => at(b, o, [0x1b, 0x4c, 0x4a]) },
   { id: 'pyc', name: 'Python bytecode (.pyc)', category: 'executable', offsetZeroOnly: true, test: (b, o) => o === 0 && b.length > 16 && b[2] === 0x0d && b[3] === 0x0a && b.readUInt16LE(0) > 3000 && b.readUInt16LE(0) < 4000 },
-  { id: 'godot-pck', name: 'Godot resource pack (GDPC)', category: 'engine', test: (b, o) => str(b, o, 'GDPC') && u32le(b, o + 4) >= 0 && u32le(b, o + 4) <= 3 },
+  { id: 'godot-pck', name: 'Godot resource pack (GDPC)', category: 'engine', test: (b, o) => str(b, o, 'GDPC') && u32le(b, o + 4) >= 0 && u32le(b, o + 4) <= 4 },
   { id: 'godot-resource', name: 'Godot binary resource (RSRC)', category: 'engine', test: (b, o) => str(b, o, 'RSRC') },
   { id: 'godot-resource-compressed', name: 'Godot compressed resource (RSCC)', category: 'engine', test: (b, o) => str(b, o, 'RSCC') },
   { id: 'godot-ctex', name: 'Godot 4 compressed texture (GST2)', category: 'engine', test: (b, o) => str(b, o, 'GST2') },
