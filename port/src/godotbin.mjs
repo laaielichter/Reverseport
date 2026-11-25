@@ -274,7 +274,10 @@ const R4 = { 1: 'NIL', 2: 'BOOL', 3: 'INT', 4: 'FLOAT', 5: 'STRING', 10: 'VECTOR
 /** byteBuffers: PackedByteArray values are Buffers (views on the file) instead of number arrays, for audio and other large payloads. */
 export function readRsrc(input, { byteBuffers = false } = {}) {
   let buf = input;
-  if (buf.toString('latin1', 0, 4) === 'RSCC') buf = inflateRscc(buf);
+  // A compressed file's stream starts after the magic, and its resource offsets count from there: put "RSRC" in front
+  // so one reader serves both, and move those offsets by its 4 bytes.
+  let shift = 0;
+  if (buf.toString('latin1', 0, 4) === 'RSCC') { buf = Buffer.concat([Buffer.from('RSRC', 'latin1'), inflateRscc(buf)]); shift = 4; }
   if (buf.toString('latin1', 0, 4) !== 'RSRC') throw new RPError('BAD_FORMAT', 'Not a Godot binary resource (RSRC/RSCC).');
   const bigEndian = buf.readUInt32LE(4) !== 0;
   if (bigEndian) throw new RPError('UNSUPPORTED', 'big-endian resource files are not supported');
@@ -301,7 +304,7 @@ export function readRsrc(input, { byteBuffers = false } = {}) {
   for (let i = 0; i < nExt; i++) { const t = ustr(); const pth = ustr(); let euid = null; if (flags & 2) { euid = buf.readBigInt64LE(p); p += 8; } ext.push({ type: t, path: pth, uid: euid, id: namedIds ? `${i + 1}_${hashId(pth)}` : String(i + 1) }); }
   const nInt = buf.readUInt32LE(p); p += 4;
   const internal = [];
-  for (let i = 0; i < nInt; i++) { const pth = ustr(); const off = Number(buf.readBigUInt64LE(p)); p += 8; internal.push({ path: pth, offset: off }); }
+  for (let i = 0; i < nInt; i++) { const pth = ustr(); const off = Number(buf.readBigUInt64LE(p)) + shift; p += 8; internal.push({ path: pth, offset: off }); }
   const getString = () => { const id = buf.readUInt32LE(p); p += 4; if (id & 0x80000000) { const n = id & 0x7fffffff; const s = buf.toString('utf8', p, p + n); p += n; return s; } return strings[id] ?? `str${id}`; };
   const real = () => { if (realIsDouble) { const v = buf.readDoubleLE(p); p += 8; return v; } const v = buf.readFloatLE(p); p += 4; return v; };
   const f32 = () => { const v = buf.readFloatLE(p); p += 4; return v; };
@@ -380,22 +383,35 @@ export function readRsrc(input, { byteBuffers = false } = {}) {
 }
 function hashId(s) { let h = 5381; for (const c of s) h = ((h << 5) + h + c.charCodeAt(0)) >>> 0; return (h % 46656).toString(36).padStart(3, '0').slice(-5); }
 
+/**
+ * FileAccessCompressed (core/io/file_access_compressed.cpp, open_after_magic): "RSCC", u32 mode, u32 block_size,
+ * u32 read_total, then (read_total / block_size) + 1 block sizes (u32, so a size that is a whole number of blocks
+ * has an empty last block), then the blocks. Modes (core/io/compression.h): 0 FastLZ, 1 Deflate (zlib stream,
+ * window_bits 15), 2 Zstandard, 3 gzip. The stream holds what follows the magic of a plain file: a binary resource
+ * saved compressed has no "RSRC" inside (ResourceFormatSaverBinaryInstance::save writes it only uncompressed).
+ */
 function inflateRscc(buf) {
-  // FileAccessCompressed: "RSCC", mode u32, block_size u32, read_total u32, then blocks: for each block size u32 … (block data compressed). Modes: 0 FastLZ, 1 Deflate, 2 zstd, 3 gzip.
+  if (buf.length < 16) throw new RPError('BAD_FORMAT', 'RSCC header is truncated');
   const mode = buf.readUInt32LE(4), blockSize = buf.readUInt32LE(8), total = buf.readUInt32LE(12);
-  const blocks = Math.ceil(total / blockSize) || 1;
+  if (!blockSize) throw new RPError('BAD_FORMAT', 'RSCC block size is 0 (Godot calls this corrupt)');
+  const blocks = Math.floor(total / blockSize) + 1;
   let p = 16;
+  if (p + blocks * 4 > buf.length) throw new RPError('BAD_FORMAT', 'RSCC block table is truncated');
   const sizes = [];
   for (let i = 0; i < blocks; i++) { sizes.push(buf.readUInt32LE(p)); p += 4; }
   const out = [];
   for (let i = 0; i < blocks; i++) {
     const chunk = buf.subarray(p, p + sizes[i]); p += sizes[i];
-    if (mode === 1) out.push(zlib.inflateRawSync(chunk));
+    const want = Math.min(blockSize, total - i * blockSize);
+    if (want <= 0) continue; // the empty last block of a whole number of blocks
+    if (mode === 1) out.push(zlib.inflateSync(chunk));
     else if (mode === 2) { if (typeof zlib.zstdDecompressSync !== 'function') throw new RPError('UNSUPPORTED', 'RSCC zstd needs Node 22.15+'); out.push(zlib.zstdDecompressSync(chunk)); }
     else if (mode === 3) out.push(zlib.gunzipSync(chunk));
-    else throw new RPError('UNSUPPORTED', `RSCC compression mode ${mode} (FastLZ) is not supported here`);
+    else throw new RPError('UNSUPPORTED', `RSCC compression mode ${mode}${mode === 0 ? ' (FastLZ)' : ''} is not supported here`);
   }
-  return Buffer.concat(out).subarray(0, total);
+  const data = Buffer.concat(out);
+  if (data.length < total) throw new RPError('BAD_FORMAT', `RSCC data ends after ${data.length} of ${total} bytes`);
+  return data.subarray(0, total);
 }
 
 /** PackedScene _bundled dictionary → node list (name, type, parent, instance, properties, groups) + connections. */
@@ -521,10 +537,11 @@ export async function decodeTool({ path: target, out, limit: max = 2000, keys, m
   let root, treeFiles = [];
   const remaps = new Map(); // exported file → original path, from the .remap files an export leaves
   const imports = new Map(); // imported file (.godot/imported/x.png-<md5>.ctex) → original path (x.png), from the .import files
+  const importText = new Map(); // original path (x.png) → its .import file as exported: written beside the restored file so Godot keeps its uid
   if (st.isDirectory()) { root = await requireDir(abs); const w = await walk(root, { maxFiles: 50000, ignore: new Set(['.git', 'node_modules']) });
     treeFiles = w.files;
     for (const f of w.files) if (f.rel.endsWith('.remap')) { const t = await fs.readFile(f.abs, 'utf8').catch(() => ''); const m = t.match(/^path="res:\/\/([^"]+)"/m); if (m) remaps.set(m[1], f.rel.split(path.sep).join('/').replace(/\.remap$/, '')); }
-    for (const f of w.files) if (f.rel.endsWith('.import') && f.size < 256 * 1024) { const t = await fs.readFile(f.abs, 'utf8').catch(() => ''); const imp = parseImportFile(t, f.rel); for (const p of imp.paths) if (imp.source) imports.set(p, imp.source); }
+    for (const f of w.files) if (f.rel.endsWith('.import') && f.size < 256 * 1024) { const t = await fs.readFile(f.abs, 'utf8').catch(() => ''); const imp = parseImportFile(t, f.rel); for (const p of imp.paths) if (imp.source) imports.set(p, imp.source); if (imp.source && t) importText.set(imp.source, t); }
     for (const f of w.files) if (/\.(gdc|gde|scn|res|binary|material|mesh|tres|anim|shader)$/i.test(f.rel) || isRpyc(f.rel) || IMPORTED_RE.test(f.rel) || path.basename(f.rel) === 'project.binary') files.push({ rel: f.rel, abs: f.abs }); }
   else { root = path.dirname(abs); files.push({ rel: path.basename(abs), abs }); }
   const outDir = out ? path.resolve(out) : path.join(await workspaceDir('decoded'), path.basename(root).replace(/[^A-Za-z0-9._-]+/g, '_') || 'project');
@@ -546,6 +563,9 @@ export async function decodeTool({ path: target, out, limit: max = 2000, keys, m
     const dests = c.outputs.map(o => importedDest(rel, source, o.ext, o.part));
     if (taken.has(dests[0])) { skipped.push({ file: f.rel, reason: `another imported variant of ${source ?? rel} was already converted to ${dests[0]}` }); return; }
     for (let i = 0; i < dests.length; i++) { await save(dests[i], c.outputs[i].data); taken.add(dests[i]); }
+    // Restored under its original name: keep the exported .import beside it, so Godot re-imports it with the same uid
+    // and the scenes that name it by uid resolve without "invalid UID" warnings.
+    if (source && dests[0] === source && importText.has(source) && !taken.has(`${source}.import`)) { await save(`${source}.import`, importText.get(source)); taken.add(`${source}.import`); }
     results.push({ file: f.rel, decoded: dests[0], ...(dests.length > 1 ? { also: dests.slice(1) } : {}), ...(source ? { original: `res://${source}` } : {}), ...c.info });
     if (c.info.texts != null) translations.push({ file: f.rel, locale: c.info.locale, texts: c.info.texts, matched: c.info.matched, withoutKey: c.info.withoutKey });
   };
