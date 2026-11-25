@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.27.0](https://github.com/laaielichter/Reverseport/compare/reverseport-1.26.0...reverseport-1.27.0) (2026-11-25)
+
+
+### Features
+
+* formats from samples, an injection shield, and what other tools read (binaries, Godot imports, Ren'Py, GameMaker, Unreal, Android, iOS) ([#187](https://github.com/laaielichter/Reverseport/issues/187)) ([8599f50](https://github.com/laaielichter/Reverseport/commit/8599f50502a5677b683c690b25ee91436f262bf7))
+
+
+### Bug Fixes
+
+* **decode:** read Godot 4.7 exports: pack format 4, compressed resources, QOA, lossless WebP ([#189](https://github.com/laaielichter/Reverseport/issues/189)) ([10c5756](https://github.com/laaielichter/Reverseport/commit/10c5756b60c9d9949a7de598997218760b5301aa))
+
+
+### Documentation
+
+* README, site and llms.txt for Godot 4.7 exports ([#191](https://github.com/laaielichter/Reverseport/issues/191)) ([0db5c58](https://github.com/laaielichter/Reverseport/commit/0db5c58d4b4672b27efb67c326aaa4e1782ba8c8))
+* README, site, guides and listings for the new tools and formats ([#188](https://github.com/laaielichter/Reverseport/issues/188)) ([273be8d](https://github.com/laaielichter/Reverseport/commit/273be8d55796936befdfbd8991c635db118a42d6))
+
 ## [1.26.0](https://github.com/laaielichter/Reverseport/compare/reverseport-1.25.0...reverseport-1.26.0) (2026-11-24)
 
 
