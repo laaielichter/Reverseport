@@ -57,7 +57,7 @@ async function buildGameMaker(dir) {
   // layout computed later: we build chunks sequentially and patch pointers.
   const chunk = (name, body) => Buffer.concat([Buffer.from(name), u32(body.length), body]);
   // Compute absolute offsets: FORM header 8, GEN8 chunk first.
-  const gen8Body = Buffer.alloc(0x50);
+  const gen8Body = Buffer.alloc(0x84);
   const gen8 = chunk('GEN8', gen8Body);
   const gen8Start = 8;
   const strgStart = gen8Start + gen8.length;
@@ -66,7 +66,8 @@ async function buildGameMaker(dir) {
   const records = [];
   for (const s of strings) { const b = Buffer.from(s); ptrs.push(cursor + 4); records.push(Buffer.concat([u32(b.length), b, Buffer.alloc(1)])); cursor += 4 + b.length + 1; }
   const strg = chunk('STRG', Buffer.concat([u32(strings.length), ...ptrs.map(u32), ...records]));
-  gen8Body[1] = 17; gen8Body.writeUInt32LE(ptrs[0], 4); gen8Body.writeUInt32LE(ptrs[1], 0x2c); gen8Body.writeUInt32LE(2, 0x30); gen8Body.writeUInt32LE(3, 0x34); gen8Body.writeUInt32LE(1, 0x38); gen8Body.writeUInt32LE(0, 0x3c); gen8Body.writeUInt32LE(1280, 0x40); gen8Body.writeUInt32LE(720, 0x44);
+  // The real layout: name 0x28, version 0x2c-0x38, default window 0x3c/0x40, display name 0x64.
+  gen8Body[1] = 17; gen8Body.writeUInt32LE(ptrs[0], 4); gen8Body.writeUInt32LE(ptrs[0], 0x28); gen8Body.writeUInt32LE(2, 0x2c); gen8Body.writeUInt32LE(3, 0x30); gen8Body.writeUInt32LE(1, 0x34); gen8Body.writeUInt32LE(0, 0x38); gen8Body.writeUInt32LE(1280, 0x3c); gen8Body.writeUInt32LE(720, 0x40); gen8Body.writeUInt32LE(ptrs[1], 0x64);
   const gen8b = chunk('GEN8', gen8Body);
   const sprtStart = strgStart + strg.length;
   const sprtRec = sprtStart + 8 + 4 + 4; // one record right after the pointer list

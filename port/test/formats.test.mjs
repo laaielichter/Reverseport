@@ -249,3 +249,24 @@ test('game archives: Doom WAD, Quake WAD2/3, XNB, VPK; Git packs are not Quake P
   assert.notEqual(identify(ba2('XXXX')).id, 'ba2', 'BA2 with unknown type');
   assert.notEqual(identify(Buffer.from('-==--==--==--===', 'latin1')).id, 'unreal-utoc', 'utoc magic with a wrong final byte');
 });
+
+test('INI-style text is not JSON, and an SVG is not plain text (#172)', () => {
+  const id = text => identify(Buffer.from(text));
+  const ini = id('[remap]\n\nimporter="texture"\ntype="CompressedTexture2D"\n');
+  assert.equal(ini.id, 'ini');
+  assert.equal(ini.category, 'text');
+  for (const text of ['[Settings]\nfullscreen=1\n', '[Settings]\r\nfullscreen=1\r\n', '[preset.0]\n\nname="Web"\n', '[Desktop Entry]\nName=App\n', '[empty]', '[a]\n[b]\n', '[x] ; note\n# more\nkey = value\n']) assert.equal(id(text).id, 'ini', text);
+  // JSON that starts with "[" stays JSON.
+  for (const text of ['[1, 2]', '["a"]', '[{"a": 1}]', '[{"a":1}]', '[]', '[\n  1\n]', '[true]', '[ null ]', '{"a":1}']) assert.equal(id(text).id, 'json', text);
+  // The Godot kinds are matched before INI.
+  assert.equal(id('[gd_scene load_steps=2 format=3]\n').id, 'godot-scene');
+  assert.equal(id('[gd_resource type="Theme" format=3]\n').id, 'godot-text-resource');
+  assert.equal(id('; Engine configuration file.\n\n[application]\n').id, 'godot-project');
+  // SVG: by its root element, with or without an XML declaration, comments and a doctype.
+  const svg = id('<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"></svg>\n');
+  assert.deepEqual(svg, { id: 'svg', name: 'SVG image', category: 'text' });
+  assert.equal(id('<?xml version="1.0"?>\n<svg xmlns="http://www.w3.org/2000/svg"/>').id, 'svg');
+  assert.equal(id('<?xml version="1.0" encoding="UTF-8"?>\n<!-- made by hand -->\n<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">\n<svg>').id, 'svg');
+  assert.equal(id('<?xml version="1.0"?>\n<root/>').id, 'xml');
+  assert.equal(id('<svgfoo>').id, 'text');
+});

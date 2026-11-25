@@ -201,13 +201,17 @@ const DECODERS = {
 
 export const DECODABLE = new Set(Object.keys(DECODERS).map(Number));
 
-/** Decode level 0 of `data` into top-down RGBA rows (Unity stores rows bottom-up). Returns null when unsupported. */
-export function decodeTexture(data, format, w, h) {
+/**
+ * Decode level 0 of `data` into top-down RGBA rows (Unity stores rows bottom-up). Returns null when unsupported.
+ * flip:false keeps the stored row order, for sources that are already top-down (Godot images).
+ */
+export function decodeTexture(data, format, w, h, { flip = true } = {}) {
   const dec = DECODERS[format];
   if (!dec) return null;
   const need = levelBytes(format, w, h);
   if (need == null || data.length < need) return null;
   const rgba = dec(data, w, h);
+  if (!flip) return rgba;
   const row = w * 4, flipped = Buffer.alloc(rgba.length);
   for (let y = 0; y < h; y++) rgba.copy(flipped, (h - 1 - y) * row, y * row, (y + 1) * row);
   return flipped;

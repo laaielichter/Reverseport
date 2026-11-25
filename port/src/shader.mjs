@@ -215,6 +215,12 @@ export function shaderLabToGodot(text) {
 
 // ------------------------------------------------------------------------------------------------ Shadertoy
 export function shadertoyToGodot(text) {
+  const { header, body, ...rest } = shadertoyParts(text);
+  return { text: `${[...header, body].join('\n')}\n`, ...rest };
+}
+
+/** The Shadertoy → Godot translation in two parts (header lines and body), so the plain GLSL path can review the body. */
+function shadertoyParts(text) {
   const notes = [];
   let body = text.replace(/\bmainImage\s*\(\s*out\s+vec4\s+(\w+)\s*,\s*(?:in\s+)?vec2\s+(\w+)\s*\)/, (m, color, coord) => `fragment()`).replace(/\biTime\b/g, 'TIME').replace(/\biTimeDelta\b/g, '(1.0 / 60.0)').replace(/\biFrame\b/g, 'int(TIME * 60.0)');
   const color = text.match(/mainImage\s*\(\s*out\s+vec4\s+(\w+)/)?.[1] ?? 'fragColor', coord = text.match(/mainImage\s*\([^,]+,\s*(?:in\s+)?vec2\s+(\w+)/)?.[1] ?? 'fragCoord';
@@ -224,8 +230,104 @@ export function shadertoyToGodot(text) {
   const uniforms = ['uniform vec2 iResolution = vec2(1920.0, 1080.0); // set from script: material.set_shader_parameter("iResolution", size)', 'uniform vec4 iMouse = vec4(0.0);', ...channels.map(c => `uniform sampler2D iChannel${c} : repeat_enable, filter_linear;`)];
   if (/\btexelFetch\b|\biChannelResolution\b|\biDate\b|\biSampleRate\b/.test(text)) notes.push('texelFetch/iChannelResolution/iDate/iSampleRate need uniforms or TEXTURE_PIXEL_SIZE equivalents');
   if (/\bmainSound\b|\bmainVR\b/.test(text)) notes.push('mainSound/mainVR are not ported');
-  const out = ['shader_type canvas_item;', '// Ported by ReversePort from Shadertoy GLSL. Put it on a full-screen ColorRect and feed iResolution from code.', '', ...uniforms, '', body.replace(/^\s*precision\s+\w+\s+float\s*;\s*$/gm, '')].join('\n') + '\n';
-  return { text: out, type: 'canvas_item', uniforms: ['iResolution', 'iMouse', ...channels.map(c => `iChannel${c}`)], leftovers: [], notes };
+  const header = ['shader_type canvas_item;', '// Ported by ReversePort from Shadertoy GLSL. Put it on a full-screen ColorRect and feed iResolution from code.', '', ...uniforms, ''];
+  return { header, body: body.replace(/^\s*precision\s+\w+\s+float\s*;\s*$/gm, ''), type: 'canvas_item', uniforms: ['iResolution', 'iMouse', ...channels.map(c => `iChannel${c}`)], leftovers: [], notes };
+}
+
+// ------------------------------------------------------------------------------------------------ plain GLSL (WebGL, three.js)
+const GLSL_TYPES = new Set('void bool int uint float double vec2 vec3 vec4 ivec2 ivec3 ivec4 uvec2 uvec3 uvec4 bvec2 bvec3 bvec4 mat2 mat3 mat4 mat2x2 mat2x3 mat2x4 mat3x2 mat3x3 mat3x4 mat4x2 mat4x3 mat4x4 sampler2D sampler3D samplerCube sampler2DArray sampler2DShadow samplerCubeShadow isampler2D usampler2D isampler3D usampler3D'.split(' '));
+const GLSL_WORDS = new Set(`attribute varying uniform const in out inout centroid flat smooth invariant layout location precision highp mediump lowp struct
+if else for while do switch case default break continue return discard true false
+radians degrees sin cos tan asin acos atan sinh cosh tanh asinh acosh atanh pow exp log exp2 log2 sqrt inversesqrt abs sign floor trunc round roundEven ceil fract mod modf min max clamp mix step smoothstep
+isnan isinf floatBitsToInt floatBitsToUint intBitsToFloat uintBitsToFloat length distance dot cross normalize faceforward reflect refract matrixCompMult outerProduct transpose determinant inverse
+lessThan lessThanEqual greaterThan greaterThanEqual equal notEqual any all not dFdx dFdy fwidth
+texture textureLod textureProj textureProjLod textureGrad textureOffset textureSize texelFetch texelFetchOffset
+iResolution iMouse iChannel0 iChannel1 iChannel2 iChannel3 iChannelResolution iDate iSampleRate
+TIME PI TAU E COLOR FRAGCOORD UV TEXTURE TEXTURE_PIXEL_SIZE SCREEN_UV SCREEN_PIXEL_SIZE POINT_COORD NORMAL NORMAL_MAP VERTEX AT_LIGHT_PASS`.split(/\s+/));
+/** Names WebGL has and a Godot canvas_item shader does not: [pattern, what to do]. */
+const GLSL_NO_GODOT = [
+  [/\bgl_FragCoord\b/, 'gl_FragCoord', 'gl_FragCoord: only .x, .y and .xy are mapped; FRAGCOORD has the top-left origin'],
+  [/\bgl_FrontFacing\b/, 'gl_FrontFacing', 'gl_FrontFacing: FRONT_FACING exists only in a spatial shader'],
+  [/\bgl_PointCoord\b/, 'gl_PointCoord', 'gl_PointCoord: POINT_COORD in Godot'],
+  [/\bgl_Position\b/, 'gl_Position', 'gl_Position: a vertex shader; write VERTEX in vertex()'],
+  [/\bgl_FragData\b/, 'gl_FragData', 'gl_FragData: Godot shaders have one colour output'],
+  [/\bgl_FragDepth\b/, 'gl_FragDepth', 'gl_FragDepth: DEPTH exists only in a spatial shader'],
+];
+
+/** Comments become spaces, line breaks stay, so line numbers match the source. */
+const blankComments = code => code.replace(/\/\*[\s\S]*?\*\/|\/\/[^\n]*/g, m => m.replace(/[^\n]/g, ' '));
+
+/** Names a GLSL text declares: variables, parameters, functions, structs and #define macros. */
+function glslDeclared(code) {
+  const names = new Set(), types = new Set(GLSL_TYPES);
+  for (const m of code.matchAll(/\bstruct\s+(\w+)/g)) { types.add(m[1]); names.add(m[1]); }
+  for (const m of code.matchAll(/^[ \t]*#[ \t]*define[ \t]+(\w+)/gm)) names.add(m[1]);
+  const re = /\b([A-Za-z_]\w*)\s+([A-Za-z_]\w*)/g;
+  let m;
+  while ((m = re.exec(code))) {
+    if (!types.has(m[1])) { re.lastIndex = m.index + m[1].length; continue; }
+    names.add(m[2]);
+    // "float a = f(b, c), d;" also declares d: follow the statement and take the name after each top-level comma.
+    let depth = 0;
+    for (let i = re.lastIndex; i < code.length; i++) {
+      const c = code[i];
+      if ('([{'.includes(c)) depth++;
+      else if (')]}'.includes(c)) { if (--depth < 0) break; }
+      else if (c === ';' && depth === 0) break;
+      else if (c === ',' && depth === 0) {
+        const next = /^\s*([A-Za-z_]\w*)/.exec(code.slice(i + 1));
+        if (next && !types.has(next[1]) && !GLSL_WORDS.has(next[1])) names.add(next[1]);
+      }
+    }
+  }
+  return names;
+}
+
+/**
+ * Plain GLSL fragment shader (WebGL 1/2, three.js ShaderMaterial) → Godot canvas_item. Reuses the Shadertoy
+ * translation for main/gl_FragColor/gl_FragCoord.xy; what Godot cannot compile is renamed when the meaning is
+ * the same, and otherwise listed in leftovers with a PORT: marker on its line.
+ */
+export function glslToGodot(text) {
+  const mapped = [];
+  const rename = (re, to, label) => { if (re.test(text)) mapped.push(label); text = text.replace(re, to); };
+  rename(/^[ \t]*#[ \t]*version\b[^\n]*\n?/gm, '', '#version removed');
+  rename(/\b(?:texture2D|textureCube)\s*\(/g, 'texture(', 'texture2D/textureCube → texture');
+  rename(/\b(?:texture2D|textureCube)Lod(?:EXT)?\s*\(/g, 'textureLod(', 'texture2DLod/textureCubeLod → textureLod');
+  rename(/\btexture2DProj\s*\(/g, 'textureProj(', 'texture2DProj → textureProj');
+  rename(/\bgl_FragColor\b/g, 'fragColor', 'gl_FragColor → COLOR');
+  rename(/\bgl_FragCoord\.xy\b/g, 'fragCoord', 'gl_FragCoord.xy → FRAGCOORD (y flipped)');
+  rename(/\bgl_FragCoord\.x\b/g, 'fragCoord.x', 'gl_FragCoord.x');
+  rename(/\bgl_FragCoord\.y\b/g, 'fragCoord.y', 'gl_FragCoord.y');
+  text = text.replace(/\bvoid\s+main\s*\(\s*(?:void)?\s*\)/, 'void mainImage(out vec4 fragColor, in vec2 fragCoord)');
+  const { header, body, ...r } = shadertoyParts(text);
+  const code = blankComments(body);
+  const declared = glslDeclared(code);
+  const leftovers = new Set(), reported = new Set();
+  const src = body.split('\n'), bare = code.split('\n');
+  const lines = src.map((line, n) => {
+    const c = bare[n], why = [];
+    if (/^\s*#/.test(c)) return line;
+    const io = /^\s*(?:(?:flat|smooth|centroid|invariant|highp|mediump|lowp)\s+)*(attribute|varying|in|out)\s+([^;(){}]+);/.exec(c);
+    if (io) {
+      const decl = `${io[1]} ${io[2].trim().replace(/\s+/g, ' ')}`;
+      leftovers.add(decl);
+      why.push(io[1] === 'attribute' ? `${decl}: vertex input; use VERTEX, UV, COLOR in vertex()`
+        : io[1] === 'out' ? `${decl}: a fragment output; write COLOR`
+          : `${decl}: nothing writes it in this file; assign it in vertex() (use UV for the mesh UV) or make it a uniform`);
+    }
+    for (const [re, name, note] of GLSL_NO_GODOT) if (re.test(c)) { leftovers.add(name); why.push(note); }
+    for (const m of c.matchAll(/\d[\w.]*|\.\s*[A-Za-z_]\w*|[A-Za-z_]\w*/g)) {
+      const id = m[0];
+      if (!/^[A-Za-z_]/.test(id) || id.startsWith('gl_') || GLSL_TYPES.has(id) || GLSL_WORDS.has(id) || declared.has(id) || reported.has(id)) continue;
+      reported.add(id);
+      leftovers.add(id);
+      why.push(`${id} is not declared: add a uniform or a definition`);
+    }
+    return why.length && !/\\\s*$/.test(line) ? `${line} // PORT: ${why.join('; ')}` : line;
+  });
+  r.notes.push(`Plain GLSL treated like a Shadertoy image shader (${mapped.length ? `mapped: ${mapped.join(', ')}` : 'nothing needed mapping'}); declare any other uniforms`);
+  return { text: `${[...header.map(l => l.replace('from Shadertoy GLSL', 'from plain GLSL')), ...lines].join('\n')}\n`, ...r, leftovers: [...leftovers] };
 }
 
 export function shadertoyToThree(text) {
@@ -390,7 +492,7 @@ export async function portShaderTool({ file, content, to = 'godot', out, name } 
   else if (kind === 'shadertoy' && target === 'threejs') { r = shadertoyToThree(text); ext = '.js'; }
   else if (kind === 'godot' && target === 'threejs') { r = godotToThree(text); ext = '.js'; }
   else if (kind === 'godot' && target === 'unity') { r = godotToUnity(text, base); ext = '.shader'; }
-  else if (kind === 'glsl' && target === 'godot') { r = shadertoyToGodot(text.replace(/\bgl_FragColor\b/g, 'fragColor').replace(/\bgl_FragCoord\.xy\b/g, 'fragCoord').replace(/\bvoid\s+main\s*\(\s*(?:void)?\s*\)/, 'void mainImage(out vec4 fragColor, in vec2 fragCoord)')); ext = '.gdshader'; r.notes.push('Plain GLSL treated like a Shadertoy image shader (gl_FragColor/gl_FragCoord mapped); declare any other uniforms'); }
+  else if (kind === 'glsl' && target === 'godot') { r = glslToGodot(text); ext = '.gdshader'; }
   else if (kind === 'hlsl' && target === 'godot') { r = { text: `shader_type spatial;\n// Ported by ReversePort: HLSL include translated to GLSL syntax; wire it into vertex()/fragment() by hand.\n\n${hlslToGlsl(text)}`, type: 'spatial', uniforms: [], leftovers: [...new Set([...hlslToGlsl(text).matchAll(LEFTOVER_RE)].map(m => m[0]))], notes: ['No ShaderLab wrapper found: functions translated, entry points left to you'] }; ext = '.gdshader'; }
   else throw new RPError('INVALID_ARGUMENT', `Cannot port a ${kind} shader to ${target}. Supported: shaderlab→godot, shadertoy/glsl→godot, shadertoy→threejs, godot→threejs, godot→unity, hlsl→godot.`);
   const dest = out ? path.resolve(out) : path.join(await workspaceDir('shaders'), `${base}${ext}`);

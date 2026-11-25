@@ -83,7 +83,7 @@ These tools run without an analysis engine or provider:
 - Project folder or exported game build: `re_scan` (engine and version,
   languages, entry points), then `re_graph`, `re_symbols`, `re_scene`.
 - Quick look at an executable, pack or unknown file: `re_binary`, `re_archive`
-  (Godot `.pck` also inside an `.exe`, zip/apk/jar, tar.gz, asar), `re_probe`,
+  (Godot `.pck` also inside an `.exe`, zip/apk/jar, tar.gz, asar), `re_probe`, `re_struct` (an unknown format from 2+ samples),
   `re_extract`. Two builds: `re_compare`. Write-up: `re_report`.
 - Unity project with pink materials, "missing script" components or GUID
   trouble after moving files: `re_refs` (reports only; fix in Unity).

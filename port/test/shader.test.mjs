@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { portShaderTool, detectShader, hlslToGlsl, shaderLabToGodot, shadertoyToGodot, godotToThree, godotToUnity } from '../src/shader.mjs';
+import { portShaderTool, detectShader, hlslToGlsl, shaderLabToGodot, shadertoyToGodot, glslToGodot, godotToThree, godotToUnity } from '../src/shader.mjs';
 import { languageOf } from '../src/symbols.mjs';
 import { scanProject } from '../src/scan.mjs';
 import { graphTool } from '../src/graph.mjs';
@@ -248,4 +248,54 @@ test('scan and graph cover a .hlsl file including a .hlsli file', async () => {
   const g = await graphTool({ path: dir });
   assert.ok(g.edges.some(e => e.from === 'lit.hlsl' && e.to === 'common.hlsli'), JSON.stringify(g.edges));
   await fs.rm(dir, { recursive: true, force: true });
+});
+
+test('plain GLSL (WebGL / three.js) → Godot: WebGL names are mapped or marked, never reported clean (#135)', async () => {
+  const FRAG = `precision mediump float;
+uniform sampler2D map;
+uniform float opacity;
+varying vec2 vUv;
+void main() {
+  vec4 texel = texture2D(map, vUv);
+  vec4 env = textureCube(envMap, vec3(0.0, 1.0, 0.0));
+  vec4 soft = texture2DLod(map, vUv, 2.0);
+  float d = gl_FragCoord.x / 100.0, e = gl_FragCoord.y;
+  float depth = gl_FragCoord.z;
+  if (texel.a < 0.5) discard;
+  gl_FragColor = vec4(texel.rgb * d, texel.a * opacity);
+}`;
+  assert.equal(detectShader(FRAG), 'glsl');
+  const g = glslToGodot(FRAG);
+  assert.ok(g.text.includes('vec4 texel = texture(map, vUv);'));
+  assert.ok(g.text.includes('vec4 env = texture(envMap, vec3(0.0, 1.0, 0.0)); // PORT: envMap is not declared'));
+  assert.ok(g.text.includes('vec4 soft = textureLod(map, vUv, 2.0);'));
+  assert.doesNotMatch(g.text, /texture2D|textureCube|gl_FragColor|gl_FragCoord\.[xy]\b|void main|precision/);
+  assert.ok(g.text.includes('float d = vec2(FRAGCOORD.x, iResolution.y - FRAGCOORD.y).x / 100.0, e = vec2(FRAGCOORD.x, iResolution.y - FRAGCOORD.y).y;'));
+  assert.match(g.text, /varying vec2 vUv; \/\/ PORT: varying vec2 vUv: nothing writes it/);
+  assert.match(g.text, /float depth = gl_FragCoord\.z; \/\/ PORT: gl_FragCoord/);
+  assert.ok(g.text.includes('COLOR = vec4(texel.rgb * d, texel.a * opacity);'));
+  assert.deepEqual(g.leftovers.sort(), ['envMap', 'gl_FragCoord', 'varying vec2 vUv']);
+  // Declared names (uniforms, locals, comma declarations, functions, macros, struct fields) are not leftovers.
+  const clean = glslToGodot(`#define GAIN 2.0
+uniform float amount;
+struct Light { vec3 dir; float power; };
+float boost(float v, float k) { return v * k * GAIN; }
+void main() {
+  Light l = Light(vec3(0.0, 1.0, 0.0), 1.5e1);
+  float a = boost(amount, l.power), b = 0.5;
+  gl_FragColor = vec4(vec3(a * b), 1.0);
+}`);
+  assert.deepEqual(clean.leftovers, []);
+  assert.doesNotMatch(clean.text, /PORT:/);
+  // Vertex-shader and built-in names WebGL supplies are named too.
+  const vert = glslToGodot('attribute vec3 position;\nvoid main() {\n  gl_Position = projectionMatrix * vec4(position, 1.0);\n}');
+  assert.deepEqual(vert.leftovers.sort(), ['attribute vec3 position', 'gl_Position', 'projectionMatrix']);
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'rp-glsl-'));
+  const r = await portShaderTool({ content: FRAG, to: 'godot', out: path.join(dir, 'threefrag.gdshader') });
+  await fs.rm(dir, { recursive: true, force: true });
+  assert.equal(r.detected, 'glsl');
+  assert.ok(r.portMarkers >= 3);
+  assert.ok(r.leftovers.includes('varying vec2 vUv') && r.leftovers.includes('envMap'));
+  assert.ok(r.notes.some(n => /Plain GLSL treated like a Shadertoy image shader \(mapped: .*texture2D/.test(n)));
+  assert.match(r.next, /Resolve the 3 leftover/);
 });
