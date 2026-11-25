@@ -116,8 +116,13 @@ const TEXT_KINDS = [
   { id: 'godot-project', name: 'Godot project settings', re: /^; Engine configuration file/ },
   { id: 'unity-yaml', name: 'Unity YAML asset (scene/prefab/asset)', re: /^%YAML[^\n]*\n%TAG !u! tag:unity3d\.com/ },
   { id: 'yaml', name: 'YAML', re: /^(%YAML|---\s*\n)/ },
+  // SVG before XML: the root element decides, after an optional XML declaration, comments and a doctype.
+  { id: 'svg', name: 'SVG image', re: /^\s*(?:<\?xml[^>]*\?>\s*)?(?:<!--[\s\S]*?-->\s*|<!DOCTYPE[^>]*>\s*)*<svg[\s>]/i },
   { id: 'xml', name: 'XML', re: /^\s*<\?xml/ },
   { id: 'html', name: 'HTML', re: /^\s*<!doctype html|^\s*<html/i },
+  // INI before JSON: both start with "[". A section line holds a bare name (no quotes, commas or brackets, and
+  // not a JSON literal such as [true]) and is followed by nothing, a comment, another section or key=value.
+  { id: 'ini', name: 'INI / config file (also Godot .import, .cfg)', re: /^\s*\[(?!\s*(?:true|false|null)\s*\])(?=[^\]\n]*[A-Za-z_])[^\]\n",[{}]+\][ \t]*(?:[;#][^\n]*)?\r?(?:$|\n\s*(?:$|[;#[]|[^\n=[\]{}",]+=))/ },
   { id: 'json', name: 'JSON', re: /^\s*[[{]/ },
   { id: 'obj', name: 'Wavefront OBJ (text model)', re: /^(#[^\n]*\n)*\s*(mtllib|o |v -?\d)/m },
   { id: 'shebang-script', name: 'Script (shebang)', re: /^#!/ },
