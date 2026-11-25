@@ -1,9 +1,11 @@
-// Imported resources of a Godot export back to the formats they were imported from: textures (.ctex/.stex → .png or
-// .webp), audio (.sample → .wav, .oggvorbisstr/.oggstr → .ogg, .mp3str → .mp3) and translations (.translation → .csv).
+// Imported resources of a Godot export back to the formats they were imported from: textures (.ctex/.stex → .png;
+// lossless WebP is decoded to PNG, lossy WebP stays .webp), audio (.sample → .wav, QOA included; .oggvorbisstr/.oggstr
+// → .ogg, .mp3str → .mp3) and translations (.translation → .csv).
 // The layouts are taken from Godot's source; each section names the file and the fields it relies on. What cannot
-// be converted without guessing (Basis Universal, ASTC, BPTC, QOA, ...) is reported with its format and size and left.
+// be converted without guessing (Basis Universal, ASTC, BPTC, ...) is reported with its format and size and left.
 import { RPError } from './util.mjs';
 import { decodeTexture, encodePng } from './texture.mjs';
+import { decodeWebp } from './webp.mjs';
 
 /** Extensions of imported resources this module handles (or reports). */
 export const IMPORTED_RE = /\.(ctex|stex|ctex3d|ctexarray|ccube|ccubearray|tex3d|texarr|image|sample|oggvorbisstr|oggstr|mp3str|translation)$/i;
@@ -117,7 +119,14 @@ function readImage4(buf, off) {
 function imageOutput(img) {
   const where = `${img.width}x${img.height} ${img.format}`;
   if (img.dataFormat === 'png') { const png = pngPayload(img.payload); return png ? { ext: '.png', data: png.data, how: 'stored PNG' } : { reason: `${where}: the lossless payload is not a PNG file` }; }
-  if (img.dataFormat === 'webp') { const webp = webpPayload(img.payload); return webp ? { ext: '.webp', data: webp.data, how: 'stored WebP' } : { reason: `${where}: the payload is not a WebP file` }; }
+  if (img.dataFormat === 'webp') {
+    const webp = webpPayload(img.payload);
+    if (!webp) return { reason: `${where}: the payload is not a WebP file` };
+    // Lossless WebP (Godot 4's default for lossless textures) becomes the PNG the project referenced; lossy WebP stays.
+    let decoded = null;
+    try { decoded = decodeWebp(webp.data); } catch (e) { if (!(e instanceof RPError)) throw e; return { ext: '.webp', data: webp.data, how: `stored WebP (not converted: ${e.message})` }; }
+    return decoded ? { ext: '.png', data: encodePng(decoded.rgba, decoded.width, decoded.height), how: 'lossless WebP decoded to PNG' } : { ext: '.webp', data: webp.data, how: 'stored lossy WebP' };
+  }
   if (img.dataFormat === 'basis_universal') return { reason: `Basis Universal (${img.payload?.length ?? 0} bytes, ${where}): not transcoded here, the file is left as it is` };
   if (img.dataFormat !== 'image') return { reason: `data format ${img.dataFormat} is not known` };
   const rgba = godotImageToRgba(img.payload, img.format, img.width, img.height);
@@ -230,6 +239,58 @@ export function decodeGodotAdpcm(data, stereo) {
   return out;
 }
 
+// QOA, "Quite OK Audio" (thirdparty/misc/qoa.h in Godot 4.3+, MIT, Dominic Szablewski): what the WAV importer
+// writes for "compress mode: QOA", the default in Godot 4.3+. The sample data is a whole QOA file: u64 header
+// ('qoaf', total samples per channel), then frames of u64 header (channels, rate, samples, frame size), the LMS state
+// per channel (4 x i16 history, 4 x i16 weights) and 64-bit slices (4-bit scale factor, 20 x 3-bit residuals).
+// All values are big-endian. This follows qoa_decode_frame step by step; integer maths as in C (32-bit, arithmetic shifts).
+const QOA_SLICE_LEN = 20, QOA_LMS_LEN = 4;
+const QOA_DEQUANT = [1, 7, 21, 45, 84, 138, 211, 304, 421, 562, 731, 928, 1157, 1419, 1715, 2048].map(sf => [0.75, -0.75, 2.5, -2.5, 4.5, -4.5, 7, -7].map(d => { const v = sf * d; return Math.sign(v) * Math.round(Math.abs(v)); }));
+
+/** A QOA file → { channels, sampleRate, frames, pcm (interleaved 16-bit little-endian) }. */
+export function decodeQoa(buf) {
+  if (buf.length < 16 || buf.toString('latin1', 0, 4) !== 'qoaf') throw new RPError('BAD_FORMAT', 'not QOA data (no "qoaf" header)');
+  const total = buf.readUInt32BE(4);
+  const channels = buf[8], sampleRate = buf.readUIntBE(9, 3);
+  if (!total || !channels || !sampleRate) throw new RPError('BAD_FORMAT', 'QOA header without samples, channels or sample rate');
+  const out = Buffer.alloc(total * channels * 2);
+  const history = Array.from({ length: channels }, () => new Int32Array(QOA_LMS_LEN));
+  const weights = Array.from({ length: channels }, () => new Int32Array(QOA_LMS_LEN));
+  let p = 8, done = 0;
+  while (done < total && p + 8 <= buf.length) {
+    const ch = buf[p], rate = buf.readUIntBE(p + 1, 3), samples = buf.readUInt16BE(p + 4), size = buf.readUInt16BE(p + 6);
+    const slices = Math.floor((size - 8 - QOA_LMS_LEN * 4 * ch) / 8);
+    if (ch !== channels || rate !== sampleRate || p + size > buf.length || samples * ch > slices * QOA_SLICE_LEN || done + samples > total) break;
+    let q = p + 8;
+    for (let c = 0; c < ch; c++) {
+      for (let i = 0; i < QOA_LMS_LEN; i++) { history[c][i] = buf.readInt16BE(q + i * 2); weights[c][i] = buf.readInt16BE(q + 8 + i * 2); }
+      q += 16;
+    }
+    for (let si = 0; si < samples; si += QOA_SLICE_LEN) {
+      for (let c = 0; c < ch; c++) {
+        const hi = buf.readUInt32BE(q), lo = buf.readUInt32BE(q + 4); q += 8;
+        const dq = QOA_DEQUANT[hi >>> 28];
+        const end = Math.min(si + QOA_SLICE_LEN, samples);
+        const h = history[c], w = weights[c];
+        for (let k = 0, n = si; n < end; k++, n++) {
+          const bit = 57 - 3 * k; // the k-th 3-bit residual, counted from bit 59 down
+          const quant = bit >= 32 ? (hi >>> (bit - 32)) & 7 : bit >= 0 && bit <= 29 ? (lo >>> bit) & 7 : ((hi << (32 - bit)) | (lo >>> bit)) & 7;
+          const predicted = ((w[0] * h[0] + w[1] * h[1] + w[2] * h[2] + w[3] * h[3]) | 0) >> 13;
+          const residual = dq[quant];
+          const sample = Math.max(-32768, Math.min(32767, predicted + residual));
+          out.writeInt16LE(sample, ((done + n) * channels + c) * 2);
+          const delta = residual >> 4;
+          for (let i = 0; i < QOA_LMS_LEN; i++) w[i] = (w[i] + (h[i] < 0 ? -delta : delta)) | 0;
+          h[0] = h[1]; h[1] = h[2]; h[2] = h[3]; h[3] = sample;
+        }
+      }
+    }
+    done += samples; p += size;
+  }
+  if (done < total) throw new RPError('BAD_FORMAT', `QOA data ends after ${done} of ${total} samples`);
+  return { channels, sampleRate, frames: total, pcm: out };
+}
+
 const fourcc = (id, data) => { const head = Buffer.alloc(8); head.write(id, 0, 'latin1'); head.writeUInt32LE(data.length, 4); return Buffer.concat([head, data, Buffer.alloc(data.length & 1)]); };
 
 /**
@@ -250,7 +311,10 @@ export function sampleToWav(res) {
   if (format === 0) { pcm = Buffer.from(data.map(b => (b + 128) & 255)); bits = 8; }
   else if (format === 1) { pcm = data.subarray(0, data.length - (data.length % (2 * ch))); bits = 16; }
   else if (format === 2) { pcm = decodeGodotAdpcm(data, stereo); bits = 16; info.how = 'IMA ADPCM decoded to 16-bit PCM (Godot stores it without WAV block headers)'; }
-  else if (format === 3) return { info, notConverted: `QOA audio (${data.length} bytes, ${rate} Hz, ${ch} channel${ch > 1 ? 's' : ''}): not decoded here, the file is left as it is` };
+  else if (format === 3) {
+    try { pcm = decodeQoa(data).pcm; } catch (e) { if (!(e instanceof RPError)) throw e; return { info, notConverted: `QOA audio (${data.length} bytes, ${rate} Hz, ${ch} channel${ch > 1 ? 's' : ''}) did not decode: ${e.message}` }; }
+    bits = 16; info.how = 'QOA decoded to 16-bit PCM (QOA is lossy: this is what the game plays, not the original recording)';
+  }
   else return { info, notConverted: `sample format ${format} is not known` };
   const align = ch * (bits / 8), frames = pcm.length / align;
   const fmt = Buffer.alloc(16);

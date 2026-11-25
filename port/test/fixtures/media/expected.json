@@ -1,0 +1,42 @@
+{
+ "lossless-a-q0-m0.webp": {
+  "rgbaSha256": "94d97c9f1efc0e9978a47c72cfd6eb18e61d418db067ca6d12f02e6c847d7985"
+ },
+ "lossless-a-q100-m6.webp": {
+  "rgbaSha256": "94d97c9f1efc0e9978a47c72cfd6eb18e61d418db067ca6d12f02e6c847d7985"
+ },
+ "lossless-c-q100-m6.webp": {
+  "rgbaSha256": "df23d01ab7ab9e4ce2f4f77eda45f4efbfd7e27c947661e35d424e145a2dbf9f"
+ },
+ "lossless-d-q100-m6.webp": {
+  "rgbaSha256": "406f0ab73dd1a4c187814b3ef07730ca13ce70f2dd5d2b9fcbff7e36476d1882"
+ },
+ "lossless-one-q100-m6.webp": {
+  "rgbaSha256": "63d987d1c6d69751c17297f410f5b3547a65d096a8993b35bcb4f9cad054f176"
+ },
+ "lossless-p16-q50-m4.webp": {
+  "rgbaSha256": "ac4772b7d1ce31b3eac592cc382adac6a13cfc31cf02359c9c204ab023b4c3b2"
+ },
+ "lossless-p2-q100-m6.webp": {
+  "rgbaSha256": "da14637b1dc69f2091f4daedc9a4b913eafb624ab18f752fe6c3edcb0eee1d5f"
+ },
+ "lossless-p200-q100-m6.webp": {
+  "rgbaSha256": "2b68f471346515d236535c88f932ab056b5cb8cbeda01fe02608cb4769487d52"
+ },
+ "lossless-p4-q100-m6.webp": {
+  "rgbaSha256": "e408c17c6d6258b0c95571523ad03daed8561ef546cd9db9e60a52d2137faa95"
+ },
+ "lossless-tall-q100-m6.webp": {
+  "rgbaSha256": "50ed78973e2c8dbd7f8d5a15778e9ae7f55dfe524d684b9d28728e01a8e1f350"
+ },
+ "stereo-5200.qoa": {
+  "pcmSha256": "8b9b7d46006fc43c9d2efecf46269e5d223bdcb34f1eaaa6bd903cb1c5b76d3c",
+  "channels": 2,
+  "frames": 5200
+ },
+ "mono-700.qoa": {
+  "pcmSha256": "98f23484b4535bf85872ba10501c0544e21d3931fcf5572f1a43a50cd5100ae8",
+  "channels": 1,
+  "frames": 700
+ }
+}
