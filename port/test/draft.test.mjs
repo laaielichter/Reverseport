@@ -364,3 +364,96 @@ test('single-quoted strings: escaped quotes and backslashes survive, also inside
   assert.ok(c.includes(String.raw`var a = "say \"hi\" it's \"x\" \\";`), c);
   assert.ok(c.includes(String.raw`return $"n=\"{n}\" \"q\"";`), c);
 });
+
+for (const to of ['godot-csharp', 'unity']) {
+  test(`string length and int()/float() of a string compile in C# (#168, ${to})`, () => {
+    const { content: c, markers } = gd(`
+extends Node
+
+func label(player_name: String, level_text: String, v: Vector2, x) -> String:
+	var level := int(level_text)
+	var ratio := float("0.5")
+	var whole := int(3.7) + int(v.length())
+	var half := float(2)
+	var unknown := int(x)
+	if player_name.length() > 12:
+		return player_name.substr(0, 12)
+	return player_name + " " + str(level)
+`, { to });
+    const unity = to === 'unity';
+    assert.match(c, unity ? /var level = int\.Parse\(levelText\);/ : /var level = levelText\.ToInt\(\);/);
+    assert.match(c, unity ? /var ratio = float\.Parse\("0\.5", System\.Globalization\.CultureInfo\.InvariantCulture\);/ : /var ratio = "0\.5"\.ToFloat\(\);/);
+    assert.match(c, /var whole = \(int\)\(3\.7f\) \+ \(int\)\(v\.Length\(\)\);/, 'numbers keep the cast, a vector keeps Length()');
+    assert.match(c, /var half = \(float\)\(2\);/);
+    assert.match(c, /if \(playerName\.Length > 12\)/);
+    assert.match(c, unity ? /return playerName\.Substring\(0, 12\);/ : /return playerName\.Substr\(0, 12\);/);
+    assert.match(c, /var unknown = \(int\)\(x\); \/\/ PORT: int\(\): the cast only compiles for a number/);
+    assert.deepEqual(markers.map(m => m.note.slice(0, 6)), ['int():'], 'only the untyped int(x) needs review');
+    assert.ok(balanced(c));
+  });
+
+  test(`for over a size counts instead of foreach over an int (#169, ${to})`, () => {
+    const { content: c, markers } = gd(`
+extends Node
+
+var enemies: Array = []
+
+func heal_all(title: String) -> void:
+	for i in enemies.size():
+		print(i)
+	for j in len(enemies):
+		print(j)
+	var n := enemies.size()
+	for k in n:
+		print(k)
+	for m in title.length():
+		print(m)
+	for item in enemies:
+		print(item)
+`, { to });
+    const list = to === 'unity' ? 'enemies' : 'Enemies';
+    assert.ok(c.includes(`for (int i = 0; i < ${list}.Count; i++)`), c);
+    assert.ok(c.includes(`for (int j = 0; j < ${list}.Count; j++)`), c);
+    assert.ok(c.includes('for (int k = 0; k < n; k++)'), c);
+    assert.ok(c.includes('for (int m = 0; m < title.Length; m++)'), c);
+    assert.ok(c.includes(`foreach (var item in ${list})`), 'a collection is still a foreach');
+    assert.doesNotMatch(c, /foreach \(var \w+ in [\w.]+\.(Count|Length)\)/);
+    assert.equal(markers.length, 0, JSON.stringify(markers));
+  });
+
+  test(`match bindings and guards become case patterns, never a second default (#175, ${to})`, () => {
+    const { content: c, markers } = gd(`
+extends Node
+
+func rank(score: int) -> String:
+	match score:
+		0:
+			return "none"
+		var s when s >= 90:
+			return "gold"
+		var s:
+			return "bronze %d" % s
+
+func kind(v, ok: bool) -> String:
+	match v:
+		1 when ok:
+			return "one"
+		2, 3 when ok:
+			return "few"
+		[1, var x]:
+			print(x)
+		{"k": var w}: return "dict"
+		_:
+			return "other"
+`, { to });
+    assert.match(c, /switch \(score\)\n\s+\{\n\s+case 0:\n\s+return "none";\n\s+case var s when s >= 90:\n\s+return "gold";\n\s+case var s:\n\s+return \$"bronze \{s\}";\n\s+\}/);
+    assert.match(c, /case 1 when ok:\n\s+return "one";\n\s+case 2 when ok:\n\s+case 3 when ok:\n\s+return "few";/);
+    // Array and dictionary patterns stay for a human: marked, and commented out so the switch still compiles.
+    assert.match(c, /\/\/ case \[1, var x\]: \/\/ PORT: match pattern "\[1, var x\]"/);
+    assert.match(c, /\/\/ case \{"k": var w\}: \/\/ PORT: match pattern/);
+    assert.match(c, /\n\s+\/\/ return "dict";/);
+    assert.equal(markers.filter(m => m.note.startsWith('match pattern')).length, 2);
+    for (const sw of c.split(/\bswitch \(/).slice(1)) assert.ok((sw.split('\n    }')[0].match(/^\s*default:/gm) ?? []).length <= 1, sw);
+    assert.ok(balanced(c));
+  });
+}
