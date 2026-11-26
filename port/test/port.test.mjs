@@ -157,3 +157,14 @@ test('plan saves never collide, and a damaged plan.json falls back to the previo
   const lost = await callTool('port_status', { planId: plan.planId }).catch(e => e);
   assert.equal(lost.code, 'PLAN_UNREADABLE', 'damaged is not the same as unknown');
 });
+
+test('Godot → three.js map: models, collision suffixes and the lit look', async () => {
+  const { leftovers, apiHits, portMapTool } = await import('../src/knowledge.mjs');
+  const map = portMapTool({ from: 'godot', to: 'threejs', query: 'gltfloader' });
+  assert.ok(map.entries.some(e => e.id === 'gltf-model' && /userData\.name/.test(e.notes)));
+  const ids = apiHits('var car = load("res://car.glb")\n$Sun.light_energy = 1.0 # DirectionalLight3D\n', 'godot', 'threejs').map(h => h.id ?? h);
+  assert.ok(JSON.stringify(ids).includes('gltf-model'), JSON.stringify(ids));
+  assert.ok(JSON.stringify(ids).includes('lit-look'));
+  const left = leftovers('const body = gltf.scene.getObjectByName("Body-convcol");\nconst color = "#fff"; el.style.setProperty("--col", "1");\n', 'godot', 'threejs');
+  assert.deepEqual(left.filter(l => l.id === 'collision-suffix').map(l => l.count), [1]);
+});

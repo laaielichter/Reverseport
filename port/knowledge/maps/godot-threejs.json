@@ -7,7 +7,9 @@
     "Axes match Godot (right-handed, Y up, cameras look down -Z, meters): positions and quaternions carry over unchanged. Godot's default Euler order is YXZ; set object.rotation.order = 'YXZ' when copying Euler angles.",
     "Godot scenes: export meshes and materials as glTF 2.0 (Scene → Export As → glTF 2.0) and load them with GLTFLoader; recreate the node logic in TypeScript classes that own an Object3D. ReversePort can write a TypeScript scene-builder module from a .tscn (port_scene).",
     "Each GDScript becomes a TypeScript class with update(dt) and fixedUpdate(dt) methods; a small game loop calls them from renderer.setAnimationLoop.",
-    "Dispose geometries, materials and textures when removing objects (the browser does not free GPU memory for you)."
+    "Dispose geometries, materials and textures when removing objects (the browser does not free GPU memory for you).",
+    "Procedural models (generators, recipes, model specs) port best as data plus the generator code, not as exported files. Prove the port by building on both sides and comparing a hash of each node's geometry, its name, position and materials: a library of 1000 Godot model recipes ported to three.js this way came out identical for all 1000.",
+    "When you merge two vocabularies (thing names, aliases, tags, possibly in two languages), check for collisions after normalising case and plurals: one alias that names two things makes every lookup pick the wrong one. Resolve each collision explicitly instead of letting the last file win."
   ],
   "entries": [
     { "id": "script-class", "topic": "structure", "from": "extends Node3D", "to": "class X { object = new THREE.Group(); update(dt: number) {} }", "pattern": "^extends\\s" },
@@ -37,6 +39,9 @@
     { "id": "groups", "topic": "architecture", "from": "groups", "to": "Sets/arrays per group, or object.userData.tags", "pattern": "(add_to_group|get_nodes_in_group)\\(" },
     { "id": "print", "topic": "debug", "from": "print()", "to": "console.log()", "pattern": "\\bprint\\(", "leftover": "^\\s*print\\(" },
     { "id": "math", "topic": "math", "from": "lerp, clamp, deg_to_rad", "to": "THREE.MathUtils.lerp, clamp, degToRad", "pattern": "\\b(lerp|clamp|deg_to_rad)\\(" },
-    { "id": "shader", "topic": "rendering", "from": ".gdshader", "to": "ShaderMaterial (GLSL) or TSL node materials (WebGPU renderer)", "pattern": "shader_type\\s" }
+    { "id": "shader", "topic": "rendering", "from": ".gdshader", "to": "ShaderMaterial (GLSL) or TSL node materials (WebGPU renderer)", "pattern": "shader_type\\s" },
+    { "id": "gltf-model", "topic": "resources", "from": "a .glb/.gltf model made for Godot (imported scene)", "to": "new GLTFLoader().loadAsync('x.glb'): meshes, UVs, node hierarchy, pivots and PBR materials load unchanged (glTF is +Y up, metres, like both engines)", "pattern": "\\.(glb|gltf)\\b", "notes": "GLTFLoader sanitises node names (PropertyBinding.sanitizeNodeName) and makes repeats unique with _1, _2; the original glTF name stays in object.userData.name. getObjectByName must use the sanitised, unique name." },
+    { "id": "collision-suffix", "topic": "physics", "from": "glTF node name suffixes -col / -convcol / -colonly / -convcolonly (Godot's importer turns them into collision shapes)", "to": "no meaning in three.js: skip or hide those nodes after loading and build Rapier colliders yourself (ColliderDesc.convexHull from the mesh positions, or cuboid / ball / capsule)", "pattern": "\\w-(conv)?col(only)?\\b", "leftover": "[\"'][^\"'\\n]*\\w-(conv)?col(only)?[\"']" },
+    { "id": "lit-look", "topic": "rendering", "from": "materials judged under Godot's sun, sky and tonemapper", "to": "same linear base colours, but match the lighting: renderer.toneMapping (ACESFilmicToneMapping or AgXToneMapping), toneMappingExposure, a DirectionalLight plus scene.environment from PMREMGenerator", "pattern": "DirectionalLight3D|tonemap_mode|WorldEnvironment", "notes": "A model that looked right in Godot looks dark or washed out in three.js mostly because of exposure and environment light, not its albedo: fix the lighting before retuning colours." }
   ]
 }
