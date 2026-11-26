@@ -387,4 +387,3 @@ file uses them, and `port_verify` flags the leftovers.
   mapping, exposure and environment light, not its colours. Match the lighting first.
 - **Merging vocabularies:** when two lists of names, aliases or tags are merged, check for collisions after
   normalising case and plurals.
-
