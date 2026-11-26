@@ -369,3 +369,21 @@ In a real game you also:
   simple meshes (box, sphere and the like) itself.
 - Choose physics, input and UI yourself. three.js only draws; `port_unit` names a common stack in its conventions.
 - Run both versions side by side and compare what you see.
+
+## 8. Models: what a large port taught
+
+ReversePort's Godot → three.js map grew from a real port: the 1000 procedural models of Godotwright's library,
+ported to Threesmith. `port_map {from: "godot", to: "threejs"}` lists these entries; `port_unit` names them when a
+file uses them, and `port_verify` flags the leftovers.
+
+- **Port procedural models as data plus the generator**, not as exported files. Then build on both sides and compare
+  a hash of each node's geometry, name, position and materials. In that port all 1000 came out identical.
+- **`gltf-model`:** a `.glb` loads unchanged with `GLTFLoader`, but node names are sanitised and repeats get `_1`,
+  `_2`. The original name stays in `object.userData.name`.
+- **`collision-suffix`:** Godot's importer turns `-col`, `-convcol`, `-colonly` and `-convcolonly` nodes into
+  collision shapes. three.js does not; build Rapier colliders yourself. A name with such a suffix left in ported
+  code is a leftover.
+- **`lit-look`:** a model that looked right in Godot often looks too dark or washed out in three.js because of tone
+  mapping, exposure and environment light, not its colours. Match the lighting first.
+- **Merging vocabularies:** when two lists of names, aliases or tags are merged, check for collisions after
+  normalising case and plurals.
