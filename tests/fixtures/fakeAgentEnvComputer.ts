@@ -644,9 +644,16 @@ export const fakeAgentEnvRunner = async (
       } catch {
         return [];
       }
-      return (await readFile(path, "utf8"))
-        .trim()
+      const contents = await readFile(path, "utf8");
+      // The runner appends lines while tests poll this file; ignore a trailing
+      // line that is empty or still being written so parsing only sees complete
+      // newline-terminated lines.
+      const lastNewline = contents.lastIndexOf("\n");
+      if (lastNewline === -1) return [];
+      return contents
+        .slice(0, lastNewline)
         .split("\n")
+        .filter((line) => line.length > 0)
         .map((line) => JSON.parse(line) as unknown);
     },
   };
