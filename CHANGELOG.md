@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.28.0](https://github.com/laaielichter/Reverseport/compare/reverseport-1.27.0...reverseport-1.28.0) (2026-11-26)
+
+
+### Features
+
+* **knowledge:** Godot → three.js lessons from porting 1000 models ([#195](https://github.com/laaielichter/Reverseport/issues/195)) ([83ac0c5](https://github.com/laaielichter/Reverseport/commit/83ac0c54bcb337cdc860ff26c78a6e0245b30e54))
+
+
+### Documentation
+
+* the 1000-model port on the site and in the Godot → three.js walkthrough ([#196](https://github.com/laaielichter/Reverseport/issues/196)) ([8b8c841](https://github.com/laaielichter/Reverseport/commit/8b8c8413c85b5edffc144ff7430d24bd3e98a814))
+
+
+### Tests
+
+* **fixture:** skip incomplete JSONL lines in fake agent env notes ([#194](https://github.com/laaielichter/Reverseport/issues/194)) ([95780f1](https://github.com/laaielichter/Reverseport/commit/95780f174c63dc3fa4573d377c5915ee6f212ebc))
+
 ## [1.27.0](https://github.com/laaielichter/Reverseport/compare/reverseport-1.26.0...reverseport-1.27.0) (2026-11-25)
 
 
