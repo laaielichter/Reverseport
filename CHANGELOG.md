@@ -1,5 +1,122 @@
 # Changelog
 
+## [1.29.0](https://github.com/laaielichter/Reverseport/compare/reverseport-1.28.0...reverseport-1.29.0) (2026-11-27)
+
+
+### ⚠ BREAKING CHANGES
+
+* **engine:** `reverseport setup` now registers the absolute Node.js runtime and the entry script it runs from instead of `npx -y reverseport@<version> mcp`, following upstream. Existing npx registrations are still recognised; doctor reports them as stale and the next setup rewrites them with a backup.
+* **setup:** clients now see the server as "reverseport", so tool names change from mcp__rea__* to mcp__reverseport__*. Rerun `reverseport setup` (or `reverseport update`) to move an existing "rea" registration; permission rules naming mcp__rea__* need updating.
+* **engine:** update the deep-analysis engine to REA 6.8.0 ([#59](https://github.com/laaielichter/Reverseport/issues/59))
+
+### Features
+
+* **archive:** list and extract Quake .pak and Doom .wad ([#101](https://github.com/laaielichter/Reverseport/issues/101)) ([#152](https://github.com/laaielichter/Reverseport/issues/152)) ([13245ee](https://github.com/laaielichter/Reverseport/commit/13245eeb98e6e078cb8b3f317b57b5cbfa78d701))
+* **archive:** open standalone FMOD .fsb sound banks ([#74](https://github.com/laaielichter/Reverseport/issues/74)) ([#147](https://github.com/laaielichter/Reverseport/issues/147)) ([6743a3c](https://github.com/laaielichter/Reverseport/commit/6743a3c800b138914e3b424ef8dde7793d53fc65))
+* **bench:** add rea-lab's large challenge set to the self-check ([#14](https://github.com/laaielichter/Reverseport/issues/14)) ([73ffed0](https://github.com/laaielichter/Reverseport/commit/73ffed005986ffdebc27a6a4281a4ca01af5e358))
+* **browser:** capture one element with a selector (HTML, CSS, cropped image) ([#29](https://github.com/laaielichter/Reverseport/issues/29)) ([dc39066](https://github.com/laaielichter/Reverseport/commit/dc390661eac3c8a3ad13b177323a3d9b223e3e9c))
+* **cli:** reverseport skills get prints the guide for this version ([#26](https://github.com/laaielichter/Reverseport/issues/26)) ([dc8095c](https://github.com/laaielichter/Reverseport/commit/dc8095c149398cdd17b8d5bb532e37a588948b7f))
+* **compare:** show IL2CPP types that changed between two metadata files ([#165](https://github.com/laaielichter/Reverseport/issues/165)) ([9a9f787](https://github.com/laaielichter/Reverseport/commit/9a9f787c474ea4172e12de7eb8b93c666e48bdf1))
+* **engine:** update the deep-analysis engine to REA 6.8.0 ([#59](https://github.com/laaielichter/Reverseport/issues/59)) ([05ed968](https://github.com/laaielichter/Reverseport/commit/05ed96844f1f9a6be318a98cbd4fdf135db84035))
+* **engine:** update the deep-analysis engine to REA main 72d5e72e6 ([#127](https://github.com/laaielichter/Reverseport/issues/127)) ([9b28664](https://github.com/laaielichter/Reverseport/commit/9b2866499b79573118782fe6382b3387368dca3e))
+* formats from samples, an injection shield, and what other tools read (binaries, Godot imports, Ren'Py, GameMaker, Unreal, Android, iOS) ([#187](https://github.com/laaielichter/Reverseport/issues/187)) ([8599f50](https://github.com/laaielichter/Reverseport/commit/8599f50502a5677b683c690b25ee91436f262bf7))
+* **formats:** recognize SPIR-V, DXBC shaders and .ttc collections ([#137](https://github.com/laaielichter/Reverseport/issues/137)) ([#148](https://github.com/laaielichter/Reverseport/issues/148)) ([54a195c](https://github.com/laaielichter/Reverseport/commit/54a195c3d59205eddd5f3e90da04b485fcfd5be4))
+* **knowledge:** Godot → three.js lessons from porting 1000 models ([#195](https://github.com/laaielichter/Reverseport/issues/195)) ([83ac0c5](https://github.com/laaielichter/Reverseport/commit/83ac0c54bcb337cdc860ff26c78a6e0245b30e54))
+* **mcp:** speak MCP 2026-07-28 next to the classic handshake, with tasks for long calls ([#60](https://github.com/laaielichter/Reverseport/issues/60)) ([fc4c7bd](https://github.com/laaielichter/Reverseport/commit/fc4c7bdd892dc45ae0538939f43977d10848d9de))
+* **plugin:** list Stashpad and agentdisk in the ReversePort marketplace ([#17](https://github.com/laaielichter/Reverseport/issues/17)) ([469ff3a](https://github.com/laaielichter/Reverseport/commit/469ff3a834f015409846e93221ef683481ca9137))
+* **plugin:** publish a slim claude-directory branch for the Claude plugin directory ([#87](https://github.com/laaielichter/Reverseport/issues/87)) ([6f21c3e](https://github.com/laaielichter/Reverseport/commit/6f21c3ef965da988c59abce17fef0a0900c6ca22))
+* **plugin:** settings instead of environment variables, and an icon ([#63](https://github.com/laaielichter/Reverseport/issues/63)) ([afb4ccd](https://github.com/laaielichter/Reverseport/commit/afb4ccdb9f1597727493f0d815e4a2e87a387cf8))
+* **port:** 20 real-world porting problems — API check, Godot 3→4, saves, shaders, physics, traces, game containers, Godot/IL2CPP/RPG Maker ([#35](https://github.com/laaielichter/Reverseport/issues/35)) ([a6320f8](https://github.com/laaielichter/Reverseport/commit/a6320f8961018584c01e9777651130940c0fc500))
+* **port:** accept plain ids for list arguments on the command line ([#12](https://github.com/laaielichter/Reverseport/issues/12)) ([55c826e](https://github.com/laaielichter/Reverseport/commit/55c826e71de7e3117214ff50b8745c75dab74ed7))
+* **port:** add port_draft, a parsed GDScript to C# first draft for Godot C# and Unity ([#161](https://github.com/laaielichter/Reverseport/issues/161)) ([4bce2dc](https://github.com/laaielichter/Reverseport/commit/4bce2dcee0d821948e9897f4e00cc3f2788fca70))
+* **port:** fewer calls and fewer tokens for agents ([#62](https://github.com/laaielichter/Reverseport/issues/62)) ([1653bec](https://github.com/laaielichter/Reverseport/commit/1653becc6fc3277065d42ad21595941fd50fd512))
+* **port:** import maps, pnpm globs, more archives and game libs; safer output budget ([#72](https://github.com/laaielichter/Reverseport/issues/72)) ([9986677](https://github.com/laaielichter/Reverseport/commit/998667705678c40178c33668fa1cad6dd5eda646))
+* **port:** optional agentdisk link: workspace disk use in port doctor ([#37](https://github.com/laaielichter/Reverseport/issues/37)) ([528edb0](https://github.com/laaielichter/Reverseport/commit/528edb08d784941a18ec96486022fef7a6814f24))
+* **port:** output budget for big results and more forgiving input ([#25](https://github.com/laaielichter/Reverseport/issues/25)) ([a2838d6](https://github.com/laaielichter/Reverseport/commit/a2838d64dfbd753705b7e4ef19d5525d79fcdc64))
+* **port:** proof cases, guard hooks and an optional Stashpad link ([#1](https://github.com/laaielichter/Reverseport/issues/1)) ([83d1307](https://github.com/laaielichter/Reverseport/commit/83d13075cebd23f568674b50b90b40fc2bc80acc))
+* **port:** re_compare shows .NET type and method changes and the next step ([#64](https://github.com/laaielichter/Reverseport/issues/64)) ([24f2c40](https://github.com/laaielichter/Reverseport/commit/24f2c409f97afdaf339185e13e2ebbc425150b21))
+* **port:** resolve Rust use paths, skip build output, keep tests out of the architecture picture ([#27](https://github.com/laaielichter/Reverseport/issues/27)) ([d315e5a](https://github.com/laaielichter/Reverseport/commit/d315e5a7a5b82d0f865ce6e16d2eac99a18d18c5))
+* **port:** understand JS/TS monorepos in scan and graph ([#22](https://github.com/laaielichter/Reverseport/issues/22)) ([afcfafb](https://github.com/laaielichter/Reverseport/commit/afcfafb8de49e6662f2f66e07339758798b2daa0))
+* **port:** unpack Unity asset bundles and .assets files in re_archive ([#89](https://github.com/laaielichter/Reverseport/issues/89)) ([de173ec](https://github.com/laaielichter/Reverseport/commit/de173ec0ca77c5aa52ef5342291893df166bea7a))
+* **probe:** recognize KTX2, PVR, ASTC and QOI textures ([#73](https://github.com/laaielichter/Reverseport/issues/73)) ([#149](https://github.com/laaielichter/Reverseport/issues/149)) ([4c7daf4](https://github.com/laaielichter/Reverseport/commit/4c7daf47606791a2b42355eb7af5c07f85a74378))
+* **probe:** recognize MPQ, CPK, BSA/BA2 and .utoc archives ([#108](https://github.com/laaielichter/Reverseport/issues/108)) ([#151](https://github.com/laaielichter/Reverseport/issues/151)) ([f7f2b5a](https://github.com/laaielichter/Reverseport/commit/f7f2b5a3b8e991ce4315ddeb419427e55c37f8db))
+* ready for the MCP directories (Glama, Cline, Anthropic, Docker) ([#69](https://github.com/laaielichter/Reverseport/issues/69)) ([e40fb4e](https://github.com/laaielichter/Reverseport/commit/e40fb4ed095d1e0d75d70fc7699fbe3fbe0b6763))
+* recognize Quake PAK archives ([#49](https://github.com/laaielichter/Reverseport/issues/49)) ([26a1054](https://github.com/laaielichter/Reverseport/commit/26a1054fa8215f28af47ae50afc042f10af3120d))
+* **setup:** register the MCP server as "reverseport" everywhere ([#91](https://github.com/laaielichter/Reverseport/issues/91)) ([fb429b7](https://github.com/laaielichter/Reverseport/commit/fb429b76db5424e3044c99a5362f0236699f7352))
+* **site:** read a real Godot pack field by field, and show proof cases ([#2](https://github.com/laaielichter/Reverseport/issues/2)) ([ed319b7](https://github.com/laaielichter/Reverseport/commit/ed319b711b325ec5f63a62aae3dac04c1d645060))
+* **symbols:** treat more shader extensions as shader code ([#79](https://github.com/laaielichter/Reverseport/issues/79)) ([#164](https://github.com/laaielichter/Reverseport/issues/164)) ([96f6867](https://github.com/laaielichter/Reverseport/commit/96f6867e33c7eb6a87ee37ee04698a060343ae5e))
+
+
+### Bug Fixes
+
+* **ci:** format the sister tools table and expect plugin.json in release files ([#19](https://github.com/laaielichter/Reverseport/issues/19)) ([20fa708](https://github.com/laaielichter/Reverseport/commit/20fa7082fb0a8c84bcc9e9aa33c135904941ee41))
+* **ci:** keep main green across releases ([#21](https://github.com/laaielichter/Reverseport/issues/21)) ([79ec55e](https://github.com/laaielichter/Reverseport/commit/79ec55e52d4058e52e8dc10c8d60947d66c28e1b))
+* **ci:** let the repository skill check accept tracked plugin skills ([#9](https://github.com/laaielichter/Reverseport/issues/9)) ([b01784b](https://github.com/laaielichter/Reverseport/commit/b01784b08508a3ff00b35754eccd8d6a97f7b0c4))
+* **cli:** keep zod 4.6 defaulted inputs omittable in schemas ([#58](https://github.com/laaielichter/Reverseport/issues/58)) ([374e044](https://github.com/laaielichter/Reverseport/commit/374e044af7d67a31a839a2e7c7e88d651811d696))
+* close the two CodeQL alerts and give Chrome more time in CI ([#40](https://github.com/laaielichter/Reverseport/issues/40)) ([a96232f](https://github.com/laaielichter/Reverseport/commit/a96232f0fc5e3a7ba8c55429919e3914d8e0acc4))
+* **decode:** read Godot 4.7 exports: pack format 4, compressed resources, QOA, lossless WebP ([#189](https://github.com/laaielichter/Reverseport/issues/189)) ([10c5756](https://github.com/laaielichter/Reverseport/commit/10c5756b60c9d9949a7de598997218760b5301aa))
+* **deps:** bump zod and fast-uri for security advisories ([#53](https://github.com/laaielichter/Reverseport/issues/53)) ([5baa240](https://github.com/laaielichter/Reverseport/commit/5baa24071fe0c427aaeda33b03be496fe3d3a358))
+* **deps:** move glob, minimatch, qs and vite to patched versions ([#98](https://github.com/laaielichter/Reverseport/issues/98)) ([a561f5f](https://github.com/laaielichter/Reverseport/commit/a561f5f1a312a3d620220449251b1a4744464e8a))
+* **docs:** regenerate the error schema for zod 4.6 ([#57](https://github.com/laaielichter/Reverseport/issues/57)) ([46401b6](https://github.com/laaielichter/Reverseport/commit/46401b67aafc0c508a9c855cc5553ac27d4ae175))
+* **draft:** translate negative literal indexes ([#179](https://github.com/laaielichter/Reverseport/issues/179)) ([369bfca](https://github.com/laaielichter/Reverseport/commit/369bfcaff7b97e339af76409220ea2966274782b))
+* drop .gitattributes so the Claude plugin directory accepts the repo ([#85](https://github.com/laaielichter/Reverseport/issues/85)) ([b77f3c0](https://github.com/laaielichter/Reverseport/commit/b77f3c0c46ac279bc482adaf67750d0277670991))
+* include proof commands in help ([#10](https://github.com/laaielichter/Reverseport/issues/10)) ([fb6564a](https://github.com/laaielichter/Reverseport/commit/fb6564af767d0f8dc201b6fab0e04430e07db06e))
+* include proof commands in help ([#8](https://github.com/laaielichter/Reverseport/issues/8)) ([ee9cedd](https://github.com/laaielichter/Reverseport/commit/ee9ceddb8163dcbf3e6626929c99347a722bf620))
+* **install:** apply an LF copy of a CRLF dependency patch on Windows ([#93](https://github.com/laaielichter/Reverseport/issues/93)) ([16a2bfb](https://github.com/laaielichter/Reverseport/commit/16a2bfbfde718f672ab25d7bd18e1b578460e326))
+* **lookup:** explain empty results and keep Steam near matches ([#104](https://github.com/laaielichter/Reverseport/issues/104)) ([#157](https://github.com/laaielichter/Reverseport/issues/157)) ([dd8a93d](https://github.com/laaielichter/Reverseport/commit/dd8a93dd247563ebc9317cbf9e2d4533fc90be9d))
+* **mcp:** answer resources/list when the engine has no resources ([#184](https://github.com/laaielichter/Reverseport/issues/184)) ([b67d00d](https://github.com/laaielichter/Reverseport/commit/b67d00d3641c16218f6ec65afcfa8725fa7fba82))
+* **plugin:** clear the directory's policy holds ([#100](https://github.com/laaielichter/Reverseport/issues/100)) ([005776e](https://github.com/laaielichter/Reverseport/commit/005776ec51b28238e305dd5e6c0a3634e0644e7b))
+* **plugin:** display name and listing links for the Claude plugin directory ([#97](https://github.com/laaielichter/Reverseport/issues/97)) ([ced7ba0](https://github.com/laaielichter/Reverseport/commit/ced7ba0651270d11b3b63cf67248ba3fc5555b82))
+* **port:** accept workspace names that start with two dots ([#112](https://github.com/laaielichter/Reverseport/issues/112)) ([eb55777](https://github.com/laaielichter/Reverseport/commit/eb55777b7762bd487adc152b4d20b1b78d2233ed))
+* **port:** act on agent rating round 4 ([#65](https://github.com/laaielichter/Reverseport/issues/65)) ([f2804de](https://github.com/laaielichter/Reverseport/commit/f2804de49982f5ca2d79dee9e27baf63c09dd8c7))
+* **port:** close the CodeQL findings in ReversePort's own code ([#70](https://github.com/laaielichter/Reverseport/issues/70)) ([4c89a00](https://github.com/laaielichter/Reverseport/commit/4c89a00a01dd22aad30547bb12246f89a7a90b3a))
+* **scan:** give Android modules a root; detect electron-vite ([#24](https://github.com/laaielichter/Reverseport/issues/24)) ([42626cb](https://github.com/laaielichter/Reverseport/commit/42626cbeb72ce4a5af510bbc8050b5956c83bc06))
+* **scan:** point next steps at the right tool per build type ([#103](https://github.com/laaielichter/Reverseport/issues/103)) ([0c56256](https://github.com/laaielichter/Reverseport/commit/0c562566e95725873745f8104503b9e9e86855ee))
+* **scan:** point next steps at the right tool per build type ([#103](https://github.com/laaielichter/Reverseport/issues/103)) ([bfa7ea2](https://github.com/laaielichter/Reverseport/commit/bfa7ea21c62ee30ede237169e81401e4fce1d889))
+* **scripts:** close the CodeQL findings in the test and release scripts ([#67](https://github.com/laaielichter/Reverseport/issues/67)) ([2967bf4](https://github.com/laaielichter/Reverseport/commit/2967bf48ba012eb196bddf31e3b388dd219650df))
+* **setup:** describe the Harness server name check as "reverseport" ([#92](https://github.com/laaielichter/Reverseport/issues/92)) ([8136e8d](https://github.com/laaielichter/Reverseport/commit/8136e8dfb719940e110aacbcf6627f742f967149))
+* **shader:** map built-in UnityCG input structs in port_shader ([#143](https://github.com/laaielichter/Reverseport/issues/143)) ([67eba5a](https://github.com/laaielichter/Reverseport/commit/67eba5af1c105dcb88793182674bcc9e9902a0bb))
+* treat npx registrations as current and advertise remaining CLI payload schemas ([#130](https://github.com/laaielichter/Reverseport/issues/130)) ([87d7855](https://github.com/laaielichter/Reverseport/commit/87d785524408ba8f2a71f6062db62bd7243f2726))
+* **verify:** follow Claude Code's deferred catalog and persisted results ([#95](https://github.com/laaielichter/Reverseport/issues/95)) ([75a8ce7](https://github.com/laaielichter/Reverseport/commit/75a8ce7a64d291b5b4d3767a550c8c3de33dd3de))
+* **verify:** keep TEMP and TMP in isolated Windows verifier environments ([#96](https://github.com/laaielichter/Reverseport/issues/96)) ([fb7b238](https://github.com/laaielichter/Reverseport/commit/fb7b23888ee5be7e610e4551028e6ad23d4043a3))
+* **verify:** keep Windows host variables in isolated client verifiers ([#94](https://github.com/laaielichter/Reverseport/issues/94)) ([de1c0c8](https://github.com/laaielichter/Reverseport/commit/de1c0c8e5d6029b326033311a40d3f2d7aa75528))
+
+
+### Documentation
+
+* add a stars badge, thank contributors and add a no-strings star note ([#181](https://github.com/laaielichter/Reverseport/issues/181)) ([93dc88d](https://github.com/laaielichter/Reverseport/commit/93dc88d707cbb45ba5fa790990b25de239631fb3))
+* add Dutch agent connection guide ([#47](https://github.com/laaielichter/Reverseport/issues/47)) ([f4319b1](https://github.com/laaielichter/Reverseport/commit/f4319b1c9d10cb887b2dbd58fc8cc167e9f0ea4b))
+* **agents:** contributors commit under their own name; review bot PRs like any other ([f6240e0](https://github.com/laaielichter/Reverseport/commit/f6240e0196a05caff1d61ea690b77a131976bc34))
+* **cli:** rename rea to reverseport ([#125](https://github.com/laaielichter/Reverseport/issues/125)) ([#154](https://github.com/laaielichter/Reverseport/issues/154)) ([106b68e](https://github.com/laaielichter/Reverseport/commit/106b68e650f75cb1889a030de55c946590892357))
+* **contributing:** drop the description of a PR readiness workflow that does not exist ([#167](https://github.com/laaielichter/Reverseport/issues/167)) ([92b7b7d](https://github.com/laaielichter/Reverseport/commit/92b7b7dd309aecff3c06ba726373b1d1deeb49a8))
+* **contributing:** state PR readiness in the description, not a template section ([#166](https://github.com/laaielichter/Reverseport/issues/166)) ([03871e9](https://github.com/laaielichter/Reverseport/commit/03871e9fe4071714c837018634bf845e68902a58))
+* **draft:** explain the GDScript-to-C# first-draft workflow ([#178](https://github.com/laaielichter/Reverseport/issues/178)) ([8ba8e70](https://github.com/laaielichter/Reverseport/commit/8ba8e70af249b7f4e1625bf4145914b35d570438))
+* fix 4 broken links ([#138](https://github.com/laaielichter/Reverseport/issues/138)) ([#155](https://github.com/laaielichter/Reverseport/issues/155)) ([de8f941](https://github.com/laaielichter/Reverseport/commit/de8f941d1e0a138004d23d066c8889f7a30a772e))
+* fix letters and leftovers in the Dutch agent guide ([#56](https://github.com/laaielichter/Reverseport/issues/56)) ([5667554](https://github.com/laaielichter/Reverseport/commit/5667554332c516cda170d17654d481e5ce0a06eb))
+* **help:** list all commands in reverseport help ([#82](https://github.com/laaielichter/Reverseport/issues/82)) ([#153](https://github.com/laaielichter/Reverseport/issues/153)) ([05cf4c6](https://github.com/laaielichter/Reverseport/commit/05cf4c6a87f6abad9b9cfa63e6a0a37e43455ba8))
+* link the Glama listing from the README ([#182](https://github.com/laaielichter/Reverseport/issues/182)) ([cadcb5a](https://github.com/laaielichter/Reverseport/commit/cadcb5a90b06d693f08807dd1c8cfedaf9ef666c))
+* README, site and llms.txt for Godot 4.7 exports ([#191](https://github.com/laaielichter/Reverseport/issues/191)) ([0db5c58](https://github.com/laaielichter/Reverseport/commit/0db5c58d4b4672b27efb67c326aaa4e1782ba8c8))
+* README, site, guides and listings for the new tools and formats ([#188](https://github.com/laaielichter/Reverseport/issues/188)) ([273be8d](https://github.com/laaielichter/Reverseport/commit/273be8d55796936befdfbd8991c635db118a42d6))
+* **readme:** link the project showcase discussion ([#126](https://github.com/laaielichter/Reverseport/issues/126)) ([ffdd10b](https://github.com/laaielichter/Reverseport/commit/ffdd10bc88f4ee5ec13b662e4866b862b4b6fc10))
+* **readme:** move detailed references into linked guides ([ebecfbc](https://github.com/laaielichter/Reverseport/commit/ebecfbc8e27d42c460222942d44c7dfa8d65050c))
+* **readme:** update What's new through 1.16 ([#119](https://github.com/laaielichter/Reverseport/issues/119)) ([0a74813](https://github.com/laaielichter/Reverseport/commit/0a748132cb196a266937319844a4849ed77df46c))
+* refresh README, site and listing metadata for 1.12 ([#83](https://github.com/laaielichter/Reverseport/issues/83)) ([aaf81c6](https://github.com/laaielichter/Reverseport/commit/aaf81c650e10ad1e5a25dc904d6a1f56c485ebbc))
+* show the skills and recent features on the README and the site ([#39](https://github.com/laaielichter/Reverseport/issues/39)) ([37fcbc1](https://github.com/laaielichter/Reverseport/commit/37fcbc1296e34448f6913d40c724acdf8164e487))
+* **site:** add a website, a real demo and a sharper README ([aa7384e](https://github.com/laaielichter/Reverseport/commit/aa7384e520056a641b6d2d4e9d5a9ab74c5cb6a9))
+* **site:** use the live Pages address ([e861d79](https://github.com/laaielichter/Reverseport/commit/e861d7976606006151109f9ab686e4430b7797d8))
+* thank [@nickstrooo-bot](https://github.com/nickstrooo-bot) for the Quake .pak / Doom .wad reader and the CLI rename ([#152](https://github.com/laaielichter/Reverseport/issues/152), [#154](https://github.com/laaielichter/Reverseport/issues/154)) ([#185](https://github.com/laaielichter/Reverseport/issues/185)) ([e9f9d03](https://github.com/laaielichter/Reverseport/commit/e9f9d0378399263ba6d5954814ea1c48cb4ffcca))
+* the 1000-model port on the site and in the Godot → three.js walkthrough ([#196](https://github.com/laaielichter/Reverseport/issues/196)) ([8b8c841](https://github.com/laaielichter/Reverseport/commit/8b8c8413c85b5edffc144ff7430d24bd3e98a814))
+* translate the proof cases guide to Dutch ([#13](https://github.com/laaielichter/Reverseport/issues/13)) ([5c649b3](https://github.com/laaielichter/Reverseport/commit/5c649b34d65706048e016356247cb0b740d7ba65))
+
+
+### Tests
+
+* fix load-dependent Electron MCP and update maintenance flakes ([#159](https://github.com/laaielichter/Reverseport/issues/159)) ([aea9a17](https://github.com/laaielichter/Reverseport/commit/aea9a17a3847d97ed273a31b39252f1a61c3e09e))
+* **fixture:** skip incomplete JSONL lines in fake agent env notes ([#194](https://github.com/laaielichter/Reverseport/issues/194)) ([95780f1](https://github.com/laaielichter/Reverseport/commit/95780f174c63dc3fa4573d377c5915ee6f212ebc))
+* **javascript:** compare the #/ import key only with a Node that accepts it ([#34](https://github.com/laaielichter/Reverseport/issues/34)) ([81ea3c5](https://github.com/laaielichter/Reverseport/commit/81ea3c5ac3f3e691ff693453d889c540c7ed14fd))
+* **plugin:** measure what the plugin adds with claude plugin eval ([#66](https://github.com/laaielichter/Reverseport/issues/66)) ([f3e12dd](https://github.com/laaielichter/Reverseport/commit/f3e12dd602cbf36c57a8d23e9ef7e691cfafc621))
+* **reference:** do not depend on the filesystem's directory order ([#38](https://github.com/laaielichter/Reverseport/issues/38)) ([41bfcbc](https://github.com/laaielichter/Reverseport/commit/41bfcbce21fd15ec26ddcf583ff30edf3781e943))
+
 ## [1.28.0](https://github.com/laaielichter/Reverseport/compare/reverseport-1.27.0...reverseport-1.28.0) (2026-11-26)
 
 

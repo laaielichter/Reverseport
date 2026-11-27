@@ -1,7 +1,7 @@
 {
   "name": "reverseport",
   "mcpName": "io.github.laaielichter/reverseport",
-  "version": "1.28.0",
+  "version": "1.29.0",
   "description": "Reverse engineer anything. Port it anywhere. MCP server, CLI and skills for AI coding agents: read Godot, Unity, Unreal, Ren'Py and GameMaker builds, Android and iOS packages, .NET and native binaries (in depth through your own Ghidra, IDA or Hopper), work out unknown file formats from samples, compare builds, keep proof for every claim, and port games between Godot, Unity, Unreal, three.js and languages with parity checks.",
   "license": "MIT",
   "repository": {
