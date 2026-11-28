@@ -14,6 +14,9 @@ const UNITY_KEYS = new Set(['m_Text', 'm_text', 'm_Label', 'm_PlaceholderText'])
 const MAX_LEN = 4000;
 
 const unquote = s => s.replace(/^"(.*)"$/s, '$1').replace(/\\n/g, '\n').replace(/\\t/g, '\t').replace(/\\"/g, '"').replace(/\\\\/g, '\\');
+const GD_STRING = /"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'/g;
+const unquoteGd = s => s.slice(1, -1).replace(/\\([\\'"nrt])/g, (_, c) => ({ n: '\n', r: '\r', t: '\t' })[c] ?? c);
+const quoteGd = (text, quote) => quote + text.replace(/\\/g, '\\\\').replace(/\n/g, '\\n').replace(/\r/g, '\\r').replace(/\t/g, '\\t').replaceAll(quote, '\\' + quote) + quote;
 const skip = s => !s.trim() || s.length > MAX_LEN || /^(res|uid|user):\/\//.test(s) || /^[\d\s.,:;+\-*/%=()[\]{}<>#$&|^~`!?@]*$/.test(s) || /^[a-z_][a-z0-9_]*$/.test(s) && !s.includes(' ');
 
 function entry(file, where, prop, text, kind, line) {
@@ -40,7 +43,7 @@ function fromCode(file, text, lang) {
   const out = [];
   const lines = text.split('\n');
   const patterns = lang === 'gd'
-    ? [/\btr\(\s*"((?:[^"\\]|\\.)*)"/g, /\btr_n\(\s*"((?:[^"\\]|\\.)*)"\s*,\s*"((?:[^"\\]|\\.)*)"/g, /\.(?:text|tooltip_text|placeholder_text|title)\s*=\s*"((?:[^"\\]|\\.)*)"/g, /\b(?:add_item|add_icon_item|set_item_text|add_check_item|set_text|push_warning|push_error|print(?:_rich)?)\(\s*"((?:[^"\\]|\\.)*)"/g, /\$"((?:[^"\\]|\\.)*)"/g]
+    ? ['\\btr\\(\\s*', '\\btr_n\\(\\s*', '\\.(?:text|tooltip_text|placeholder_text|title)\\s*=\\s*', '\\b(?:add_item|add_icon_item|set_item_text|add_check_item|set_text|push_warning|push_error|print(?:_rich)?)\\(\\s*', '\\$'].map(prefix => new RegExp(prefix + `(${GD_STRING.source})` + (prefix.startsWith('\\btr_n') ? `\\s*,\\s*(${GD_STRING.source})` : ''), 'g'))
     : lang === 'cs'
       ? [/\.(?:text|Text|tooltip|Tooltip)\s*=\s*\$?"((?:[^"\\]|\\.)*)"/g, /\bSetText\(\s*"((?:[^"\\]|\\.)*)"/g, /\b(?:Localize|Translate|GetString|L|T)\(\s*"((?:[^"\\]|\\.)*)"/g, /\bDebug\.Log(?:Warning|Error)?\(\s*"((?:[^"\\]|\\.)*)"/g]
       : [/\b(?:t|i18n\.t|\$t|gettext|_)\(\s*["']((?:[^"'\\]|\\.)*)["']/g, /\.(?:textContent|innerText|title|placeholder)\s*=\s*["']((?:[^"'\\]|\\.)*)["']/g];
@@ -48,11 +51,12 @@ function fromCode(file, text, lang) {
     const l = lines[i];
     if (/^\s*(#|\/\/)/.test(l)) continue;
     for (const re of patterns) for (const m of l.matchAll(re)) {
-      const v = unquote(`"${m[1]}"`);
-      if (skip(v) || /^[\w.]+$/.test(v)) continue;
+      const v = lang === 'gd' ? unquoteGd(m[1]) : unquote(`"${m[1]}"`);
+      // GDScript labels such as Quit are text; dotted, underscored and all-capital keys are not.
+      if (skip(v) || /^[\w.]+$/.test(v) && (lang !== 'gd' || !/^[A-Z][a-z]+$/.test(v))) continue;
       const prop = re.source.startsWith('\\btr_n') ? 'tr_n' : re.source.startsWith('\\btr\\(') ? 'tr' : re.source.includes('Log') || re.source.includes('push_') || re.source.includes('print') ? 'log' : 'code';
       out.push(entry(file, `L${i + 1}`, prop, v, 'code', i + 1));
-      if (m[2]) out.push(entry(file, `L${i + 1}`, 'tr_n.plural', unquote(`"${m[2]}"`), 'code', i + 1));
+      if (m[2]) out.push(entry(file, `L${i + 1}`, 'tr_n.plural', lang === 'gd' ? unquoteGd(m[2]) : unquote(`"${m[2]}"`), 'code', i + 1));
     }
   }
   return out;
@@ -290,7 +294,12 @@ export async function applyTranslations(root, translations, out, entries) {
         const idx = e.line - 1;
         const esc = v => v.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n');
         const before = lines[idx];
-        const after = before.includes(`"${esc(e.text)}"`) ? before.replace(`"${esc(e.text)}"`, `"${esc(t)}"`) : before.replace(e.text, t);
+        let replaced = false;
+        const after = f.rel.endsWith('.gd') ? before.replace(GD_STRING, token => {
+          if (replaced || unquoteGd(token) !== e.text) return token;
+          replaced = true;
+          return quoteGd(t, token[0]);
+        }) : before.includes(`"${esc(e.text)}"`) ? before.replace(`"${esc(e.text)}"`, `"${esc(t)}"`) : before.replace(e.text, t);
         if (after === before) { problems.push({ id: e.id, problem: 'source text not found at its line (file changed since extraction?)' }); continue; }
         lines[idx] = after; n++;
       } else if (f.rel.endsWith('.json')) {

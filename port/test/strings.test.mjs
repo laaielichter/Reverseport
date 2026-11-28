@@ -21,6 +21,56 @@ test('re_strings: Godot scene text and GDScript tr()/text assignments with stabl
   assert.deepEqual(code.placeholders, ['%d']);
 });
 
+test('re_strings: GDScript word labels and both quote styles, without identifier keys', async t => {
+  const root = await tempDir('rp-gd-labels-');
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  await fs.writeFile(path.join(root, 'menu.gd'), String.raw`extends Control
+func _ready():
+    $Play.text = "Play"
+    $Quit.text = tr("Quit")
+    $Opt.text = tr("Options menu")
+    $Hint.text = 'Press any key'
+    $Ready.text = tr('It\'s ready')
+    $Start.text = tr('開始')
+    $Count.text = tr_n('Apple', "Apples", count)
+    tr("ui.start")
+    tr("UI_START")
+    tr("quit_button")
+    tr("quit")
+    tr("QUIT")
+`);
+  await fs.writeFile(path.join(root, 'menu.tscn'), '[gd_scene format=3]\n[node name="Play" type="Button"]\ntext = "Play"\n');
+  const r = await extractStrings(root);
+  assert.deepEqual(r.entries.filter(e => e.file === 'menu.gd').map(e => [e.line, e.prop, e.text]), [
+    [3, 'code', 'Play'], [4, 'tr', 'Quit'], [5, 'tr', 'Options menu'], [6, 'code', 'Press any key'],
+    [7, 'tr', "It's ready"], [8, 'tr', '開始'], [9, 'tr_n', 'Apple'], [9, 'tr_n.plural', 'Apples'],
+  ]);
+  assert.equal(r.entries.find(e => e.file === 'menu.tscn').text, 'Play');
+});
+
+test('re_strings: apply preserves GDScript quotes and escapes translations in a copy', async t => {
+  const root = await tempDir('rp-gd-apply-'), output = await tempDir('rp-gd-translated-');
+  t.after(async () => { await fs.rm(root, { recursive: true, force: true }); await fs.rm(output, { recursive: true, force: true }); });
+  const source = String.raw`extends Control
+func _ready():
+    $Quit.text = tr("Quit")
+    $Hint.text = 'Press any key'
+    $Ready.text = tr('It\'s ready')
+`;
+  await fs.writeFile(path.join(root, 'menu.gd'), source);
+  const translations = path.join(output, 'fr.json');
+  await fs.writeFile(translations, JSON.stringify({ Quit: 'Quitter', 'Press any key': "L'été \\\n\"ici\"", "It's ready": "C'est prêt" }));
+  const dest = path.join(output, 'copy');
+  const result = await callTool('re_strings', { path: root, action: 'apply', translations, out: dest });
+  assert.equal(result.applied, 3, JSON.stringify(result));
+  assert.deepEqual(result.problems, []);
+  const lines = (await fs.readFile(path.join(dest, 'menu.gd'), 'utf8')).split('\n');
+  assert.equal(lines[2], '    $Quit.text = tr("Quitter")');
+  assert.equal(lines[3], String.raw`    $Hint.text = 'L\'été \\\n"ici"'`);
+  assert.equal(lines[4], String.raw`    $Ready.text = tr('C\'est prêt')`);
+  assert.equal(await fs.readFile(path.join(root, 'menu.gd'), 'utf8'), source, 'source stays untouched');
+});
+
 test('re_strings: Unity YAML, RPG Maker, Ren\'Py and i18n JSON', async () => {
   const root = await tempDir('rp-strings-');
   const w = async (rel, text) => { const f = path.join(root, rel); await fs.mkdir(path.dirname(f), { recursive: true }); await fs.writeFile(f, text); };
